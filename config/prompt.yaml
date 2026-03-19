@@ -1,0 +1,16 @@
+# Agent 与各类任务的 prompt 配置
+
+# Agent 底座 system prompt
+system_prompt: system_prompt.txt
+
+# 意图/搜索词提取：供 extract 模型使用
+extract_search_terms_prompt: extract_search_terms.txt
+
+# 事件时间线分析：供 analysis 模型使用
+analysis_timeline_prompt: analysis_timeline.txt
+
+# 情感倾向分析：供 analysis 模型使用
+analysis_sentiment_prompt: analysis_sentiment.txt
+
+# HTML报告生成：供 report 模型使用
+report_html_prompt: report_html.txt

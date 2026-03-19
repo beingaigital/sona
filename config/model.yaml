@@ -1,0 +1,39 @@
+# 模型配置
+# 各厂商可用模型清单，如需更多可查看对应模型官网
+# openai: gpt-5.4, gpt-4.1等
+# gemini: gemini-3.1 pro，gemini-2.5 falsh等
+# qwen: qwen-max, qwen-plus, qwen-turbo, qwen-coder等
+# deepseek: deepseek-chat, deepseek-reasoner等
+# kimi: kimi-k2.5等
+
+# 模型APIKEY配置，对应.env中密钥
+# openai:OPENAI_APIKEY
+# gemini:GEMINI_APIKEY
+# qwen:QWEN_APIKEY
+# deepseek:DEEPSEEK_APIKEY
+# kimi:KIMI_APIKEY
+
+# Base URL 配置（可选，用于自定义端点）
+# qwen 默认: https://dashscope.aliyuncs.com/compatible-mode/v1
+# coding plan: https://coding.dashscope.aliyuncs.com/v1
+
+# 主流程模型：作为 ReAct Agent 的底座
+main:
+  provider: qwen
+  model: qwen3.5-plus
+  api_key_env: QWEN_APIKEY
+  base_url: https://coding.dashscope.aliyuncs.com/v1
+
+# 工具模型：用于各种工具调用（搜索词提取、时间线分析、情感分析等）
+tools:
+  provider: qwen
+  model: qwen3.5-plus
+  api_key_env: QWEN_APIKEY
+  base_url: https://coding.dashscope.aliyuncs.com/v1
+
+# HTML报告生成模型：生成舆情分析HTML报告
+report:
+  provider: qwen
+  model: qwen3.5-plus
+  api_key_env: QWEN_APIKEY
+  base_url: https://coding.dashscope.aliyuncs.com/v1
