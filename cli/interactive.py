@@ -7,6 +7,7 @@ import sys
 import traceback
 import warnings
 from typing import Any, Optional, List, Dict
+import webbrowser
 from langchain_core.messages import AIMessage, ToolMessage, HumanMessage, BaseMessage, ToolCall
 from rich.live import Live
 from rich.markdown import Markdown
@@ -281,6 +282,24 @@ def run_session_query(
                             tool_result = str(tool_result)
                     
                     print_tool_result(tool_name, tool_result)
+                    
+                    # 如果是 HTML 报告生成工具，尝试自动在默认浏览器中打开报告
+                    if tool_name == "report_html":
+                        try:
+                            parsed = json.loads(tool_result)
+                            # 优先使用 file_url，其次使用本地路径
+                            file_url = parsed.get("file_url") or ""
+                            html_file_path = parsed.get("html_file_path") or ""
+                            if not file_url and html_file_path:
+                                # 回退：将本地路径转换为 file:// URL
+                                from pathlib import Path
+                                file_url = Path(html_file_path).resolve().as_uri()
+                            if file_url:
+                                webbrowser.open(file_url)
+                                console.print(f"[green]✅ 已在默认浏览器中打开报告: {file_url}[/green]")
+                        except Exception:
+                            # 若解析或打开失败，只在 CLI 中忽略，不影响主流程
+                            warnings.warn("自动打开 HTML 报告失败，但报告已生成。")
                     
                     # 打印 token 使用情况（工具执行完成后）
                     step_usage = token_tracker.get_step_usage(token_tracker.current_step or "unknown")
