@@ -76,8 +76,22 @@ def prepare_hot_topics_environment() -> None:
 
     # 强制：如果用户使用 QWEN coding plan 的单一额度（QWEN_APIKEY），
     # 即使没有 model.yaml，也要把 base_url 强制到 coding plan。
-    qwen = os.environ.get("QWEN_APIKEY") or os.environ.get("QWEN_API_KEY")
-    qwen_model = os.environ.get("QWEN_MODEL_NAME") or os.environ.get("QWEN_MODEL") or "qwen3.5-plus"
+    # 兼容两套命名：
+    # 1) sona：QWEN_APIKEY / QWEN_MODEL_NAME
+    # 2) bjtupubclaw：APIKEY / baseurl（也可能是 CODINGPLAN_*）
+    qwen = (
+        os.environ.get("QWEN_APIKEY")
+        or os.environ.get("QWEN_API_KEY")
+        or os.environ.get("CODINGPLAN_API_KEY")
+        or os.environ.get("APIKEY")
+    )
+    qwen_model = (
+        os.environ.get("QWEN_MODEL_NAME")
+        or os.environ.get("QWEN_MODEL")
+        or os.environ.get("CODINGPLAN_MODEL_NAME")
+        or os.environ.get("CODINGPLAN_MODEL")
+        or "qwen3.5-plus"
+    )
     coding_plan_base_url = "https://coding.dashscope.aliyuncs.com/v1"
 
     if qwen:
