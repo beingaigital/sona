@@ -61,8 +61,13 @@ def prepare_hot_topics_environment() -> None:
                         model_name = str(tools_block.get("model") or "").strip()
 
                         _set_if_absent("INSIGHT_ENGINE_API_KEY", api_key)
-                        if base_url:
+
+                        # 强制：Qwen coding plan 必须使用指定 base_url，确保走 coding plan 额度
+                        if provider == "qwen":
+                            _set_if_absent("INSIGHT_ENGINE_BASE_URL", "https://coding.dashscope.aliyuncs.com/v1")
+                        elif base_url:
                             _set_if_absent("INSIGHT_ENGINE_BASE_URL", base_url)
+
                         if model_name:
                             _set_if_absent("INSIGHT_ENGINE_MODEL_NAME", model_name)
             except Exception:
@@ -95,6 +100,12 @@ def prepare_hot_topics_environment() -> None:
         _set_if_absent("QUERY_ENGINE_API_KEY", os.environ["INSIGHT_ENGINE_API_KEY"])
         _set_if_absent("QUERY_ENGINE_BASE_URL", os.environ.get("INSIGHT_ENGINE_BASE_URL", moonshot_base))
         _set_if_absent("QUERY_ENGINE_MODEL_NAME", os.environ.get("INSIGHT_ENGINE_MODEL_NAME", moonshot_model))
+
+    # 若用户只配置了 QWEN_APIKEY（但 model.yaml 不可读），仍强制 base_url 为 coding plan
+    if os.environ.get("QWEN_APIKEY") and not os.environ.get("INSIGHT_ENGINE_BASE_URL"):
+        _set_if_absent("INSIGHT_ENGINE_BASE_URL", "https://coding.dashscope.aliyuncs.com/v1")
+    if os.environ.get("QWEN_APIKEY") and not os.environ.get("QUERY_ENGINE_BASE_URL"):
+        _set_if_absent("QUERY_ENGINE_BASE_URL", "https://coding.dashscope.aliyuncs.com/v1")
 
 
 def ensure_hot_topics_cwd() -> None:

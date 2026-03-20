@@ -35,10 +35,15 @@ def run_hot_command(config_path: Optional[str] = None) -> None:
         if not os.environ.get("INSIGHT_ENGINE_API_KEY"):
             console.print(
                 "[yellow]提示: 未检测到 INSIGHT_ENGINE_API_KEY。[/yellow] "
-                "请在 .env 中至少配置其一：KIMI_APIKEY、OPENAI_APIKEY、DEEPSEEK_APIKEY，"
+                "请在 .env 中至少配置其一：QWEN_APIKEY、OPENAI_APIKEY、DEEPSEEK_APIKEY、KIMI_APIKEY，"
                 "或显式设置 INSIGHT_ENGINE_API_KEY / QUERY_ENGINE_API_KEY。"
             )
             console.print()
+
+        # 展示当前热点流程实际使用的 base_url（便于确认走 coding plan）
+        base_url = os.environ.get("INSIGHT_ENGINE_BASE_URL") or ""
+        if base_url:
+            console.print(f"[dim]hot LLM base_url: {base_url}[/dim]")
 
         report_path = run_hot_topics(config_path=normalized_config_path)
         if report_path:
