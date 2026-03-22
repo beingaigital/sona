@@ -77,6 +77,8 @@ def print_welcome() -> None:
     console.print()
     console.print("[yellow]可用命令：[/yellow]")
     console.print("  [cyan]/new[/cyan]     - 开启新的分析会话")
+    console.print("  [cyan]/event[/cyan]   - 强制进入事件分析工作流（可带 query）")
+    console.print("  [dim]                 示例: /event 315晚会舆情分析[/dim]")
     console.print("  [cyan]/memory[/cyan]  - 查看并恢复之前的会话")
     console.print("  [cyan]/hot[/cyan]     - 热点抓取与态势感知（独立流程，生成 HTML）")
     console.print("  [cyan]/models[/cyan]  - 查看所有模型配置")

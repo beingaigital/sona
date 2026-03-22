@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
+import time
+import re
 import traceback
 import warnings
 from typing import Any, Optional, List, Dict
@@ -30,6 +33,37 @@ from cli.display import (
 )
 from cli.session_ui import show_session_selector
 from utils.message_utils import messages_from_session_data
+from cli.event_analysis_workflow import run_event_analysis_workflow
+from cli.router import route_query, get_router
+from cli.hot_ui import run_hot_command
+from rich.prompt import Confirm
+
+LOG_PATH = "/Users/biaowenhuang/Documents/sona-master/.cursor/debug.log"
+
+
+def _append_ndjson_log(
+    *,
+    run_id: str,
+    hypothesis_id: str,
+    location: str,
+    message: str,
+    data: Optional[Dict[str, Any]] = None,
+) -> None:
+    """追加 NDJSON 调试日志（DEBUG MODE 运行证据）。"""
+    payload: Dict[str, Any] = {
+        "id": f"log_{int(time.time() * 1000)}_{abs(hash((hypothesis_id, location, message))) % 10_000_000}",
+        "timestamp": int(time.time() * 1000),
+        "runId": run_id,
+        "hypothesisId": hypothesis_id,
+        "location": location,
+        "message": message,
+        "data": data or {},
+    }
+    try:
+        with open(LOG_PATH, "a", encoding="utf-8", errors="replace") as f:
+            f.write(json.dumps(payload, ensure_ascii=False) + "\n")
+    except Exception:
+        return
 
 
 def run_session_query(
@@ -666,15 +700,38 @@ def run_session_query(
     return final_state or {}
 
 
-def run_session_loop(task_id: Optional[str] = None) -> None:
+def run_session_loop(
+    task_id: Optional[str] = None,
+    *,
+    force_event_workflow: bool = False,
+    preset_initial_query: Optional[str] = None,
+) -> None:
     """
     运行会话循环
     
     Args:
         task_id: 任务 ID，如果为 None 则创建新会话
+        force_event_workflow: 是否强制使用事件分析工作流（由 /event 触发）
+        preset_initial_query: 预置首条查询（由主命令直接传入）
     """
     session_manager = get_session_manager()
     previous_messages = []
+    event_workflow_debug = os.environ.get("SONA_EVENT_WORKFLOW_DEBUG", "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "y",
+        "debug",
+    )
+    # #region debug_log_H4_event_workflow_switch
+    _append_ndjson_log(
+        run_id="session_loop_entry",
+        hypothesis_id="H4_event_workflow_switch",
+        location="cli/interactive.py:run_session_loop_start",
+        message="会话循环启动时读取事件工作流开关",
+        data={"task_id": task_id or "", "event_workflow_debug": event_workflow_debug},
+    )
+    # #endregion debug_log_H4_event_workflow_switch
     
     # 如果没有提供 task_id，创建新会话
     if task_id is None:
@@ -685,23 +742,187 @@ def run_session_loop(task_id: Optional[str] = None) -> None:
         
         # 直接显示 user 输入提示（带任务ID格式）
         task_id_display = task_id[:8] if task_id and len(task_id) > 8 else task_id if task_id else ""
-        # 在 user 提示前添加绿色横线作为对话区隔
-        console.print("[green]────────────────────────────────────────────────────────────[/green]")
-        initial_query = Prompt.ask(f"[bold cyan]({task_id_display}) user[/bold cyan]")
+        if preset_initial_query is not None:
+            initial_query = preset_initial_query.strip()
+            console.print(f"[dim]使用预置初始查询: {initial_query}[/dim]")
+        else:
+            # 在 user 提示前添加绿色横线作为对话区隔
+            console.print("[green]────────────────────────────────────────────────────────────[/green]")
+            initial_query = Prompt.ask(f"[bold cyan]({task_id_display}) user[/bold cyan]")
         if not initial_query:
             console.print("[yellow]未输入查询，退出。[/yellow]")
             return
+
+        # 新会话首条输入也支持运行时参数设置：SONA_XXX=YYY
+        env_assign_match = re.match(r"^\s*(SONA_[A-Z0-9_]+)\s*=\s*(.+?)\s*$", initial_query)
+        if env_assign_match:
+            env_key = env_assign_match.group(1).strip()
+            env_val = env_assign_match.group(2).strip()
+            os.environ[env_key] = env_val
+            console.print(f"[green]已设置运行时参数: {env_key}={env_val}[/green]")
+            # #region debug_log_H21_runtime_env_set_in_initial_assignment
+            _append_ndjson_log(
+                run_id="runtime_env_update",
+                hypothesis_id="H21_runtime_env_set_in_initial_assignment",
+                location="cli/interactive.py:initial_runtime_env_assignment",
+                message="新会话首条输入通过 KEY=VALUE 设置运行时环境变量",
+                data={"key": env_key, "value": env_val},
+            )
+            # #endregion debug_log_H21_runtime_env_set_in_initial_assignment
+            console.print("[yellow]参数已生效，请继续输入分析 query。[/yellow]")
+            console.print("[green]────────────────────────────────────────────────────────────[/green]")
+            initial_query = Prompt.ask(f"[bold cyan]({task_id_display}) user[/bold cyan]")
+            if not initial_query:
+                console.print("[yellow]未输入查询，退出。[/yellow]")
+                return
+
+        # 新会话首条输入也支持 /set KEY VALUE
+        if initial_query.strip().startswith("/set"):
+            parts = initial_query.strip().split(maxsplit=2)
+            if len(parts) >= 3:
+                env_key = parts[1].strip()
+                env_val = parts[2].strip()
+                os.environ[env_key] = env_val
+                console.print(f"[green]已设置运行时参数: {env_key}={env_val}[/green]")
+                # #region debug_log_H22_runtime_env_set_in_initial_set_command
+                _append_ndjson_log(
+                    run_id="runtime_env_update",
+                    hypothesis_id="H22_runtime_env_set_in_initial_set_command",
+                    location="cli/interactive.py:initial_runtime_env_set_command",
+                    message="新会话首条输入通过 /set 设置运行时环境变量",
+                    data={"key": env_key, "value": env_val},
+                )
+                # #endregion debug_log_H22_runtime_env_set_in_initial_set_command
+                console.print("[yellow]参数已生效，请继续输入分析 query。[/yellow]")
+                console.print("[green]────────────────────────────────────────────────────────────[/green]")
+                initial_query = Prompt.ask(f"[bold cyan]({task_id_display}) user[/bold cyan]")
+                if not initial_query:
+                    console.print("[yellow]未输入查询，退出。[/yellow]")
+                    return
+
+        # 支持 /event 命令直接强制进入事件工作流
+        initial_query_stripped = initial_query.strip()
+        event_query = initial_query
+        if initial_query_stripped.startswith("/event"):
+            force_event_workflow = True
+            parts = initial_query_stripped.split(maxsplit=1)
+            event_query = parts[1] if len(parts) > 1 else ""
+            if not event_query:
+                event_query = Prompt.ask("请输入要执行事件分析的 query")
+            initial_query_stripped = event_query.strip()
+
+        # 意图路由决策：使用路由器分析用户 Query
         
+        # 使用意图路由器进行智能路由
+        router = get_router()
+        route_decision, route_data = router.route(initial_query_stripped, task_id)
+        
+        intent_result = route_data.get("intent_result")
+        data_result = route_data.get("data_result")
+        
+        console.print()
+        console.print(f"[cyan]🎯 路由决策: {route_decision}[/cyan]")
+        
+        use_event_workflow = force_event_workflow or route_decision in (
+            "event_analysis_workflow",
+            "event_analysis_with_existing_data",
+        )
+        use_hot_workflow = (not force_event_workflow) and route_decision == "hottopics_workflow"
+        route_policy = route_data.get("route_policy", {}) or {}
+        prefer_confirm = bool(route_policy.get("prefer_confirm", True))
+        
+        # 如果检测到现有数据，询问用户是否使用
+        use_existing = False
+        if use_event_workflow and data_result and data_result.has_data:
+            console.print()
+            console.print(f"[yellow]📊 检测到相关数据文件:[/yellow]")
+            for i, (path, score) in enumerate(zip(data_result.data_paths[:3], data_result.relevance_scores[:3])):
+                console.print(f"   {i+1}. {path} (相关度: {score:.2f})")
+            console.print()
+            default_use_existing = str(route_policy.get("preference", "")).strip() != "覆盖优先"
+            if prefer_confirm:
+                use_existing = Confirm.ask(
+                    "是否使用已有数据进行分析？（选 n 会重新采集数据）",
+                    default=default_use_existing,
+                )
+            else:
+                use_existing = default_use_existing
+                console.print(
+                    f"[dim]根据路由策略自动选择: {'复用已有数据' if use_existing else '重新采集数据'}[/dim]"
+                )
+            if not use_existing:
+                console.print("[cyan]好的，将重新采集数据...[/cyan]")
+            else:
+                console.print("[cyan]好的，将使用现有数据进行分析[/cyan]")
+        
+        # #region debug_log_H5_initial_route_decision
+        _append_ndjson_log(
+            run_id="initial_query_route",
+            hypothesis_id="H5_initial_route_decision",
+            location="cli/interactive.py:initial_query_route",
+            message="意图路由器路由判定",
+            data={
+                "initial_query_prefix": initial_query_stripped[:32],
+                "route_decision": route_decision,
+                "intent": intent_result.intent if intent_result else "unknown",
+                "confidence": intent_result.confidence if intent_result else 0,
+                "has_existing_data": data_result.has_data if data_result else False,
+            },
+        )
+        # #endregion debug_log_H5_initial_route_decision
+
+        # 支持 /event_debug 强制进入事件工作流（保留调试入口）
+        if initial_query_stripped.startswith("/event_debug"):
+            parts = initial_query_stripped.split(maxsplit=1)
+            event_query = parts[1] if len(parts) > 1 else ""
+            if not event_query:
+                event_query = Prompt.ask("请输入要执行事件分析的 query")
+            use_event_workflow = True
+            use_hot_workflow = False
+
         # 更新会话的初始查询
         session_data = session_manager.load_session(task_id)
         if session_data:
-            session_data["initial_query"] = initial_query
+            session_data["initial_query"] = event_query
             # 关键修复：必须立即保存，否则会话列表/恢复时仍显示 create_session("新会话") 的占位描述
-            session_manager.save_session(task_id, session_data, final_query=initial_query)
+            session_manager.save_session(task_id, session_data, final_query=event_query)
         
         # 立即执行初始查询（带转圈动效）
         try:
-            run_session_query(initial_query, task_id, previous_messages, show_spinner=True)
+            if use_event_workflow:
+                # #region debug_log_H6_initial_event_workflow_called
+                _append_ndjson_log(
+                    run_id="initial_query_route",
+                    hypothesis_id="H6_initial_event_workflow_called",
+                    location="cli/interactive.py:initial_call_event_workflow",
+                    message="初始输入进入事件工作流",
+                    data={"query_len": len(event_query)},
+                )
+                # #endregion debug_log_H6_initial_event_workflow_called
+                
+                # 确定是否使用现有数据（跳过数据采集）
+                existing_data_path = None
+                skip_data_collect = False
+                if data_result and data_result.has_data:
+                    if use_existing and data_result.data_paths:
+                        # 使用第一相关的数据文件
+                        existing_data_path = data_result.data_paths[0]
+                        skip_data_collect = True
+                
+                # 调用事件分析工作流
+                run_event_analysis_workflow(
+                    event_query, 
+                    task_id, 
+                    session_manager, 
+                    debug=True,
+                    existing_data_path=existing_data_path,
+                    skip_data_collect=skip_data_collect
+                )
+            elif use_hot_workflow:
+                run_hot_command()
+                session_manager.add_message(task_id, "assistant", "已执行热点发现流程（/hot）。")
+            else:
+                run_session_query(event_query, task_id, previous_messages, show_spinner=True)
             # 执行完后更新 previous_messages
             session_data = session_manager.load_session(task_id)
             if session_data:
@@ -735,9 +956,48 @@ def run_session_loop(task_id: Optional[str] = None) -> None:
             
             if not user_input:
                 continue
+
+            # 处理运行时环境变量设置：支持 SONA_XXX=YYY（无需重启进程）
+            env_assign_match = re.match(r"^\s*(SONA_[A-Z0-9_]+)\s*=\s*(.+?)\s*$", user_input)
+            if env_assign_match:
+                env_key = env_assign_match.group(1).strip()
+                env_val = env_assign_match.group(2).strip()
+                os.environ[env_key] = env_val
+                console.print(f"[green]已设置运行时参数: {env_key}={env_val}[/green]")
+                # #region debug_log_H19_runtime_env_set_by_assignment
+                _append_ndjson_log(
+                    run_id="runtime_env_update",
+                    hypothesis_id="H19_runtime_env_set_by_assignment",
+                    location="cli/interactive.py:runtime_env_assignment",
+                    message="通过 KEY=VALUE 设置运行时环境变量",
+                    data={"key": env_key, "value": env_val},
+                )
+                # #endregion debug_log_H19_runtime_env_set_by_assignment
+                continue
             
             # 处理系统级命令（以 / 开头）
             if user_input.strip().startswith("/"):
+                # 处理 /set 命令：/set SONA_DATA_COLLECT_MAX_WORKERS 5
+                if user_input.strip().startswith("/set"):
+                    parts = user_input.strip().split(maxsplit=2)
+                    if len(parts) < 3:
+                        console.print("[yellow]用法: /set KEY VALUE（仅建议用于 SONA_* 运行时参数）[/yellow]")
+                        continue
+                    env_key = parts[1].strip()
+                    env_val = parts[2].strip()
+                    os.environ[env_key] = env_val
+                    console.print(f"[green]已设置运行时参数: {env_key}={env_val}[/green]")
+                    # #region debug_log_H20_runtime_env_set_by_set_command
+                    _append_ndjson_log(
+                        run_id="runtime_env_update",
+                        hypothesis_id="H20_runtime_env_set_by_set_command",
+                        location="cli/interactive.py:runtime_env_set_command",
+                        message="通过 /set 命令设置运行时环境变量",
+                        data={"key": env_key, "value": env_val},
+                    )
+                    # #endregion debug_log_H20_runtime_env_set_by_set_command
+                    continue
+
                 # 处理 /exit 命令（退出到主页面）
                 if user_input.strip() == "/exit":
                     # 保存会话
@@ -748,6 +1008,43 @@ def run_session_loop(task_id: Optional[str] = None) -> None:
                     print_status(f"任务目录: sandbox/{task_id}/", "info")
                     console.print(f"\n[cyan]会话已保存，已退出到主页面[/cyan]\n")
                     return  # 返回到主页面
+
+                # 处理 /event 与 /event_debug 命令：显式触发事件分析工作流
+                if user_input.strip().startswith("/event"):
+                    parts = user_input.strip().split(maxsplit=1)
+                    event_query = parts[1] if len(parts) > 1 else ""
+                    if not event_query:
+                        event_query = Prompt.ask("请输入要执行事件分析的 query")
+                    try:
+                        # #region debug_log_H7_command_event_workflow_called
+                        _append_ndjson_log(
+                            run_id="loop_query_route",
+                            hypothesis_id="H7_command_event_workflow_called",
+                            location="cli/interactive.py:loop_call_event_workflow_command",
+                            message="循环中通过 /event 命令进入事件工作流",
+                            data={"query_len": len(event_query)},
+                        )
+                        # #endregion debug_log_H7_command_event_workflow_called
+                        run_event_analysis_workflow(event_query, task_id, session_manager, debug=True)
+                        session_data = session_manager.load_session(task_id)
+                        if session_data:
+                            previous_messages = messages_from_session_data(session_data)
+                    except Exception as e:
+                        console.print(f"[red]事件分析工作流执行失败: {str(e)}[/red]")
+                        traceback.print_exc()
+                    continue
+
+                # 处理 /hot 命令：态势感知与热点发现
+                if user_input.strip().startswith("/hot"):
+                    parts = user_input.strip().split(maxsplit=1)
+                    custom_config_path = parts[1] if len(parts) > 1 else None
+                    try:
+                        run_hot_command(custom_config_path)
+                        session_manager.add_message(task_id, "assistant", "已执行热点态势感知流程。")
+                    except Exception as e:
+                        console.print(f"[red]/hot 执行失败: {str(e)}[/red]")
+                        traceback.print_exc()
+                    continue
 
                 # 处理 /compress 命令（手动压缩上下文）
                 if user_input.strip() == "/compress":
@@ -833,11 +1130,79 @@ def run_session_loop(task_id: Optional[str] = None) -> None:
                         console.print(f"[dim]{summary_display}[/dim]")
                     continue
                 
-                # 其他系统命令在main.py中处理，这里只处理/exit
-                console.print(f"[yellow]在会话中，只能使用 /exit 退出会话[/yellow]")
+                # 其他系统命令在main.py中处理，这里仅支持会话内命令
+                console.print(f"[yellow]会话内可用命令: /exit, /set, /event, /hot, /compress[/yellow]")
                 continue
-            
-            run_session_query(user_input, task_id, previous_messages, show_spinner=True)
+
+            # 若开启事件分析 debug 开关，则把普通输入也路由到事件分析工作流
+            if event_workflow_debug:
+                try:
+                    # #region debug_log_H8_auto_event_workflow_called
+                    _append_ndjson_log(
+                        run_id="loop_query_route",
+                        hypothesis_id="H8_auto_event_workflow_called",
+                        location="cli/interactive.py:loop_call_event_workflow_auto",
+                        message="循环中因环境开关进入事件工作流",
+                        data={"query_len": len(user_input)},
+                    )
+                    # #endregion debug_log_H8_auto_event_workflow_called
+                    run_event_analysis_workflow(user_input, task_id, session_manager, debug=True)
+                    session_data = session_manager.load_session(task_id)
+                    if session_data:
+                        previous_messages = messages_from_session_data(session_data)
+                except Exception as e:
+                    console.print(f"[red]事件分析工作流执行失败: {str(e)}[/red]")
+                    traceback.print_exc()
+                continue
+
+            # 每轮输入都进行智能路由（OpenClaw 风格）：优先高效路径
+            route_decision, route_data = route_query(user_input, task_id)
+            intent_result = route_data.get("intent_result")
+            data_result = route_data.get("data_result")
+            route_policy = route_data.get("route_policy", {}) or {}
+            confidence = float(getattr(intent_result, "confidence", 0.0) or 0.0)
+
+            should_apply_route = confidence >= 0.75
+            if should_apply_route and route_decision in ("event_analysis_workflow", "event_analysis_with_existing_data"):
+                use_existing = False
+                if data_result and data_result.has_data:
+                    prefer_confirm = bool(route_policy.get("prefer_confirm", True))
+                    default_use_existing = str(route_policy.get("preference", "")).strip() != "覆盖优先"
+                    if prefer_confirm:
+                        console.print()
+                        console.print(f"[yellow]📊 检测到相关数据文件:[/yellow]")
+                        for i, (path, score) in enumerate(zip(data_result.data_paths[:3], data_result.relevance_scores[:3])):
+                            console.print(f"   {i+1}. {path} (相关度: {score:.2f})")
+                        console.print()
+                        use_existing = Confirm.ask(
+                            "是否使用已有数据进行分析？（选 n 会重新采集数据）",
+                            default=default_use_existing,
+                        )
+                    else:
+                        use_existing = default_use_existing
+                        console.print(
+                            f"[dim]根据路由策略自动选择: {'复用已有数据' if use_existing else '重新采集数据'}[/dim]"
+                        )
+
+                existing_data_path = None
+                skip_data_collect = False
+                if data_result and data_result.has_data and use_existing and data_result.data_paths:
+                    existing_data_path = data_result.data_paths[0]
+                    skip_data_collect = True
+
+                run_event_analysis_workflow(
+                    user_input,
+                    task_id,
+                    session_manager,
+                    debug=True,
+                    existing_data_path=existing_data_path,
+                    skip_data_collect=skip_data_collect,
+                )
+            elif should_apply_route and route_decision == "hottopics_workflow":
+                run_hot_command()
+                session_manager.add_message(task_id, "assistant", "已执行热点态势感知流程。")
+            else:
+                run_session_query(user_input, task_id, previous_messages, show_spinner=True)
             
             # 更新 previous_messages（查询完成后重新加载会话以获取最新消息）
             session_data = session_manager.load_session(task_id)

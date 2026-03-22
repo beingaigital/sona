@@ -40,6 +40,17 @@ def interactive() -> None:
                 if user_input.strip() == "/new":
                     run_session_loop(task_id=None)
                     continue
+
+                # 处理 /event 命令：强制事件分析工作流（可直接带 query）
+                if user_input.strip().startswith("/event"):
+                    parts = user_input.strip().split(maxsplit=1)
+                    event_query = parts[1].strip() if len(parts) > 1 else None
+                    run_session_loop(
+                        task_id=None,
+                        force_event_workflow=True,
+                        preset_initial_query=event_query,
+                    )
+                    continue
                 
                 # 处理 /memory 命令（选择会话）
                 if user_input.strip() == "/memory":
@@ -74,6 +85,8 @@ def interactive() -> None:
                 console.print(f"[yellow]未知命令: {user_input}[/yellow]")
                 console.print("[cyan]可用命令:[/cyan]")
                 console.print("  [cyan]/new[/cyan]     - 开启新的分析会话")
+                console.print("  [cyan]/event[/cyan]   - 强制进入事件分析工作流（可带 query）")
+                console.print("  [dim]                 示例: /event 315晚会舆情分析[/dim]")
                 console.print("  [cyan]/memory[/cyan]  - 查看并恢复之前的会话")
                 console.print("  [cyan]/models[/cyan]  - 查看所有模型配置")
                 console.print("  [cyan]/tools[/cyan]   - 查看所有可用工具")

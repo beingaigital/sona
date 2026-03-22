@@ -3,6 +3,7 @@ import json
 import os
 import time
 import webbrowser
+import sys
 import yaml
 from pathlib import Path
 from datetime import datetime, timedelta
@@ -293,6 +294,36 @@ def _is_docker_env() -> bool:
     return os.path.exists("/.dockerenv")
 
 
+def _request_with_proxy_fallback(url: str, headers: Dict[str, str], timeout: int = 15) -> Optional[str]:
+    """
+    带代理回退的 GET 请求：
+    1) 若配置启用代理，先走代理；
+    2) 代理失败时自动回退直连，避免因本地代理不可用导致全量抓取失败。
+    """
+    crawler_config = CONFIG.get("crawler", {}) if CONFIG else {}
+    proxy_url = crawler_config.get("default_proxy", "http://127.0.0.1:7897")
+    use_proxy = bool(crawler_config.get("use_proxy", False) and proxy_url)
+
+    attempts: List[Optional[Dict[str, str]]] = []
+    if use_proxy:
+        attempts.append({"http": proxy_url, "https": proxy_url})
+    attempts.append(None)  # 始终保留直连兜底
+
+    last_error: Optional[Exception] = None
+    for proxies in attempts:
+        try:
+            response = requests.get(url, headers=headers, timeout=timeout, proxies=proxies)
+            if response.status_code == 200:
+                return response.text
+        except Exception as e:
+            last_error = e
+            # 若代理失败，继续尝试直连；若直连失败则最终返回 None
+            continue
+    if last_error:
+        raise last_error
+    return None
+
+
 # === 状态定义 ===
 class TrendState(TypedDict):
     """定义工作流状态"""
@@ -332,19 +363,9 @@ class BaseFetchNode:
             "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
             "Referer": "https://newsnow.busiyi.world/",
         }
-        
-        # 支持代理配置
-        proxies = None
-        crawler_config = CONFIG.get("crawler", {}) if CONFIG else {}
-        if crawler_config.get("use_proxy", False):
-            proxy_url = crawler_config.get("default_proxy", "http://127.0.0.1:7897")
-            if proxy_url:
-                proxies = {"http": proxy_url, "https": proxy_url}
-        
+
         try:
-            response = requests.get(url, headers=headers, timeout=15, proxies=proxies)
-            if response.status_code == 200:
-                return response.text
+            return _request_with_proxy_fallback(url, headers=headers, timeout=15)
         except Exception as e:
             print(f"Error fetching {self.platform_name} ({self.platform_id}): {e}")
         return None
@@ -479,19 +500,9 @@ class SpiderNode:
             "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
             "Referer": "https://newsnow.busiyi.world/",
         }
-        
-        # 支持代理配置
-        proxies = None
-        crawler_config = CONFIG.get("crawler", {}) if CONFIG else {}
-        if crawler_config.get("use_proxy", False):
-            proxy_url = crawler_config.get("default_proxy", "http://127.0.0.1:7897")
-            if proxy_url:
-                proxies = {"http": proxy_url, "https": proxy_url}
-        
+
         try:
-            response = requests.get(url, headers=headers, timeout=15, proxies=proxies)
-            if response.status_code == 200:
-                return response.text
+            return _request_with_proxy_fallback(url, headers=headers, timeout=15)
         except Exception as e:
             print(f"Error fetching {id_value}: {e}")
         return None
@@ -670,6 +681,13 @@ class NormalizeNewsNode:
         historical_items = load_past_hours_data(lookback_hours=12)
         print(f"从历史数据中加载了 {len(historical_items)} 条新闻")
 
+        # 若当前抓取与近12小时都为空，扩大窗口做离线兜底，提升 /hot 在网络异常时的可用性
+        if not raw_items and not historical_items:
+            fallback_hours = max(24, int(os.environ.get("HOT_FALLBACK_LOOKBACK_HOURS", "168")))
+            print(f"当前无实时数据，尝试回退加载最近{fallback_hours}小时历史快照...")
+            historical_items = load_past_hours_data(lookback_hours=fallback_hours)
+            print(f"回退窗口加载到 {len(historical_items)} 条新闻")
+
         # 合并当前抓取的数据和历史数据
         all_items = raw_items + historical_items
 
@@ -714,12 +732,57 @@ class InsightNode:
     """分析节点"""
 
     def __init__(self):
-        self.llm = ChatOpenAI(
-            api_key=os.environ.get("INSIGHT_ENGINE_API_KEY"),
-            base_url=os.environ.get("INSIGHT_ENGINE_BASE_URL", "https://api.moonshot.cn/v1"),
-            model=os.environ.get("INSIGHT_ENGINE_MODEL_NAME", "moonshot-v1-8k"),
-            temperature=0.7,
+        api_key = os.environ.get("INSIGHT_ENGINE_API_KEY")
+        if api_key:
+            self.llm = ChatOpenAI(
+                api_key=api_key,
+                base_url=os.environ.get("INSIGHT_ENGINE_BASE_URL", "https://api.moonshot.cn/v1"),
+                model=os.environ.get("INSIGHT_ENGINE_MODEL_NAME", "moonshot-v1-8k"),
+                temperature=0.7,
+            )
+        else:
+            self.llm = None
+
+    @staticmethod
+    def _fallback_insight(news_list: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """
+        无模型可用时的规则兜底：按排名/热度提取热点标题。
+        """
+        if not news_list:
+            return {"top_topics": [], "summary": "今日无新闻数据"}
+        # 按平台内排名优先、热度次优先
+        sorted_news = sorted(
+            news_list,
+            key=lambda x: (
+                int(x.get("rank") or 9999),
+                -float(x.get("hot_value") or 0),
+            ),
         )
+        top_topics: List[Dict[str, Any]] = []
+        seen: set[str] = set()
+        for item in sorted_news:
+            title = str(item.get("title") or "").strip()
+            if not title or title in seen:
+                continue
+            seen.add(title)
+            rank = int(item.get("rank") or 50)
+            hot = float(item.get("hot_value") or 0)
+            heat_score = max(20.0, min(100.0, 100.0 - rank * 2 + (hot / 1000000.0)))
+            top_topics.append(
+                {
+                    "topic": title,
+                    "sentiment": "中性",
+                    "comment": f"来自{item.get('source_name') or item.get('source') or '多平台'}热榜，建议持续跟踪事件演化。",
+                    "heat_score": round(heat_score, 1),
+                    "category": "其他",
+                }
+            )
+            if len(top_topics) >= 8:
+                break
+        return {
+            "top_topics": top_topics,
+            "summary": "当前报告由规则引擎生成（未启用大模型深度归因），建议在模型可用时重新生成以获得更细粒度洞察。",
+        }
 
     def __call__(self, state: TrendState) -> TrendState:
         print("--- [InsightNode] 开始分析舆情 ---")
@@ -727,6 +790,10 @@ class InsightNode:
         if not news_list:
             print("⚠️  警告: 没有新闻数据可分析，跳过分析步骤")
             return {"error": "No news to analyze", "analysis_result": {"top_topics": [], "summary": "今日无新闻数据"}}
+
+        if self.llm is None:
+            print("⚠️  未检测到 INSIGHT_ENGINE_API_KEY，使用规则兜底分析")
+            return {"analysis_result": self._fallback_insight(news_list)}
 
         # 优化1: 智能筛选新闻，减少输入量，避免触发API限制
         # 优先选择：高排名、高热度、重要平台的新闻
@@ -888,11 +955,12 @@ class InsightNode:
             return {"analysis_result": analysis_result}
         except Exception as e:
             print(f"InsightNode Error: {e}")
-
-            if "content" in locals():
-                return {"error": str(e), "analysis_result": {"raw": content}}
-            else:
-                return {"error": str(e), "analysis_result": {"raw": None, "error_detail": "LLM response not received"}}
+            # 网络抖动/模型不可用时，回退到规则分析，避免后续节点拿不到 top_topics
+            fallback_result = self._fallback_insight(news_list)
+            fallback_result["summary"] = (
+                f"{fallback_result.get('summary', '')}（LLM失败自动回退：{str(e)[:160]}）"
+            )
+            return {"error": str(e), "analysis_result": fallback_result}
 
 
 class ClassifyNode:
@@ -971,12 +1039,16 @@ class ForumNode:
     """论坛讨论节点"""
 
     def __init__(self):
-        self.llm = ChatOpenAI(
-            api_key=os.environ.get("QUERY_ENGINE_API_KEY"),
-            base_url=os.environ.get("QUERY_ENGINE_BASE_URL", "https://api.moonshot.cn/v1"),
-            model=os.environ.get("QUERY_ENGINE_MODEL_NAME", "moonshot-v1-8k"),
-            temperature=0.7,
-        )
+        api_key = os.environ.get("QUERY_ENGINE_API_KEY")
+        if api_key:
+            self.llm = ChatOpenAI(
+                api_key=api_key,
+                base_url=os.environ.get("QUERY_ENGINE_BASE_URL", "https://api.moonshot.cn/v1"),
+                model=os.environ.get("QUERY_ENGINE_MODEL_NAME", "moonshot-v1-8k"),
+                temperature=0.7,
+            )
+        else:
+            self.llm = None
 
     def __call__(self, state: TrendState) -> TrendState:
         print("--- [ForumNode] 开始论坛讨论 ---")
@@ -986,6 +1058,18 @@ class ForumNode:
         if "top_topics" in analysis_result and isinstance(analysis_result["top_topics"], list):
             if len(analysis_result["top_topics"]) > 0:
                 topic = analysis_result["top_topics"][0].get("topic", "今日热点")
+            else:
+                return {"forum_discussion": "暂无重大事件剖析（当前无有效热点主题）。"}
+
+        if self.llm is None:
+            return {
+                "forum_discussion": (
+                    f"【重大事件剖析】\n"
+                    f"当前焦点：{topic}\n"
+                    "由于未启用 QUERY 大模型，本段采用模板化分析："
+                    "建议从事件主体、传播平台、情绪极性、关键节点用户与回应节奏五个维度持续跟踪。"
+                )
+            }
 
         print(f"讨论话题: {topic}")
 
@@ -1018,7 +1102,15 @@ class ForumNode:
             return {"forum_discussion": response.content}
         except Exception as e:
             print(f"ForumNode Error: {e}")
-            return {"forum_discussion": "讨论生成失败"}
+            return {
+                "forum_discussion": (
+                    f"【重大事件剖析】\n"
+                    f"当前焦点：{topic}\n"
+                    "模型调用失败，已采用规则化兜底："
+                    "建议重点跟踪传播峰值拐点、主流媒体叙事变化、负面情绪聚集议题及权威回应节奏。\n"
+                    f"（错误摘要：{str(e)[:160]}）"
+                )
+            }
 
 
 def render_langgraph_html_report(
@@ -1564,8 +1656,8 @@ def run(config_path: Optional[str] = None) -> str:
         report_path = str(output_path.resolve())
         print(f"\n✅ 流程执行成功！报告已保存: {report_path}")
 
-        # 非 Docker 环境下自动在浏览器中打开报告
-        if not _is_docker_env():
+        # 非 Docker 且交互终端下自动打开浏览器，避免脚本/后台任务噪声
+        if not _is_docker_env() and sys.stdout.isatty():
             file_url = "file://" + report_path
             print(f"正在打开报告: {file_url}")
             try:
@@ -1595,4 +1687,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
