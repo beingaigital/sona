@@ -7,7 +7,7 @@ import sys
 import yaml
 from pathlib import Path
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Any, TypedDict, Annotated
+from typing import Dict, List, Optional, Any, TypedDict, Annotated, Tuple
 from urllib.parse import quote
 import operator
 import pytz
@@ -278,14 +278,14 @@ def load_past_hours_data(lookback_hours: int = 12) -> List[Dict[str, Any]]:
 def load_historical_ranks(lookback_hours: int = 24) -> Dict[tuple, Dict[str, Any]]:
     """
     加载历史排名数据，用于趋势分析
-    返回: {(source_id, title): {"avg_rank": float, "min_rank": int, "count": int, "last_rank": int}}
+    返回: {(source_id, title): {"avg_rank": float, "min_rank": int, "count": int, "last_rank": int, "first_seen": datetime}}
     """
     data_dir = get_hourly_data_dir()
     now = get_beijing_time()
     cutoff = now - timedelta(hours=lookback_hours)
 
-    # 聚合历史数据: (source_id, title) -> 排名列表
-    history: Dict[tuple, List[int]] = {}
+    # 聚合历史数据: (source_id, title) -> 排名列表和时间戳
+    history: Dict[tuple, Dict[str, Any]] = {}
 
     for date_dir in sorted(data_dir.glob("20*"), reverse=False):
         date_str = date_dir.name
@@ -323,14 +323,21 @@ def load_historical_ranks(lookback_hours: int = 24) -> Dict[tuple, Dict[str, Any
                             rank = item.get("rank")
                             if rank is not None:
                                 if key not in history:
-                                    history[key] = []
-                                history[key].append(rank)
+                                    history[key] = {"ranks": [], "first_seen": file_timestamp, "last_seen": file_timestamp}
+                                history[key]["ranks"].append(rank)
+                                # 更新首次出现时间
+                                if file_timestamp < history[key]["first_seen"]:
+                                    history[key]["first_seen"] = file_timestamp
+                                # 更新最后出现时间
+                                if file_timestamp > history[key]["last_seen"]:
+                                    history[key]["last_seen"] = file_timestamp
                 except Exception as e:
                     continue
 
     # 转换为统计信息
     result: Dict[tuple, Dict[str, Any]] = {}
-    for key, ranks in history.items():
+    for key, data in history.items():
+        ranks = data.get("ranks", [])
         if len(ranks) > 0:
             result[key] = {
                 "avg_rank": sum(ranks) / len(ranks),
@@ -338,40 +345,53 @@ def load_historical_ranks(lookback_hours: int = 24) -> Dict[tuple, Dict[str, Any
                 "max_rank": max(ranks),
                 "count": len(ranks),
                 "last_rank": ranks[-1] if ranks else None,
+                "first_seen": data.get("first_seen"),
+                "last_seen": data.get("last_seen"),
             }
 
     return result
 
 
-def calculate_trend(current_rank: int, historical_stats: Dict[str, Any]) -> str:
+def calculate_trend(current_rank: int, historical_stats: Dict[str, Any]) -> Tuple[str, Optional[int]]:
     """
     计算趋势：基于历史数据比较当前排名
-    返回: "new" | "up" | "down" | "stable"
+    返回: (趋势类型, 在榜天数)
+    趋势类型: "new" | "up" | "down" | "stable"
+    在榜天数: 首次出现至今的天数（仅当有历史数据时）
     """
     if not historical_stats:
-        return "new"  # 新上榜
+        return ("new", None)  # 新上榜
 
     avg_rank = historical_stats.get("avg_rank", 0)
     min_rank = historical_stats.get("min_rank", 999)
     last_rank = historical_stats.get("last_rank", 999)
+
+    # 计算在榜天数
+    days_on_list = None
+    first_seen = historical_stats.get("first_seen")
+    if first_seen:
+        now = get_beijing_time()
+        # 计算天数差
+        delta = now - first_seen
+        days_on_list = max(1, delta.days)  # 至少1天
 
     # 阈值设置
     RANK_CHANGE_THRESHOLD = 3  # 排名变化超过3位视为上升/下降
 
     # 比较当前排名与历史平均/上次排名
     if current_rank < last_rank - RANK_CHANGE_THRESHOLD:
-        return "up"  # 上升
+        return ("up", days_on_list)  # 上升
     elif current_rank > last_rank + RANK_CHANGE_THRESHOLD:
-        return "down"  # 下降
+        return ("down", days_on_list)  # 下降
     elif abs(current_rank - avg_rank) <= RANK_CHANGE_THRESHOLD:
-        return "stable"  # 稳定
+        return ("stable", days_on_list)  # 稳定
     else:
         # 综合判断
         if current_rank < avg_rank:
-            return "up"
+            return ("up", days_on_list)
         elif current_rank > avg_rank:
-            return "down"
-        return "stable"
+            return ("down", days_on_list)
+        return ("stable", days_on_list)
 
 
 def html_escape(text: str) -> str:
@@ -576,10 +596,60 @@ class FetchWallstreetcnNode(BaseFetchNode):
         super().__init__("wallstreetcn-hot", "华尔街见闻")
 
 
+# === 新增平台 Fetch 节点 ===
+class FetchXueqiuNode(BaseFetchNode):
+    """雪球 - 财经舆情"""
+    def __init__(self):
+        super().__init__("xueqiu", "雪球")
+
+
+class Fetch36krNode(BaseFetchNode):
+    """36氪 - 科技热点"""
+    def __init__(self):
+        super().__init__("36kr", "36氪")
+
+
+class FetchHupuNode(BaseFetchNode):
+    """虎扑 - 体育/社区舆情"""
+    def __init__(self):
+        super().__init__("hupu", "虎扑")
+
+
+class FetchV2exNode(BaseFetchNode):
+    """V2ex - 技术社区热点"""
+    def __init__(self):
+        super().__init__("v2ex", "V2ex")
+
+
+class FetchSspaiNode(BaseFetchNode):
+    """少数派 - 数字产品"""
+    def __init__(self):
+        super().__init__("sspai", "少数派")
+
+
+class FetchKuaishouNode(BaseFetchNode):
+    """快手 - 短视频热点"""
+    def __init__(self):
+        super().__init__("kuaishou", "快手")
+
+
+class FetchIthomeNode(BaseFetchNode):
+    """IT之家 - IT/数码"""
+    def __init__(self):
+        super().__init__("ithome", "IT之家")
+
+
+class FetchChongbuluoNode(BaseFetchNode):
+    """抽屉新热榜 - 综合热点"""
+    def __init__(self):
+        super().__init__("chongbuluo", "抽屉新热榜")
+
+
 class SpiderNode:
     """抓取节点"""
 
     def __init__(self):
+        # 默认平台列表（向后兼容）
         self.sources = {
             "weibo": "微博热搜",
             "zhihu": "知乎热榜",
@@ -590,7 +660,12 @@ class SpiderNode:
             "sspai": "少数派",
         }
         if CONFIG and "platforms" in CONFIG:
-            self.sources = {p["id"]: p.get("name", p["id"]) for p in CONFIG["platforms"]}
+            # 只包含 enabled: true 的平台（支持 enabled 字段的动态配置）
+            self.sources = {
+                p["id"]: p.get("name", p["id"])
+                for p in CONFIG["platforms"]
+                if p.get("enabled", True)  # 默认启用
+            }
 
     def fetch_data(self, id_value: str) -> Optional[str]:
         url = f"https://newsnow.busiyi.world/api/s?id={id_value}&latest"
@@ -767,8 +842,9 @@ class NormalizeNewsNode:
         for item in deduplicated_items:
             current_rank = item.get("rank", 999)
             historical_stats = item.get("_historical_stats")
-            trend = calculate_trend(current_rank, historical_stats)
+            trend, days_on_list = calculate_trend(current_rank, historical_stats)
             item["trend"] = trend
+            item["days_on_list"] = days_on_list  # 在榜天数
             # 清理内部使用的临时字段
             item.pop("_historical_stats", None)
 
@@ -1328,7 +1404,7 @@ def render_langgraph_html_report(
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>舆情日报 - 热点新闻分析</title>
+    <title>SONA舆情态势感知</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js" integrity="sha512-BNaRQnYJYiPSqHHDb58B0yaPfCu+Wgds8Gp/gU33kqBtgNS4tSPHuGibyoeqMV/TJlSKda6FXzoEyYGjTe+vXA==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
     <style>
         * { box-sizing: border-box; }
@@ -1352,6 +1428,12 @@ def render_langgraph_html_report(
         .topic-category { margin-bottom: 18px; font-size: 14px; font-weight: 600; color: #4b5563; }
         .topic-item { margin-bottom: 16px; padding: 12px; background: #f8fafc; border-radius: 8px; border-left: 4px solid #4f46e5; }
         .topic-name { font-weight: 600; color: #1e293b; margin-bottom: 4px; }
+        .event-tag { display: inline-block; background: #4f46e5; color: white; padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: 600; margin-right: 6px; }
+        .event-tag-new { background: #059669; }
+        .event-tag-up { background: #dc2626; }
+        .event-tag-down { background: #6b7280; }
+        .event-tag-stable { background: #9ca3af; }
+        .category-tag { display: inline-block; background: #f0f9ff; color: #0369a1; padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: 500; margin-right: 8px; border: 1px solid #bae6fd; }
         .topic-meta { font-size: 12px; color: #64748b; margin-bottom: 6px; }
         .topic-comment { font-size: 13px; color: #475569; }
         .source-group { margin-bottom: 24px; }
@@ -1391,12 +1473,12 @@ def render_langgraph_html_report(
     <div class="container">
         <div class="header">
             <div class="save-buttons">
-                <button class="save-btn" onclick="saveAsImage()">保存为图片</button>
-                <button class="save-btn" onclick="saveAsMultipleImages()">分段保存</button>
+                <button class="save-btn" onclick="saveAsImage()" title="保存为图片">📷</button>
+                <button class="save-btn" onclick="saveAsMultipleImages()" title="分段保存">📑</button>
             </div>
-            <div class="header-title">舆情日报 · 热点新闻分析</div>
+            <div class="header-title">SONA 舆情态势感知</div>
             <div class="header-info">
-                <div class="info-item"><span class="info-label">报告类型</span><span class="info-value">舆情分析</span></div>
+                <div class="info-item"><span class="info-label">报告类型</span><span class="info-value">全网热点</span></div>
                 <div class="info-item"><span class="info-label">新闻总数</span><span class="info-value">"""
     html += str(total_news)
     html += """ 条</span></div>
@@ -1416,28 +1498,170 @@ def render_langgraph_html_report(
     html += """</div>
             </div>
             <div class="section">
-                <div class="section-title">深度分析</div>
+                <div class="section-title">热点事件</div>
 """
 
-    # 按类别分组展示深度分析事件（类别按热度排序，只有有热点的类别才展示）
-    for cat in category_display_order:
-        cat_topics = topics_by_category.get(cat) or []
-        html += '<div class="topic-category">' + html_escape(cat) + "</div>"
-        for t in cat_topics:
-            topic = t.get("topic") or ""
-            sentiment = t.get("sentiment") or ""
-            comment = t.get("comment") or ""
-            heat_score = t.get("heat_score")
-            html += '<div class="topic-item"><div class="topic-name">' + html_escape(topic) + "</div>"
-            meta_parts: List[str] = []
-            if sentiment:
-                meta_parts.append("情感: " + sentiment)
-            if heat_score is not None:
-                meta_parts.append("舆情热度: " + str(heat_score))
-            if meta_parts:
-                html += '<div class="topic-meta">' + html_escape(" · ".join(meta_parts)) + "</div>"
-            html += '<div class="topic-comment">' + html_escape(comment) + "</div></div>"
+    # 趋势标签映射（中文描述）
+    TREND_LABELS = {
+        "new": "新上榜",
+        "up": "急剧上升",
+        "down": "明显下滑",
+        "stable": "保持平稳",
+    }
+    
+    # 为每个热点事件分配序号，并根据热度排序
+    # 先按 heat_score 降序排序
+    sorted_topics = sorted(top_topics, key=lambda t: (t.get("heat_score") or 0), reverse=True)
+    
+    # 同义词组 - 用于扩展匹配
+    # 注意：这里的组内词会相互扩展，即匹配到任一词等于匹配整个组
+    SYNONYM_GROUPS = [
+        ['美伊', '美国伊朗', '伊美', '伊朗', '美伊关系'],  # 美伊相关词汇
+        ['伊朗', '波斯', '德黑兰'],
+        ['美国', '美利坚', '华盛顿', '特朗普', '拜登'],
+        ['俄罗斯', '俄国', '普京'],
+        ['乌克兰', '基辅'],
+        ['以色列', '特拉维夫', '内塔尼亚胡'],
+        ['中东', '西亚'],
+        ['冲突', '战争', '敌对', '对抗'],
+        ['紧张', '局势紧张'],
+        ['升级', '恶化', '加剧'],
+        ['协议', '共识', '谈判', '对话'],
+        ['推迟', '延迟', '暂缓'],
+        ['袭击', '打击', '攻击'],
+        ['表态', '发言', '讲话', '声明'],
+        ['心理战', '心理'],
+    ]
+    
+    # 提取每个事件的关键词（用于后续匹配原始信息）
+    # 使用更智能的关键词提取：提取具有区分性的关键词 + 同义词扩展
+    def extract_keywords(topic_title: str, max_keywords: int = 10) -> List[str]:
+        """提取标题关键词用于匹配
+        
+        改进：
+        1. 提取更多关键词（从3个增加到10个）
+        2. 优先选择有区分性的词（排除常见词汇）
+        3. 同义词扩展：匹配同义词组中的任一词等于匹配整个组
+        """
+        if not topic_title:
+            return []
+        
+        # 常见词（排除这些词以提高匹配精度）
+        common_words = {"的", "了", "是", "在", "和", "与", "或", "被", "有", "我", "你", "他", "她", "它", "们",
+                        "这", "那", "都", "也", "就", "而", "但", "并", "对", "为", "以", "及", "从", "到",
+                        "一个", "我们", "你们", "他们", "她们", "什么", "怎么", "如何", "为什么",
+                        "今天", "昨天", "明天", "现在", "目前", "今年", "去年", "明年"}
+        
+        import re
+        # 提取所有2-4字的词组
+        candidates = set()
+        for length in [2, 3, 4]:
+            for i in range(len(topic_title) - length + 1):
+                chunk = topic_title[i:i+length]
+                if chunk not in common_words and not chunk.isdigit():
+                    candidates.add(chunk)
+        
+        # 优先词（高频实体词汇）
+        priority_words = [
+            '美伊', '中美', '中俄', '伊以', '俄乌',
+            '伊朗', '以色列', '俄罗斯', '乌克兰', '美国', '中国', '欧洲', '中东', '亚洲',
+            '特朗普', '拜登', '普京', '内塔尼亚胡',
+            '协议', '谈判', '对话', '峰会', '制裁', '打击', '袭击', '冲突', '战争',
+            '紧张', '升级', '恶化', '缓和', '停火',
+            '局势', '经济', '政治', '军事', '外交',
+        ]
+        
+        # 分离优先词和其他词
+        priority = []
+        others = []
+        for c in candidates:
+            is_priority = False
+            for p in priority_words:
+                if p in c or c in p:
+                    is_priority = True
+                    break
+            if is_priority:
+                priority.append(c)
+            else:
+                others.append(c)
+        
+        # 优先词优先保留更长的
+        priority.sort(key=lambda x: -len(x))
+        others.sort(key=lambda x: -len(x))
+        
+        # 合并：优先词取6个，其他取4个
+        keywords = priority[:6] + others[:4]
+        
+        return keywords[:max_keywords]
+    
+    def expand_keywords(keywords: List[str]) -> List[str]:
+        """展开关键词以包含同义词组中的所有词"""
+        expanded = set(keywords)
+        for kw in keywords:
+            for group in SYNONYM_GROUPS:
+                for g in group:
+                    if kw in g or g in kw:
+                        expanded.update(group)
+                        break
+        return list(expanded)
+    
+    # 为每个热点事件分配序号和关键词，并收集趋势和天数信息
+    event_keywords_map = {}  # event_idx -> keywords (expanded)
+    event_info_map = {}  # event_idx -> {trend, days_on_list, category}
+    for idx, t in enumerate(sorted_topics, 1):
+        t['_event_index'] = idx
+        keywords = extract_keywords(t.get("topic", ""))
+        # 扩展关键词以包含同义词
+        expanded_keywords = expand_keywords(keywords)
+        event_keywords_map[idx] = expanded_keywords
+        # 保存事件元信息（趋势、天数、类别）
+        event_info_map[idx] = {
+            "trend": "new",
+            "days_on_list": None,
+            "category": t.get("category", "其他")
+        }
 
+    # 展示热点事件（按热度排序，每个独立一行）
+    for t in sorted_topics:
+        topic = t.get("topic") or ""
+        sentiment = t.get("sentiment") or ""
+        comment = t.get("comment") or ""
+        heat_score = t.get("heat_score")
+        event_idx = t.get("_event_index", 0)
+        
+        # 获取事件的趋势、天数和类别信息
+        event_info = event_info_map.get(event_idx, {})
+        event_trend = event_info.get("trend", "new")
+        days_on_list = event_info.get("days_on_list")
+        category = event_info.get("category", t.get("category", "其他"))
+        
+        html += f'<div class="topic-item"><div class="topic-name">'
+        # 添加序号标签
+        html += f'<span class="event-tag">#{event_idx}</span>'
+        html += html_escape(topic)
+        html += "</div>"
+        html += '<div class="topic-meta">'
+        # 所属类别
+        if category:
+            html += f'{html_escape(category)} '
+        # 情感和热度
+        if sentiment:
+            html += f'情感: {html_escape(sentiment)}'
+        if heat_score is not None:
+            if sentiment:
+                html += ' · '
+            html += f'舆情热度: {heat_score}'
+        # 在榜天数
+        if days_on_list is not None:
+            html += f' · 在榜{days_on_list}天'
+        # 趋势标签
+        trend_label = TREND_LABELS.get(event_trend, "保持平稳")
+        html += f' · <span class="event-tag event-tag-{event_trend}">{trend_label}</span>'
+        html += "</div>"
+        html += f'<div class="topic-comment">{html_escape(comment)}</div></div>'
+    
+    # 更新原始信息列表中的热点事件关联
+    # 为每个原始信息匹配热点事件序号
     # 趋势图标映射
     TREND_ICONS = {
         "new": '<span class="trend-badge trend-new" title="新上榜">🆕</span>',
@@ -1499,11 +1723,36 @@ def render_langgraph_html_report(
 
     rows.sort(key=lambda n: (_platform_sort_key(n), n.get("rank") or 9999))
 
-    # 热门话题计数器
-    topic_counter = 0
-
+    # 为每个原始信息匹配热点事件序号，并收集最佳的趋势和天数信息
     for n in rows:
-        topic_counter += 1
+        title = n.get("title") or ""
+        matched_event_idx = 0
+        for event_idx, keywords in event_keywords_map.items():
+            for kw in keywords:
+                if kw in title:
+                    matched_event_idx = event_idx
+                    break
+            if matched_event_idx:
+                break
+        n['_matched_event_idx'] = matched_event_idx
+        
+        # 如果匹配到了事件，更新事件的趋势信息（取最优趋势）
+        if matched_event_idx and n.get("trend"):
+            current_trend = n.get("trend", "stable")
+            current_days = n.get("days_on_list")
+            event_info = event_info_map[matched_event_idx]
+            
+            # 更新趋势：new > up > stable > down（优先级）
+            trend_priority = {"new": 0, "up": 1, "stable": 2, "down": 3}
+            if trend_priority.get(current_trend, 4) < trend_priority.get(event_info["trend"], 4):
+                event_info["trend"] = current_trend
+            
+            # 更新在榜天数（取最大值）
+            if current_days and (not event_info["days_on_list"] or current_days > event_info["days_on_list"]):
+                event_info["days_on_list"] = current_days
+
+    # 生成原始信息表格（匹配已完成）
+    for n in rows:
         platform_name = n.get("source_name") or n.get("source") or "其他"
         rank = n.get("rank")
         rank_text = str(rank) if rank is not None else "-"
@@ -1513,8 +1762,9 @@ def render_langgraph_html_report(
         # 趋势
         trend = n.get("trend", "stable")
         trend_icon = TREND_ICONS.get(trend, TREND_ICONS["stable"])
-        # 热门话题#编号
-        topic_num = f"#{topic_counter}"
+        # 热点事件序号（如果有匹配的话）
+        matched_event_idx = n.get('_matched_event_idx', 0)
+        event_tag_html = f'<span class="event-tag" style="margin-right: 6px;">#{matched_event_idx}</span>' if matched_event_idx else ''
         
         # 微博智搜链接：点击后打开微博搜索页面
         weibo_search_url = f"https://s.weibo.com/aisearch?q={quote(title)}&Refer=weibo_aisearch"
@@ -1524,8 +1774,8 @@ def render_langgraph_html_report(
         html += '<td class="rank-cell">' + html_escape(rank_text) + "</td>"
         html += '<td class="trend-cell">' + trend_icon + "</td>"
         html += '<td class="title-cell">'
-        # 添加热门话题#编号
-        html += '<span class="topic-num" style="color: #dc2626; font-weight: 600; margin-right: 6px;">' + html_escape(topic_num) + '</span>'
+        # 添加热点事件序号标签
+        html += event_tag_html
         # 使用微博智搜链接替代原始链接
         if title:
             html += '<a href="' + html_escape(weibo_search_url) + '" target="_blank" class="news-link" title="点击查看微博智搜结果">' + html_escape(title) + "</a>"
@@ -1725,26 +1975,38 @@ def build_graph():
     workflow = StateGraph(TrendState)
 
     # 获取配置中的平台列表；若缺失或为空（例如无 config/config.yaml 时返回 platforms: []），使用内置默认
+    # 新增 8 个扩展平台（雪球、36kr、虎扑、V2ex、少数派、快手、IT之家、抽屉新热榜）
     _default_platforms = [
-        {"id": "weibo", "name": "微博"},
-        {"id": "zhihu", "name": "知乎"},
-        {"id": "toutiao", "name": "今日头条"},
-        {"id": "baidu", "name": "百度热搜"},
-        {"id": "douyin", "name": "抖音"},
-        {"id": "bilibili-hot-search", "name": "bilibili 热搜"},
-        {"id": "thepaper", "name": "澎湃新闻"},
-        {"id": "tieba", "name": "贴吧"},
-        {"id": "ifeng", "name": "凤凰网"},
-        {"id": "cls-hot", "name": "财联社热门"},
-        {"id": "wallstreetcn-hot", "name": "华尔街见闻"},
+        {"id": "weibo", "name": "微博", "enabled": True},
+        {"id": "zhihu", "name": "知乎", "enabled": True},
+        {"id": "toutiao", "name": "今日头条", "enabled": True},
+        {"id": "baidu", "name": "百度热搜", "enabled": True},
+        {"id": "douyin", "name": "抖音", "enabled": True},
+        {"id": "bilibili-hot-search", "name": "B站热搜", "enabled": True},
+        {"id": "thepaper", "name": "澎湃新闻", "enabled": True},
+        {"id": "tieba", "name": "贴吧", "enabled": True},
+        {"id": "ifeng", "name": "凤凰网", "enabled": True},
+        {"id": "cls-hot", "name": "财联社热门", "enabled": True},
+        {"id": "wallstreetcn-hot", "name": "华尔街见闻", "enabled": True},
+        # 扩展平台（默认禁用）
+        {"id": "xueqiu", "name": "雪球", "enabled": False},
+        {"id": "36kr", "name": "36氪", "enabled": False},
+        {"id": "hupu", "name": "虎扑", "enabled": False},
+        {"id": "v2ex", "name": "V2ex", "enabled": False},
+        {"id": "sspai", "name": "少数派", "enabled": False},
+        {"id": "kuaishou", "name": "快手", "enabled": False},
+        {"id": "ithome", "name": "IT之家", "enabled": False},
+        {"id": "chongbuluo", "name": "抽屉新热榜", "enabled": False},
     ]
     platforms: List[Dict[str, Any]] = []
     if CONFIG and "platforms" in CONFIG:
-        platforms = list(CONFIG["platforms"] or [])
+        # 过滤掉 enabled: false 的平台
+        platforms = [p for p in (CONFIG["platforms"] or []) if p.get("enabled", True)]
     if not platforms:
-        platforms = _default_platforms
+        # 如果配置为空，使用默认列表但过滤掉禁用的
+        platforms = [p for p in _default_platforms if p.get("enabled", True)]
 
-    # 创建Fetch节点映射
+    # 创建Fetch节点映射（核心平台 + 扩展平台）
     fetch_node_map = {
         "weibo": FetchWeiboNode,
         "zhihu": FetchZhihuNode,
@@ -1757,6 +2019,15 @@ def build_graph():
         "ifeng": FetchIfengNode,
         "cls-hot": FetchClsNode,
         "wallstreetcn-hot": FetchWallstreetcnNode,
+        # 扩展平台
+        "xueqiu": FetchXueqiuNode,
+        "36kr": Fetch36krNode,
+        "hupu": FetchHupuNode,
+        "v2ex": FetchV2exNode,
+        "sspai": FetchSspaiNode,
+        "kuaishou": FetchKuaishouNode,
+        "ithome": FetchIthomeNode,
+        "chongbuluo": FetchChongbuluoNode,
     }
 
     # 添加入口节点

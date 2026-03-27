@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import yaml
 from typing import Any, Callable, Dict, Optional
 from langchain_openai import ChatOpenAI
@@ -102,6 +103,7 @@ def _create_openai_compatible(
     - 使用 langchain_openai.ChatOpenAI
     - 通过 base_url 指向第三方 OpenAI-compatible endpoint
     """
+    kwargs = _apply_default_llm_runtime_kwargs(kwargs)
     # 流式场景下默认请求返回 usage（通过 model_kwargs 注入，避免触发「非默认参数」warning）
     model_kwargs = kwargs.get("model_kwargs") if isinstance(kwargs.get("model_kwargs"), dict) else {}
     if "stream_options" not in model_kwargs and "stream_options" not in kwargs:
@@ -119,6 +121,7 @@ def _create_openai_compatible(
 
 # 创建openai模型接口
 def _create_openai(model: str, api_key: str, **kwargs: Any) -> Any:
+    kwargs = _apply_default_llm_runtime_kwargs(kwargs)
     # 流式场景下默认请求返回 usage（通过 model_kwargs 注入，避免触发「非默认参数」warning）
     model_kwargs = kwargs.get("model_kwargs") if isinstance(kwargs.get("model_kwargs"), dict) else {}
     if "stream_options" not in model_kwargs and "stream_options" not in kwargs:
@@ -193,6 +196,33 @@ _PROVIDER_CREATORS: Dict[str, Callable[..., Any]] = {
 }
 
 
+def _apply_default_llm_runtime_kwargs(kwargs: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    为 OpenAI 兼容模型补齐默认运行参数，避免请求无限等待。
+    """
+    merged = dict(kwargs or {})
+
+    if "timeout" not in merged and "request_timeout" not in merged:
+        raw_timeout = str(os.getenv("SONA_LLM_TIMEOUT_SEC", "180")).strip()
+        try:
+            timeout_sec = float(raw_timeout)
+        except Exception:
+            timeout_sec = 180.0
+        if timeout_sec <= 0:
+            timeout_sec = 180.0
+        merged["timeout"] = timeout_sec
+
+    if "max_retries" not in merged:
+        raw_retries = str(os.getenv("SONA_LLM_MAX_RETRIES", "2")).strip()
+        try:
+            max_retries = int(raw_retries)
+        except Exception:
+            max_retries = 2
+        merged["max_retries"] = max(0, min(max_retries, 10))
+
+    return merged
+
+
 # 模型工厂，用于实例化模型
 class ModelFactory:
     """模型工厂：实例化LLM模型"""
@@ -242,3 +272,17 @@ def get_tools_model():
 def get_report_model():
     """HTML报告生成模型：生成舆情分析HTML报告，供 tools 等使用（对应 model.yaml 中 report）"""
     return ModelFactory.create(profile="report")
+
+
+def get_sentiment_model():
+    """
+    情感打分模型：优先使用 sentiment profile；若未配置则自动回退到 tools profile。
+    这样可兼容旧配置，不影响现有流程。
+    """
+    try:
+        return ModelFactory.create(profile="sentiment")
+    except ValueError as e:
+        msg = str(e)
+        if "profile 'sentiment'" in msg or 'profile "sentiment"' in msg or "profile `sentiment`" in msg:
+            return ModelFactory.create(profile="tools")
+        raise

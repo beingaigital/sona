@@ -7,13 +7,15 @@ import os
 import sys
 import webbrowser
 import re
+import hashlib
+import html
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
 import select
 import time
 from typing import Any, Dict, List, Optional, Tuple
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, wait
 
 from rich.console import Console
 from rich.prompt import Prompt
@@ -24,10 +26,13 @@ from tools import (
     data_collect,
     analysis_timeline,
     analysis_sentiment,
+    keyword_stats,
     dataset_summary,
     generate_interpretation,
     graph_rag_query,
     report_html,
+    search_reference_insights,
+    build_event_reference_links,
 )
 from utils.path import ensure_task_dirs, get_sandbox_dir
 from utils.task_context import set_task_id
@@ -95,6 +100,59 @@ def _prompt_yes_no_timeout(question: str, timeout_sec: int = 20, default_yes: bo
     if ans_l.startswith("n"):
         return False
     return default_yes
+
+
+def _prompt_text_timeout(question: str, timeout_sec: int = 35, default_text: str = "") -> str:
+    """
+    询问自由文本输入，timeout 后返回默认值。
+    """
+    console.print()
+    console.print(f"{question}（{timeout_sec}s 无响应则跳过）")
+    sys.stdout.flush()
+    try:
+        rlist, _, _ = select.select([sys.stdin], [], [], timeout_sec)
+        if not rlist:
+            return default_text
+        ans = sys.stdin.readline().strip()
+        return ans or default_text
+    except Exception:
+        try:
+            ans = Prompt.ask(question, default=default_text)
+            return str(ans or "").strip()
+        except Exception:
+            return default_text
+
+
+def _is_interactive_session() -> bool:
+    try:
+        return bool(sys.stdin.isatty() and sys.stdout.isatty())
+    except Exception:
+        return False
+
+
+def _event_collab_mode() -> str:
+    """
+    事件工作流协作模式：
+    - auto: 全自动（无额外交互）
+    - hybrid: 关键节点交互（默认）
+    - manual: 尽可能交互
+    """
+    mode = str(os.environ.get("SONA_EVENT_COLLAB_MODE", "hybrid")).strip().lower()
+    if mode not in {"auto", "hybrid", "manual"}:
+        return "hybrid"
+    return mode
+
+
+def _collab_enabled() -> bool:
+    return _event_collab_mode() != "auto" and _is_interactive_session()
+
+
+def _collab_timeout(default_sec: int = 20) -> int:
+    try:
+        v = int(str(os.environ.get("SONA_EVENT_COLLAB_TIMEOUT_SEC", default_sec)).strip())
+        return max(8, min(v, 180))
+    except Exception:
+        return default_sec
 
 
 @dataclass(frozen=True)
@@ -415,9 +473,305 @@ def _safe_int(value: Any, default: int) -> int:
         return default
 
 
+def _safe_float(value: Any, default: float) -> float:
+    try:
+        return float(str(value).strip())
+    except Exception:
+        return default
+
+
 def _allow_history_fallback() -> bool:
     v = os.environ.get("SONA_ALLOW_HISTORY_FALLBACK", "false").strip().lower()
     return v in ("1", "true", "yes", "y", "on")
+
+
+def _auto_reuse_history_data_enabled() -> bool:
+    """
+    历史经验命中后，是否自动复用历史 CSV（跳过 data_num/data_collect）。
+    默认开启，可通过 SONA_AUTO_REUSE_HISTORY_DATA=false 关闭。
+    """
+    v = os.environ.get("SONA_AUTO_REUSE_HISTORY_DATA", "true").strip().lower()
+    return v in ("1", "true", "yes", "y", "on")
+
+
+def _resolve_reusable_csv_from_history(best_exp: Dict[str, Any], *, current_task_id: str) -> Optional[str]:
+    """
+    从历史经验记录中定位可复用 CSV。
+    """
+    history_task_id = str((best_exp or {}).get("task_id") or "").strip()
+    if not history_task_id or history_task_id == current_task_id:
+        return None
+
+    sandbox_dir = get_sandbox_dir()
+    history_root = sandbox_dir / history_task_id
+    if not history_root.exists():
+        return None
+
+    candidates = [
+        history_root / "过程文件",
+        history_root / "结果文件",
+        history_root,
+    ]
+    for c in candidates:
+        try:
+            resolved = _resolve_to_csv_path(str(c))
+            if resolved and Path(resolved).exists():
+                return resolved
+        except Exception:
+            continue
+    return None
+
+
+def _analysis_reuse_enabled(kind: str) -> bool:
+    env_map = {
+        "sentiment": "SONA_REUSE_SENTIMENT_RESULT",
+        "timeline": "SONA_REUSE_TIMELINE_RESULT",
+    }
+    key = env_map.get(kind, "")
+    if not key:
+        return False
+    v = str(os.environ.get(key, "true")).strip().lower()
+    return v in ("1", "true", "yes", "y", "on")
+
+
+def _extract_task_id_from_path(path_like: str) -> str:
+    try:
+        p = Path(str(path_like or "")).expanduser().resolve()
+        sandbox_root = get_sandbox_dir().resolve()
+        rel = p.relative_to(sandbox_root)
+        parts = list(rel.parts)
+        if parts:
+            return str(parts[0])
+    except Exception:
+        pass
+    return ""
+
+
+def _compute_file_fingerprint(path_like: str) -> str:
+    """
+    计算数据文件轻量指纹：size + mtime + 前 2MB sha1。
+    """
+    try:
+        p = Path(str(path_like or "")).expanduser().resolve()
+        if not p.exists() or not p.is_file():
+            return ""
+        stat = p.stat()
+        h = hashlib.sha1()
+        with open(p, "rb") as f:
+            h.update(f.read(2 * 1024 * 1024))
+        return f"{int(stat.st_size)}:{int(stat.st_mtime)}:{h.hexdigest()}"
+    except Exception:
+        return ""
+
+
+def _load_json_dict(path: Path) -> Dict[str, Any]:
+    try:
+        with open(path, "r", encoding="utf-8", errors="replace") as f:
+            obj = json.load(f)
+        if isinstance(obj, dict):
+            return obj
+    except Exception:
+        pass
+    return {}
+
+
+def _find_reusable_analysis_result(
+    *,
+    kind: str,
+    save_path: str,
+    current_task_id: str,
+    preferred_task_id: str = "",
+) -> Dict[str, Any]:
+    """
+    在历史任务中查找可复用分析结果。优先顺序：
+    1) preferred_task_id
+    2) 数据文件所在 task_id
+    3) 最近任务
+    """
+    if kind not in {"sentiment", "timeline"}:
+        return {}
+    if not save_path:
+        return {}
+
+    save_resolved = ""
+    try:
+        save_resolved = str(Path(save_path).expanduser().resolve())
+    except Exception:
+        save_resolved = str(save_path)
+    data_task_id = _extract_task_id_from_path(save_path)
+    data_fp = _compute_file_fingerprint(save_path)
+
+    sandbox_root = get_sandbox_dir()
+    if not sandbox_root.exists():
+        return {}
+
+    task_order: List[str] = []
+    for tid in (preferred_task_id, data_task_id):
+        t = str(tid or "").strip()
+        if t and t not in task_order and t != current_task_id:
+            task_order.append(t)
+
+    others: List[Tuple[float, str]] = []
+    for td in sandbox_root.iterdir():
+        if not td.is_dir():
+            continue
+        tid = td.name
+        if tid == current_task_id or tid in task_order:
+            continue
+        try:
+            mt = float(td.stat().st_mtime)
+        except Exception:
+            mt = 0.0
+        others.append((mt, tid))
+    others.sort(key=lambda x: x[0], reverse=True)
+    task_order.extend([tid for _, tid in others])
+
+    patterns = {
+        "sentiment": ["sentiment_analysis_*.json"],
+        "timeline": ["timeline_analysis_*.json"],
+    }.get(kind, [])
+
+    for tid in task_order:
+        process_dir = sandbox_root / tid / "过程文件"
+        if not process_dir.exists():
+            continue
+        candidates: List[Path] = []
+        for pat in patterns:
+            candidates.extend(list(process_dir.glob(pat)))
+        candidates = [p for p in candidates if p.is_file()]
+        candidates.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+        for fp in candidates:
+            obj = _load_json_dict(fp)
+            if not obj:
+                continue
+            if str(obj.get("error", "")).strip():
+                continue
+
+            # 情感结果复用要求：必须是大模型重判结果（避免复用旧情感列）
+            if kind == "sentiment":
+                st = obj.get("statistics") if isinstance(obj.get("statistics"), dict) else {}
+                if str(st.get("sentiment_source", "")).strip() != "llm_scoring":
+                    continue
+
+            path_hit = False
+            fp_hit = False
+            raw_data_path = str(obj.get("data_file_path", "") or "").strip()
+            raw_data_fp = str(obj.get("data_file_fingerprint", "") or "").strip()
+            if raw_data_path:
+                try:
+                    path_hit = str(Path(raw_data_path).expanduser().resolve()) == save_resolved
+                except Exception:
+                    path_hit = raw_data_path == save_resolved
+            if raw_data_fp and data_fp:
+                fp_hit = raw_data_fp == data_fp
+
+            # 兼容旧产物：没有元数据时，仅允许复用“同一数据 task”中的结果
+            legacy_same_task = (not raw_data_path and not raw_data_fp and tid == data_task_id)
+            if not (path_hit or fp_hit or legacy_same_task):
+                continue
+
+            out = dict(obj)
+            out["result_file_path"] = str(fp)
+            out["_reused_from_task_id"] = tid
+            out["_reused_kind"] = kind
+            out["_reuse_match"] = {
+                "path_hit": path_hit,
+                "fp_hit": fp_hit,
+                "legacy_same_task": legacy_same_task,
+            }
+            return out
+
+    return {}
+
+
+def _fetch_weibo_aisearch_reference(topic: str, limit: int = 12) -> Dict[str, Any]:
+    """
+    尝试抓取微博智搜页面中的可见文本片段，作为外部参考（best effort）。
+    """
+    query = str(topic or "").strip() or "舆情事件"
+    url = "https://s.weibo.com/aisearch?q=" + re.sub(r"\s+", "%20", query) + "&Refer=weibo_aisearch"
+
+    try:
+        import requests  # type: ignore
+    except Exception as e:
+        return {"topic": query, "url": url, "count": 0, "results": [], "error": f"requests 不可用: {str(e)}"}
+
+    timeout_sec = max(5, min(_safe_int(os.environ.get("SONA_REFERENCE_FETCH_TIMEOUT_SEC", "12"), 12), 60))
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+        )
+    }
+
+    try:
+        resp = requests.get(url, headers=headers, timeout=timeout_sec)
+        text = resp.text or ""
+    except Exception as e:
+        return {"topic": query, "url": url, "count": 0, "results": [], "error": f"抓取失败: {str(e)}"}
+
+    # 抓取文本块（微博页面结构经常变化，采用宽松正则兜底）
+    blocks = re.findall(r"<p[^>]*class=\"txt\"[^>]*>([\s\S]*?)</p>", text, flags=re.IGNORECASE)
+    if not blocks:
+        blocks = re.findall(r"<a[^>]*href=\"//weibo\\.com/[^\"#]+\"[^>]*>([\s\S]*?)</a>", text, flags=re.IGNORECASE)
+
+    results: List[Dict[str, Any]] = []
+    seen: set[str] = set()
+    for b in blocks:
+        s = re.sub(r"<[^>]+>", " ", b)
+        s = html.unescape(re.sub(r"\s+", " ", s)).strip()
+        if len(s) < 12:
+            continue
+        key = s[:80]
+        if key in seen:
+            continue
+        seen.add(key)
+        results.append({"snippet": s[:220] + ("..." if len(s) > 220 else "")})
+        if len(results) >= max(1, min(limit, 30)):
+            break
+
+    return {
+        "topic": query,
+        "url": url,
+        "count": len(results),
+        "results": results,
+        "fetched_at": datetime.now().isoformat(sep=" "),
+    }
+
+
+def _graph_valid_result_count(block: Any) -> int:
+    if not isinstance(block, dict):
+        return 0
+    rows = block.get("results")
+    if not isinstance(rows, list):
+        return 0
+    c = 0
+    for row in rows:
+        if isinstance(row, dict):
+            if str(row.get("error", "") or "").strip():
+                continue
+            if any(str(row.get(k, "") or "").strip() for k in ("title", "name", "description", "source", "dimension")):
+                c += 1
+        elif row:
+            c += 1
+    return c
+
+
+def _graph_trim_block(block: Any, keep: int) -> Dict[str, Any]:
+    if not isinstance(block, dict):
+        return {"results": [], "count": 0}
+    rows = block.get("results")
+    if not isinstance(rows, list):
+        out = dict(block)
+        out["results"] = []
+        out["count"] = 0
+        return out
+    keep_n = max(0, keep)
+    out = dict(block)
+    out_rows = rows[:keep_n]
+    out["results"] = out_rows
+    out["count"] = len(out_rows)
+    return out
 
 
 def _build_uniform_search_matrix(search_words: List[str], target_total: int) -> Dict[str, int]:
@@ -450,6 +804,37 @@ def _normalize_opt_str(value: Any) -> Optional[str]:
     return s
 
 
+def _infer_event_type_from_text(text: str) -> str:
+    s = str(text or "")
+    if any(k in s for k in ("猝死", "去世", "身亡", "死亡", "事故", "抢救")):
+        return "突发事故"
+    if any(k in s for k in ("谣言", "传闻", "辟谣", "不实")):
+        return "网络谣言"
+    if any(k in s for k in ("品牌", "公关", "危机", "翻车")):
+        return "品牌危机"
+    return "突发事故"
+
+
+def _infer_domain_from_text(text: str) -> str:
+    s = str(text or "")
+    if any(k in s for k in ("教育", "考研", "高考", "学校", "老师", "张雪峰")):
+        return "教育"
+    if any(k in s for k in ("医疗", "医院", "医生", "病历", "健康")):
+        return "医疗"
+    if any(k in s for k in ("平台", "互联网", "流量", "社交媒体")):
+        return "互联网"
+    return "互联网"
+
+
+def _infer_stage_from_text(text: str) -> str:
+    s = str(text or "")
+    if any(k in s for k in ("讣告", "确认", "官宣", "全网热议", "冲上热搜", "爆发")):
+        return "爆发期"
+    if any(k in s for k in ("持续讨论", "扩散", "发酵")):
+        return "扩散期"
+    return "爆发期"
+
+
 def _set_session_final_query(session_manager: SessionManager, task_id: str, final_query: str) -> None:
     session_data = session_manager.load_session(task_id)
     if session_data:
@@ -463,7 +848,24 @@ def _normalize_tokens(text: str) -> set[str]:
     if not text:
         return set()
     cleaned = re.sub(r"[^\w\u4e00-\u9fff]+", " ", text.lower())
-    tokens = {t.strip() for t in cleaned.split() if t.strip()}
+    segments = re.findall(r"[a-z0-9]+|[\u4e00-\u9fff]+", cleaned)
+    stop_words = {"分析", "舆情", "舆论", "事件", "相关", "一下", "帮我", "请帮", "进行", "这个", "那个", "报告"}
+
+    tokens: set[str] = set()
+    for seg in segments:
+        s = seg.strip()
+        if not s:
+            continue
+        if s not in stop_words:
+            tokens.add(s)
+        if re.fullmatch(r"[\u4e00-\u9fff]+", s):
+            # 对中文连续短语补充 2~4 字片段，提升“分析…”与“分析一下…”等近似 query 的召回
+            max_n = min(4, len(s))
+            for n in range(2, max_n + 1):
+                for i in range(0, len(s) - n + 1):
+                    gram = s[i : i + n]
+                    if gram and gram not in stop_words:
+                        tokens.add(gram)
     return tokens
 
 
@@ -578,10 +980,17 @@ def _save_experience_item(
 
 def _is_graph_rag_enabled() -> bool:
     """
-    Graph RAG 开关：默认关闭，显式设置 SONA_ENABLE_GRAPH_RAG=true 才启用。
+    Graph RAG 开关：
+    - 显式 false/off -> 关闭
+    - 显式 true/on -> 开启
+    - 未设置时默认开启（避免“Step10 存在但常被静默跳过”）
     """
-    v = os.environ.get("SONA_ENABLE_GRAPH_RAG", "").strip().lower()
-    return v in ("1", "true", "yes", "y", "on")
+    v = os.environ.get("SONA_ENABLE_GRAPH_RAG", "auto").strip().lower()
+    if v in ("0", "false", "no", "n", "off"):
+        return False
+    if v in ("1", "true", "yes", "y", "on"):
+        return True
+    return True
 
 
 def run_event_analysis_workflow(
@@ -614,11 +1023,32 @@ def run_event_analysis_workflow(
     set_task_id(task_id)
     process_dir = ensure_task_dirs(task_id)
 
+    collab_mode = _event_collab_mode()
+    interactive_session = _is_interactive_session()
+    collab_enabled = collab_mode != "auto" and interactive_session
+    collab_timeout_sec = _collab_timeout(24)
+
     if debug:
         console.print(f"[green]🔧 进入 EventAnalysisWorkflow[/green] task_id={task_id}")
+        console.print(
+            f"[dim]协作模式: mode={collab_mode}, interactive={interactive_session}, enabled={collab_enabled}, timeout={collab_timeout_sec}s[/dim]"
+        )
 
     session_manager.add_message(task_id, "user", user_query)
     _set_session_final_query(session_manager, task_id, user_query)
+
+    _append_ndjson_log(
+        run_id="event_analysis_collab_mode",
+        hypothesis_id="H38_collab_mode_state",
+        location="cli/event_analysis_workflow.py:startup",
+        message="协作模式状态",
+        data={
+            "mode": collab_mode,
+            "interactive_session": interactive_session,
+            "collab_enabled": collab_enabled,
+            "collab_timeout_sec": collab_timeout_sec,
+        },
+    )
 
     # ============ 0) 历史经验复用（可跳过 extract） ============
     best_exp = _find_best_experience(user_query)
@@ -649,11 +1079,24 @@ def run_event_analysis_workflow(
         }
         if debug:
             _pretty_print_dict("检测到历史相似案例（可复用经验）", preview)
-        use_history = _prompt_yes_no_timeout(
-            "是否复用这条历史检索/采集经验？(y 复用 / n 不复用)",
-            timeout_sec=20,
-            default_yes=False,
-        )
+        similarity = _safe_float(best_exp.get("_similarity", 0.0), 0.0)
+        if collab_enabled:
+            default_use_history = similarity >= 0.16 or collab_mode == "manual"
+            use_history = _prompt_yes_no_timeout(
+                f"检测到历史相似经验（sim={round(similarity, 3)}），是否复用并优先跳过采集？(y 复用 / n 不复用)",
+                timeout_sec=collab_timeout_sec,
+                default_yes=default_use_history,
+            )
+        else:
+            auto_threshold = max(
+                0.05,
+                min(_safe_float(os.environ.get("SONA_AUTO_HISTORY_SIMILARITY", "0.18"), 0.18), 0.95),
+            )
+            use_history = similarity >= auto_threshold
+            if debug:
+                console.print(
+                    f"[dim]自动历史复用判定: sim={round(similarity,3)} >= threshold={round(auto_threshold,3)} -> {use_history}[/dim]"
+                )
         if use_history:
             search_plan = dict(best_exp.get("search_plan") or {})
             suggested_collect_plan = dict(best_exp.get("collect_plan") or {})
@@ -662,6 +1105,29 @@ def run_event_analysis_workflow(
             search_plan["searchWords"] = _to_clean_str_list(search_plan.get("searchWords"), max_items=12)
             search_plan["timeRange"] = str(search_plan.get("timeRange", "") or "")
             used_experience = True
+            # 历史经验命中时，优先自动复用历史 CSV，避免重复 data_num/data_collect
+            if (not skip_data_collect) and (not existing_data_path) and _auto_reuse_history_data_enabled():
+                if similarity >= 0.12:
+                    history_csv = _resolve_reusable_csv_from_history(best_exp, current_task_id=task_id)
+                    if history_csv:
+                        existing_data_path = history_csv
+                        skip_data_collect = True
+                        # #region debug_log_H35_auto_reuse_history_data
+                        _append_ndjson_log(
+                            run_id="event_analysis_experience",
+                            hypothesis_id="H35_auto_reuse_history_data",
+                            location="cli/event_analysis_workflow.py:auto_reuse_history_data",
+                            message="历史经验命中后自动复用历史 CSV，跳过 data_num/data_collect",
+                            data={
+                                "task_id": task_id,
+                                "history_task_id": str(best_exp.get("task_id", "")),
+                                "similarity": similarity,
+                                "reuse_csv_path": history_csv,
+                            },
+                        )
+                        # #endregion debug_log_H35_auto_reuse_history_data
+                        if debug:
+                            console.print(f"[green]♻️ 自动复用历史数据[/green] save_path={history_csv}")
             # #region debug_log_H10_experience_reused
             _append_ndjson_log(
                 run_id="event_analysis_experience",
@@ -734,7 +1200,7 @@ def run_event_analysis_workflow(
         keyword_count = max(1, len(search_plan["searchWords"]))
         auto_data_num_workers = max(2, min(keyword_count, 8))
         auto_data_collect_workers = max(1, min(keyword_count, 8))
-        auto_analysis_workers = 2  # 仅 timeline + sentiment 两个分析节点
+        auto_analysis_workers = max(2, min(keyword_count, 4))  # 未来可扩展更多分析节点
         suggested_collect_plan = {
             "keyword_combination_mode": "逐词检索并合并（当前实现）",
             "boolean_strategy": "OR（当前实现：各词分别检索再合并）",
@@ -763,7 +1229,7 @@ def run_event_analysis_workflow(
                 1,
                 min(
                     _safe_int(os.environ.get("SONA_ANALYSIS_MAX_WORKERS", str(auto_analysis_workers)), auto_analysis_workers),
-                    2,
+                    8,
                 ),
             ),
             "searchWords_preview": search_plan["searchWords"][:10],
@@ -788,7 +1254,7 @@ def run_event_analysis_workflow(
             "return_count": max(1, min(_safe_int(suggested_collect_plan.get("return_count"), 2000), 10000)),
             "data_num_workers": max(1, min(_safe_int(suggested_collect_plan.get("data_num_workers"), 4), 8)),
             "data_collect_workers": max(1, min(_safe_int(suggested_collect_plan.get("data_collect_workers"), 3), 8)),
-            "analysis_workers": max(1, min(_safe_int(suggested_collect_plan.get("analysis_workers"), 2), 2)),
+            "analysis_workers": max(1, min(_safe_int(suggested_collect_plan.get("analysis_workers"), 2), 8)),
             "searchWords_preview": search_plan["searchWords"][:10],
         }
 
@@ -809,11 +1275,14 @@ def run_event_analysis_workflow(
     if debug:
         _pretty_print_dict("建议搜索采集方案（等待确认）", suggested_collect_plan)
 
-    accept = _prompt_yes_no_timeout(
-        "是否接受上述搜索采集方案？(y 执行 / n 修改后再确认)",
-        timeout_sec=20,
-        default_yes=True,
-    )
+    if collab_enabled:
+        accept = _prompt_yes_no_timeout(
+            "是否接受上述搜索采集方案？(y 执行 / n 修改后再确认)",
+            timeout_sec=collab_timeout_sec,
+            default_yes=True,
+        )
+    else:
+        accept = True
 
     # #region debug_log_H2_timeout_or_user_choice
     _append_ndjson_log(
@@ -821,12 +1290,12 @@ def run_event_analysis_workflow(
         hypothesis_id="H2_timeout_or_user_choice",
         location="cli/event_analysis_workflow.py:confirm_choice",
         message="用户对采集方案的 y/n 决策结果记录",
-        data={"accept": accept, "timeout_sec": 20},
+        data={"accept": accept, "timeout_sec": collab_timeout_sec if collab_enabled else 0, "collab_enabled": collab_enabled},
     )
     # #endregion debug_log_H2_timeout_or_user_choice
 
     # 若用户选择 n，则允许编辑"平台、返回条数、时间范围、布尔策略"等（仍先通过 y 再执行）
-    if not accept:
+    if collab_enabled and not accept:
         default_platform = suggested_collect_plan["platforms"][0] if suggested_collect_plan["platforms"] else "微博"
         platform_in = Prompt.ask("修改平台（当前实现仅验证：微博；不填则默认）", default=default_platform).strip() or default_platform
         # return_count：最大 10000
@@ -867,12 +1336,12 @@ def run_event_analysis_workflow(
             default=str(suggested_collect_plan.get("data_collect_workers", 3)),
         ).strip()
         analysis_workers_in = Prompt.ask(
-            "修改分析并发（1-2）",
+            "修改分析并发（1-8）",
             default=str(suggested_collect_plan.get("analysis_workers", 2)),
         ).strip()
         suggested_collect_plan["data_num_workers"] = max(1, min(_safe_int(data_num_workers_in, 4), 8))
         suggested_collect_plan["data_collect_workers"] = max(1, min(_safe_int(data_collect_workers_in, 3), 8))
-        suggested_collect_plan["analysis_workers"] = max(1, min(_safe_int(analysis_workers_in, 2), 2))
+        suggested_collect_plan["analysis_workers"] = max(1, min(_safe_int(analysis_workers_in, 2), 8))
 
         # #region debug_log_H1_search_collect_plan_edited
         _append_ndjson_log(
@@ -891,7 +1360,7 @@ def run_event_analysis_workflow(
         # 再次确认 y/n（仍保留 20s 默认继续）
         accept = _prompt_yes_no_timeout(
             "编辑完成后是否执行？(y 执行 / n 继续修改)",
-            timeout_sec=20,
+            timeout_sec=collab_timeout_sec,
             default_yes=True,
         )
 
@@ -901,7 +1370,7 @@ def run_event_analysis_workflow(
             hypothesis_id="H2_timeout_or_user_choice_after_edit",
             location="cli/event_analysis_workflow.py:confirm_choice_after_edit",
             message="用户对编辑后采集方案的 y/n 决策结果记录",
-            data={"accept": accept, "timeout_sec": 20},
+            data={"accept": accept, "timeout_sec": collab_timeout_sec},
         )
         # #endregion debug_log_H2_timeout_or_user_choice_after_edit
 
@@ -996,7 +1465,7 @@ def run_event_analysis_workflow(
                     os.environ.get("SONA_ANALYSIS_MAX_WORKERS", suggested_collect_plan.get("analysis_workers")),
                     2,
                 ),
-                2,
+                8,
             ),
         )
         os.environ["SONA_DATA_NUM_MAX_WORKERS"] = str(data_num_workers)
@@ -1216,13 +1685,73 @@ def run_event_analysis_workflow(
     if not dataset_summary_path or not Path(dataset_summary_path).exists():
         raise ValueError("dataset_summary 未返回有效 result_file_path")
 
+    # ============ 6.5) keyword_stats（可选，失败可跳过） ============
+    if debug:
+        console.print("[bold]Step6.5: keyword_stats (optional)[/bold]")
+
+    try:
+        keyword_json = _invoke_tool_to_json(
+            keyword_stats,
+            {
+                "dataFilePath": save_path,
+                "top_n": 20,
+                "min_len": 2,
+            },
+        )
+        keyword_stats_path = str(keyword_json.get("result_file_path") or "")
+        if debug and keyword_stats_path:
+            console.print(f"[green]✅ 关键词统计完成[/green] result_file_path={keyword_stats_path}")
+    except Exception as e:
+        if debug:
+            console.print("[yellow]⚠️ keyword_stats 执行失败，已跳过，不影响后续流程[/yellow]")
+        _append_ndjson_log(
+            run_id="event_analysis_keyword_stats",
+            hypothesis_id="H34_keyword_stats_optional_skip_on_error",
+            location="cli/event_analysis_workflow.py:keyword_stats_optional",
+            message="keyword_stats 执行失败，已按可选步骤跳过",
+            data={"error": str(e)},
+        )
+
     # ============ 7) 舆情分析（timeline + sentiment，并发执行） ============
     if debug:
         console.print("[bold]Step7/8: analysis_timeline + analysis_sentiment (并发)[/bold]")
 
     analysis_start = time.time()
     single_timing: Dict[str, float] = {"timeline_sec": 0.0, "sentiment_sec": 0.0}
-    max_workers = max(1, min(_safe_int(os.environ.get("SONA_ANALYSIS_MAX_WORKERS", "2"), 2), 2))
+    timeline_json: Dict[str, Any] = {}
+    sentiment_json: Dict[str, Any] = {}
+    reused_flags = {"timeline": False, "sentiment": False}
+
+    preferred_task_id = ""
+    if isinstance(best_exp, dict):
+        preferred_task_id = str(best_exp.get("task_id") or "").strip()
+
+    # 先尝试复用历史分析，节省 token 与时延
+    if _analysis_reuse_enabled("timeline"):
+        reused_timeline = _find_reusable_analysis_result(
+            kind="timeline",
+            save_path=save_path,
+            current_task_id=task_id,
+            preferred_task_id=preferred_task_id,
+        )
+        if reused_timeline:
+            timeline_json = reused_timeline
+            reused_flags["timeline"] = True
+            if debug:
+                console.print(f"[green]♻️ 复用历史 timeline 分析[/green] from_task={reused_timeline.get('_reused_from_task_id', '')}")
+
+    if _analysis_reuse_enabled("sentiment"):
+        reused_sentiment = _find_reusable_analysis_result(
+            kind="sentiment",
+            save_path=save_path,
+            current_task_id=task_id,
+            preferred_task_id=preferred_task_id,
+        )
+        if reused_sentiment:
+            sentiment_json = reused_sentiment
+            reused_flags["sentiment"] = True
+            if debug:
+                console.print(f"[green]♻️ 复用历史 sentiment 分析[/green] from_task={reused_sentiment.get('_reused_from_task_id', '')}")
 
     def _run_timeline() -> Dict[str, Any]:
         t0 = time.time()
@@ -1237,46 +1766,137 @@ def run_event_analysis_workflow(
         t0 = time.time()
         res = _invoke_tool_to_json(
             analysis_sentiment,
-            {"eventIntroduction": search_plan["eventIntroduction"], "dataFilePath": save_path},
+            {
+                "eventIntroduction": search_plan["eventIntroduction"],
+                "dataFilePath": save_path,
+                # 默认全量重判帖文情感，避免直接复用原始情感列导致结果“固定不变”。
+                "preferExistingSentimentColumn": False,
+            },
         )
         single_timing["sentiment_sec"] = round(time.time() - t0, 3)
         return res
 
-    with ThreadPoolExecutor(max_workers=max_workers) as pool:
-        future_timeline = pool.submit(_run_timeline)
-        future_sentiment = pool.submit(_run_sentiment)
+    pending_jobs: List[str] = []
+    if not reused_flags["timeline"]:
+        pending_jobs.append("timeline")
+    if not reused_flags["sentiment"]:
+        pending_jobs.append("sentiment")
+
+    max_workers_env = max(1, min(_safe_int(os.environ.get("SONA_ANALYSIS_MAX_WORKERS", "4"), 4), 8))
+    max_workers = max(1, min(max_workers_env, max(1, len(pending_jobs))))
+    per_tool_timeout = max(
+        30,
+        min(_safe_int(os.environ.get("SONA_ANALYSIS_PER_TOOL_TIMEOUT_SEC", "120"), 120), 1800),
+    )
+    explicit_timeout_raw = str(os.environ.get("SONA_ANALYSIS_TIMEOUT_SEC", "")).strip()
+    if explicit_timeout_raw:
+        analysis_timeout_sec = max(30, min(_safe_int(explicit_timeout_raw, 240), 3600))
+    else:
+        analysis_timeout_sec = max(60, min(per_tool_timeout * max(1, len(pending_jobs)) + 60, 3600))
+
+    if debug:
+        console.print(
+            f"[dim]分析阶段超时保护: total={analysis_timeout_sec}s, per_tool={per_tool_timeout}s, pending={len(pending_jobs)}[/dim]"
+        )
+
+    if pending_jobs:
+        pool = ThreadPoolExecutor(max_workers=max_workers)
         try:
-            timeline_json = future_timeline.result()
-        except Exception as e:
-            timeline_json = {"error": f"analysis_timeline 并发执行异常: {str(e)}", "timeline": [], "summary": "", "result_file_path": ""}
-            # #region debug_log_H23_timeline_future_exception
-            _append_ndjson_log(
-                run_id="event_analysis_parallel_analysis",
-                hypothesis_id="H23_timeline_future_exception",
-                location="cli/event_analysis_workflow.py:timeline_future_exception",
-                message="analysis_timeline 并发 future 异常，进入 fallback",
-                data={"error": str(e)},
-            )
-            # #endregion debug_log_H23_timeline_future_exception
-        try:
-            sentiment_json = future_sentiment.result()
-        except Exception as e:
-            sentiment_json = {
-                "error": f"analysis_sentiment 并发执行异常: {str(e)}",
-                "statistics": {},
-                "positive_summary": [],
-                "negative_summary": [],
-                "result_file_path": "",
-            }
-            # #region debug_log_H24_sentiment_future_exception
-            _append_ndjson_log(
-                run_id="event_analysis_parallel_analysis",
-                hypothesis_id="H24_sentiment_future_exception",
-                location="cli/event_analysis_workflow.py:sentiment_future_exception",
-                message="analysis_sentiment 并发 future 异常，进入 fallback",
-                data={"error": str(e)},
-            )
-            # #endregion debug_log_H24_sentiment_future_exception
+            futures: Dict[str, Any] = {}
+            if "timeline" in pending_jobs:
+                futures["timeline"] = pool.submit(_run_timeline)
+            if "sentiment" in pending_jobs:
+                futures["sentiment"] = pool.submit(_run_sentiment)
+
+            done, not_done = wait(list(futures.values()), timeout=analysis_timeout_sec)
+
+            if "timeline" in futures:
+                ft = futures["timeline"]
+                if ft in done:
+                    try:
+                        timeline_json = ft.result()
+                    except Exception as e:
+                        timeline_json = {
+                            "error": f"analysis_timeline 并发执行异常: {str(e)}",
+                            "timeline": [],
+                            "summary": "",
+                            "result_file_path": "",
+                        }
+                        _append_ndjson_log(
+                            run_id="event_analysis_parallel_analysis",
+                            hypothesis_id="H23_timeline_future_exception",
+                            location="cli/event_analysis_workflow.py:timeline_future_exception",
+                            message="analysis_timeline 并发 future 异常，进入 fallback",
+                            data={"error": str(e)},
+                        )
+                else:
+                    single_timing["timeline_sec"] = round(time.time() - analysis_start, 3)
+                    timeline_json = {
+                        "error": f"analysis_timeline 超时（>{analysis_timeout_sec}s），已跳过并继续流程",
+                        "timeline": [],
+                        "summary": "",
+                        "result_file_path": "",
+                    }
+                    ft.cancel()
+                    _append_ndjson_log(
+                        run_id="event_analysis_parallel_analysis",
+                        hypothesis_id="H33_analysis_future_timeout",
+                        location="cli/event_analysis_workflow.py:timeline_future_timeout",
+                        message="analysis_timeline 超时，已降级继续流程",
+                        data={
+                            "timeout_sec": analysis_timeout_sec,
+                            "done_count": len(done),
+                            "pending_count": len(not_done),
+                        },
+                    )
+
+            if "sentiment" in futures:
+                fs = futures["sentiment"]
+                if fs in done:
+                    try:
+                        sentiment_json = fs.result()
+                    except Exception as e:
+                        sentiment_json = {
+                            "error": f"analysis_sentiment 并发执行异常: {str(e)}",
+                            "statistics": {},
+                            "positive_summary": [],
+                            "negative_summary": [],
+                            "result_file_path": "",
+                        }
+                        _append_ndjson_log(
+                            run_id="event_analysis_parallel_analysis",
+                            hypothesis_id="H24_sentiment_future_exception",
+                            location="cli/event_analysis_workflow.py:sentiment_future_exception",
+                            message="analysis_sentiment 并发 future 异常，进入 fallback",
+                            data={"error": str(e)},
+                        )
+                else:
+                    single_timing["sentiment_sec"] = round(time.time() - analysis_start, 3)
+                    sentiment_json = {
+                        "error": f"analysis_sentiment 超时（>{analysis_timeout_sec}s），已跳过并继续流程",
+                        "statistics": {},
+                        "positive_summary": [],
+                        "negative_summary": [],
+                        "result_file_path": "",
+                    }
+                    fs.cancel()
+                    _append_ndjson_log(
+                        run_id="event_analysis_parallel_analysis",
+                        hypothesis_id="H33_analysis_future_timeout",
+                        location="cli/event_analysis_workflow.py:sentiment_future_timeout",
+                        message="analysis_sentiment 超时，已降级继续流程",
+                        data={
+                            "timeout_sec": analysis_timeout_sec,
+                            "done_count": len(done),
+                            "pending_count": len(not_done),
+                        },
+                    )
+        finally:
+            # 不等待卡住的子线程，避免主流程在 Step7/8 无期限阻塞。
+            pool.shutdown(wait=False, cancel_futures=True)
+    else:
+        if debug:
+            console.print("[green]✅ 分析步骤已全部复用历史结果，无需重跑[/green]")
     # #region debug_log_H15_step_timing_parallel_analysis
     _append_ndjson_log(
         run_id="event_analysis_timing",
@@ -1286,6 +1906,7 @@ def run_event_analysis_workflow(
         data={
             "elapsed_sec": round(time.time() - analysis_start, 3),
             "max_workers": max_workers,
+            "timeout_sec": analysis_timeout_sec,
             "timeline_sec": single_timing["timeline_sec"],
             "sentiment_sec": single_timing["sentiment_sec"],
         },
@@ -1334,11 +1955,12 @@ def run_event_analysis_workflow(
             )[:800] or "自动回退：未获得结构化 interpretation，已基于现有分析结果继续流程。",
             "key_events": [],
             "key_risks": [],
-            "event_type": "",
-            "domain": "",
-            "stage": "",
-            "indicators_dimensions": ["量", "质", "人", "场", "效"],
-            "theory_names": ["沉默螺旋规律", "议程设置规律", "生命周期规律"],
+            "event_type": _infer_event_type_from_text(search_plan.get("eventIntroduction", user_query)),
+            "domain": _infer_domain_from_text(search_plan.get("eventIntroduction", user_query)),
+            "stage": _infer_stage_from_text(str(timeline_json.get("summary", ""))),
+            "indicators_dimensions": ["count", "sentiment", "actor", "attention", "quality"],
+            # fallback 场景下不强行注入固定理论，避免报告模板化重复
+            "theory_names": [],
         }
         fallback_payload = {
             "interpretation": fallback_interpretation,
@@ -1361,6 +1983,124 @@ def run_event_analysis_workflow(
         )
         # #endregion debug_log_H30_interpretation_fallback
 
+    # ============ 9.2) 用户协同研判输入（可选） ============
+    user_judgement_text = str(os.environ.get("SONA_EVENT_USER_JUDGEMENT", "") or "").strip()
+    if collab_enabled and not user_judgement_text:
+        user_judgement_text = _prompt_text_timeout(
+            "可选：请输入你对该事件的研判重点（将写入报告参考）",
+            timeout_sec=max(collab_timeout_sec, 25),
+            default_text="",
+        )
+
+    user_focus_keywords = _fallback_search_words_from_query(user_judgement_text, max_words=8) if user_judgement_text else []
+    user_judgement_payload = {
+        "has_input": bool(user_judgement_text),
+        "mode": collab_mode,
+        "source": "env" if str(os.environ.get("SONA_EVENT_USER_JUDGEMENT", "") or "").strip() else ("interactive" if user_judgement_text else "none"),
+        "user_judgement": user_judgement_text,
+        "focus_keywords": user_focus_keywords,
+        "created_at": datetime.now().isoformat(sep=" "),
+    }
+    user_judgement_path = process_dir / "user_judgement_input.json"
+    with open(user_judgement_path, "w", encoding="utf-8", errors="replace") as f:
+        json.dump(user_judgement_payload, f, ensure_ascii=False, indent=2)
+    if user_judgement_text and isinstance(interpretation, dict):
+        interpretation["user_focus"] = user_judgement_text
+        interpretation["user_focus_keywords"] = user_focus_keywords
+
+    _append_ndjson_log(
+        run_id="event_analysis_collab_mode",
+        hypothesis_id="H39_user_judgement_input",
+        location="cli/event_analysis_workflow.py:user_judgement_input",
+        message="用户协同研判输入已处理",
+        data={
+            "has_input": bool(user_judgement_text),
+            "focus_keywords": user_focus_keywords[:6],
+            "path": str(user_judgement_path),
+        },
+    )
+
+    # ============ 9.5) 事件参考资料检索（舆情智库） ============
+    if debug:
+        console.print("[bold]Step9.5: reference_insights (optional)[/bold]")
+
+    try:
+        ref_query = f"{user_query} {search_plan.get('eventIntroduction', '')}".strip()
+        ref_json = _invoke_tool_to_json(
+            search_reference_insights,
+            {"query": ref_query, "limit": 8},
+        )
+        ref_path = process_dir / "reference_insights.json"
+        with open(ref_path, "w", encoding="utf-8", errors="replace") as f:
+            json.dump(ref_json, f, ensure_ascii=False, indent=2)
+
+        link_json = _invoke_tool_to_json(
+            build_event_reference_links,
+            {"topic": search_plan.get("eventIntroduction", user_query)},
+        )
+        link_path = process_dir / "reference_links.json"
+        with open(link_path, "w", encoding="utf-8", errors="replace") as f:
+            json.dump(link_json, f, ensure_ascii=False, indent=2)
+
+        weibo_ref_json: Dict[str, Any] = {}
+        weibo_ref_path = process_dir / "weibo_aisearch_reference.json"
+        enable_weibo_ref = str(os.environ.get("SONA_REFERENCE_ENABLE_WEIBO_AISEARCH", "true")).strip().lower() in (
+            "1",
+            "true",
+            "yes",
+            "y",
+            "on",
+        )
+        if enable_weibo_ref:
+            weibo_topic = str(search_plan.get("eventIntroduction") or user_query).strip() or user_query
+            weibo_ref_json = _fetch_weibo_aisearch_reference(weibo_topic, limit=12)
+            with open(weibo_ref_path, "w", encoding="utf-8", errors="replace") as f:
+                json.dump(weibo_ref_json, f, ensure_ascii=False, indent=2)
+
+        expert_note = str(os.environ.get("SONA_EVENT_EXPERT_NOTE", "") or "").strip()
+        if collab_enabled and not expert_note:
+            expert_note = _prompt_text_timeout(
+                "可选：补充你的专家研判（将作为参考材料进入报告）",
+                timeout_sec=max(collab_timeout_sec, 25),
+                default_text="",
+            )
+        expert_note_path = process_dir / "user_expert_notes.json"
+        expert_note_payload = {
+            "has_input": bool(expert_note),
+            "source": "env" if str(os.environ.get("SONA_EVENT_EXPERT_NOTE", "") or "").strip() else ("interactive" if expert_note else "none"),
+            "expert_note": expert_note,
+            "created_at": datetime.now().isoformat(sep=" "),
+        }
+        with open(expert_note_path, "w", encoding="utf-8", errors="replace") as f:
+            json.dump(expert_note_payload, f, ensure_ascii=False, indent=2)
+
+        _append_ndjson_log(
+            run_id="event_analysis_reference",
+            hypothesis_id="H36_reference_insights_collected",
+            location="cli/event_analysis_workflow.py:reference_insights",
+            message="舆情智库参考检索已完成并写入过程文件",
+            data={
+                "reference_insights_path": str(ref_path),
+                "reference_links_path": str(link_path),
+                "reference_count": int(ref_json.get("count") or 0),
+                "links_count": int(link_json.get("count") or 0),
+                "weibo_ref_path": str(weibo_ref_path) if enable_weibo_ref else "",
+                "weibo_ref_count": int((weibo_ref_json or {}).get("count") or 0) if enable_weibo_ref else 0,
+                "expert_note_path": str(expert_note_path),
+                "expert_note_len": len(expert_note),
+            },
+        )
+    except Exception as e:
+        if debug:
+            console.print("[yellow]⚠️ reference_insights 执行失败，已跳过，不影响后续流程[/yellow]")
+        _append_ndjson_log(
+            run_id="event_analysis_reference",
+            hypothesis_id="H36_reference_insights_collected",
+            location="cli/event_analysis_workflow.py:reference_insights_exception",
+            message="舆情智库参考检索失败，已跳过",
+            data={"error": str(e)},
+        )
+
     # ============ 9) Graph RAG 增强（可选，默认关闭） ============
     if debug:
         console.print("[bold]Step10: graph_rag_query (enrich)[/bold]")
@@ -1376,11 +2116,34 @@ def run_event_analysis_workflow(
     )
     # #endregion debug_log_H11_graph_rag_switch
 
-    event_type = _normalize_opt_str(interpretation.get("event_type"))
-    domain = _normalize_opt_str(interpretation.get("domain"))
-    stage = _normalize_opt_str(interpretation.get("stage"))
+    event_type_raw = _normalize_opt_str(interpretation.get("event_type"))
+    domain_raw = _normalize_opt_str(interpretation.get("domain"))
+    stage_raw = _normalize_opt_str(interpretation.get("stage"))
+    seed_text = (
+        f"{search_plan.get('eventIntroduction', '')} "
+        f"{timeline_json.get('summary', '')} "
+        f"{user_judgement_text}"
+    )
+    event_type = event_type_raw or _infer_event_type_from_text(seed_text)
+    domain = domain_raw or _infer_domain_from_text(seed_text)
+    stage = stage_raw or _infer_stage_from_text(seed_text)
     theory_names = interpretation.get("theory_names") or []
     indicators_dimensions = interpretation.get("indicators_dimensions") or []
+
+    _append_ndjson_log(
+        run_id="event_analysis_graph_rag",
+        hypothesis_id="H37_graph_rag_input_infer",
+        location="cli/event_analysis_workflow.py:graph_rag_input_prepare",
+        message="Graph RAG 输入参数已准备（含空值推断）",
+        data={
+            "event_type_raw": event_type_raw,
+            "domain_raw": domain_raw,
+            "stage_raw": stage_raw,
+            "event_type_final": event_type,
+            "domain_final": domain,
+            "stage_final": stage,
+        },
+    )
 
     if graph_rag_enabled:
         try:
@@ -1442,8 +2205,60 @@ def run_event_analysis_workflow(
             )
             # #endregion debug_log_H18_step_timing_graph_rag
 
+            def _extract_errors(block: Any) -> List[str]:
+                errs: List[str] = []
+                if isinstance(block, dict):
+                    e = str(block.get("error", "") or "").strip()
+                    if e:
+                        errs.append(e)
+                    rs = block.get("results")
+                    if isinstance(rs, list):
+                        for it in rs:
+                            if isinstance(it, dict):
+                                ie = str(it.get("error", "") or "").strip()
+                                if ie:
+                                    errs.append(ie)
+                return errs
+
+            def _has_effective_results(block: Any) -> bool:
+                if not isinstance(block, dict):
+                    return False
+                rs = block.get("results")
+                if not isinstance(rs, list):
+                    return False
+                for it in rs:
+                    if isinstance(it, dict):
+                        if str(it.get("error", "") or "").strip():
+                            continue
+                        # 只要有标题/名称/描述之一，视为有效增强结果
+                        if any(str(it.get(k, "") or "").strip() for k in ("title", "name", "description", "source")):
+                            return True
+                    elif it:
+                        return True
+                return False
+
+            all_error_msgs: List[str] = []
+            all_error_msgs.extend(_extract_errors(similar_json))
+            for t in theories:
+                all_error_msgs.extend(_extract_errors(t))
+            for i in indicators:
+                all_error_msgs.extend(_extract_errors(i))
+            dedup_errors = []
+            seen_err = set()
+            for msg in all_error_msgs:
+                if msg in seen_err:
+                    continue
+                seen_err.add(msg)
+                dedup_errors.append(msg)
+
+            useful = _has_effective_results(similar_json) or any(_has_effective_results(t) for t in theories) or any(
+                _has_effective_results(i) for i in indicators
+            )
+
             graph_rag_enrichment = {
-                "status": "enabled_success",
+                "status": "enabled_success" if useful else "enabled_but_empty",
+                "reason": "" if useful else "Graph RAG 已执行，但未检索到可用于增强报告的结构化结果。",
+                "errors": dedup_errors[:6] if dedup_errors else [],
                 "similar_cases": similar_json,
                 "theories": theories,
                 "indicators": indicators,
@@ -1484,6 +2299,91 @@ def run_event_analysis_workflow(
                 "stage": stage,
             },
         }
+
+    # 协同采纳：允许用户决定 Graph RAG 召回结果是否采纳/裁剪
+    if graph_rag_enabled and isinstance(graph_rag_enrichment, dict):
+        status_text = str(graph_rag_enrichment.get("status", "") or "").strip()
+        similar_before = _graph_valid_result_count(graph_rag_enrichment.get("similar_cases"))
+        theory_before = 0
+        indicator_before = 0
+        theories_block = graph_rag_enrichment.get("theories")
+        indicators_block = graph_rag_enrichment.get("indicators")
+        if isinstance(theories_block, list):
+            theory_before = sum(_graph_valid_result_count(x) for x in theories_block if isinstance(x, dict))
+        if isinstance(indicators_block, list):
+            indicator_before = sum(_graph_valid_result_count(x) for x in indicators_block if isinstance(x, dict))
+
+        decision_mode = str(os.environ.get("SONA_GRAPH_RAG_ADOPTION", "") or "").strip().lower()
+        if decision_mode not in {"all", "top", "none"}:
+            decision_mode = ""
+
+        if collab_enabled and not decision_mode and status_text.startswith("enabled"):
+            total_hits = similar_before + theory_before + indicator_before
+            if total_hits > 0:
+                if debug:
+                    console.print(
+                        f"[dim]Graph RAG 召回预览: similar={similar_before}, theory={theory_before}, indicators={indicator_before}[/dim]"
+                    )
+                choice = _prompt_text_timeout(
+                    "Graph RAG 召回是否采纳？输入 all(全部) / top(仅保留高分) / none(不采纳)",
+                    timeout_sec=max(collab_timeout_sec, 20),
+                    default_text="all",
+                ).strip().lower()
+                if choice in {"all", "top", "none"}:
+                    decision_mode = choice
+
+        if not decision_mode:
+            decision_mode = str(os.environ.get("SONA_GRAPH_RAG_ADOPTION_DEFAULT", "all") or "").strip().lower()
+            if decision_mode not in {"all", "top", "none"}:
+                decision_mode = "all"
+
+        top_similar = max(1, min(_safe_int(os.environ.get("SONA_GRAPH_RAG_TOP_SIMILAR", "2"), 2), 10))
+        top_theory = max(1, min(_safe_int(os.environ.get("SONA_GRAPH_RAG_TOP_THEORY", "2"), 2), 10))
+        top_indicator = max(1, min(_safe_int(os.environ.get("SONA_GRAPH_RAG_TOP_INDICATOR", "3"), 3), 15))
+
+        if status_text.startswith("enabled"):
+            if decision_mode == "none":
+                graph_rag_enrichment["status"] = "enabled_user_rejected"
+                graph_rag_enrichment["reason"] = "用户选择不采纳 Graph RAG 召回结果。"
+                graph_rag_enrichment["similar_cases"] = _graph_trim_block(graph_rag_enrichment.get("similar_cases"), 0)
+                graph_rag_enrichment["theories"] = [
+                    _graph_trim_block(x, 0) for x in (theories_block if isinstance(theories_block, list) else [])
+                ]
+                graph_rag_enrichment["indicators"] = [
+                    _graph_trim_block(x, 0) for x in (indicators_block if isinstance(indicators_block, list) else [])
+                ]
+            elif decision_mode == "top":
+                graph_rag_enrichment["similar_cases"] = _graph_trim_block(graph_rag_enrichment.get("similar_cases"), top_similar)
+                graph_rag_enrichment["theories"] = [
+                    _graph_trim_block(x, top_theory) for x in (theories_block if isinstance(theories_block, list) else [])
+                ]
+                graph_rag_enrichment["indicators"] = [
+                    _graph_trim_block(x, top_indicator) for x in (indicators_block if isinstance(indicators_block, list) else [])
+                ]
+
+        similar_after = _graph_valid_result_count(graph_rag_enrichment.get("similar_cases"))
+        theory_after = 0
+        indicator_after = 0
+        if isinstance(graph_rag_enrichment.get("theories"), list):
+            theory_after = sum(_graph_valid_result_count(x) for x in graph_rag_enrichment.get("theories") if isinstance(x, dict))
+        if isinstance(graph_rag_enrichment.get("indicators"), list):
+            indicator_after = sum(_graph_valid_result_count(x) for x in graph_rag_enrichment.get("indicators") if isinstance(x, dict))
+
+        graph_rag_enrichment["user_decision"] = {
+            "mode": decision_mode,
+            "before": {"similar_cases": similar_before, "theories": theory_before, "indicators": indicator_before},
+            "after": {"similar_cases": similar_after, "theories": theory_after, "indicators": indicator_after},
+            "collab_mode": collab_mode,
+            "created_at": datetime.now().isoformat(sep=" "),
+        }
+
+        _append_ndjson_log(
+            run_id="event_analysis_graph_rag",
+            hypothesis_id="H40_graph_rag_user_decision",
+            location="cli/event_analysis_workflow.py:graph_rag_user_decision",
+            message="Graph RAG 召回采纳策略已落地",
+            data=graph_rag_enrichment.get("user_decision") if isinstance(graph_rag_enrichment.get("user_decision"), dict) else {},
+        )
 
     out_path = process_dir / "graph_rag_enrichment.json"
     with open(out_path, "w", encoding="utf-8", errors="replace") as f:

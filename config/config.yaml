@@ -90,26 +90,86 @@ weight:
   hotness_weight: 0.1 # 热度权重
 
 # name 可以定义任意名称，只具有显示作用，即使项目运行了几天后，忽然改掉 name 也不会影响代码的正常运行
+# 🚨 热点抓取平台配置
+# id: NewsNow API 使用的平台标识符
+# name: 显示名称（可自定义）
+# enabled: 是否启用（true/false），设为 false 则跳过该平台
+#
+# 平台ID参考（NewsNow 支持 46+ 数据源）:
+# https://github.com/tautcony/NewsNow/blob/main/src/constants.ts
 platforms:
-  - id: "toutiao"
-    name: "今日头条"
-  - id: "baidu"
-    name: "百度热搜"
-  - id: "wallstreetcn-hot"
-    name: "华尔街见闻"
-  - id: "thepaper"
-    name: "澎湃新闻"
-  - id: "bilibili-hot-search"
-    name: "bilibili 热搜"
-  - id: "cls-hot"
-    name: "财联社热门"
-  - id: "ifeng"
-    name: "凤凰网"
-  - id: "tieba"
-    name: "贴吧"
+  # === 核心平台（默认启用）===
   - id: "weibo"
     name: "微博"
-  - id: "douyin"
-    name: "抖音"
+    enabled: true
   - id: "zhihu"
     name: "知乎"
+    enabled: true
+  - id: "toutiao"
+    name: "今日头条"
+    enabled: true
+  - id: "baidu"
+    name: "百度热搜"
+    enabled: true
+  - id: "douyin"
+    name: "抖音"
+    enabled: true
+  - id: "bilibili-hot-search"
+    name: "B站热搜"
+    enabled: true
+  - id: "thepaper"
+    name: "澎湃新闻"
+    enabled: true
+  - id: "tieba"
+    name: "贴吧"
+    enabled: true
+  - id: "ifeng"
+    name: "凤凰网"
+    enabled: true
+  - id: "cls-hot"
+    name: "财联社热门"
+    enabled: true
+  - id: "wallstreetcn-hot"
+    name: "华尔街见闻"
+    enabled: true
+
+  # === 扩展平台（可选启用）===
+  # 财经舆情
+  - id: "xueqiu"
+    name: "雪球"
+    enabled: true
+  # 科技热点
+  - id: "36kr"
+    name: "36氪"
+    enabled: true
+  # 体育/社区舆情
+  - id: "hupu"
+    name: "虎扑"
+    enabled: false
+  # 技术社区热点
+  - id: "v2ex"
+    name: "V2ex"
+    enabled: false
+  # 数字产品
+  - id: "sspai"
+    name: "少数派"
+    enabled: false
+  # 短视频热点（快手）
+  - id: "kuaishou"
+    name: "快手"
+    enabled: true
+  # IT/数码
+  - id: "ithome"
+    name: "IT之家"
+    enabled: false
+  # 综合热点
+  - id: "chongbuluo"
+    name: "抽屉新热榜"
+    enabled: false
+
+# 自定义平台（高级用户使用）
+# custom_platforms:
+#   - id: "my_custom"
+#     name: "自定义数据源"
+#     url: "https://example.com/api/hot"
+#     enabled: true

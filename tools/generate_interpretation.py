@@ -14,6 +14,7 @@ from langchain_core.tools import tool
 from model.factory import get_tools_model
 from utils.path import ensure_task_dirs
 from utils.prompt_loader import get_interpretation_prompt
+from utils.methodology_loader import load_methodology_for_report
 from utils.task_context import get_task_id
 
 
@@ -45,6 +46,13 @@ def _extract_json_from_text(text: str) -> Dict[str, Any]:
     if not isinstance(parsed, dict):
         raise ValueError("JSON 解析结果不是对象")
     return parsed
+
+
+def _truncate_methodology(text: str, max_chars: int = 3800) -> str:
+    s = (text or "").strip()
+    if len(s) <= max_chars:
+        return s
+    return s[:max_chars] + "..."
 
 
 @dataclass(frozen=True)
@@ -131,6 +139,11 @@ def generate_interpretation(
         timeline_result_json=json.dumps(timeline_short, ensure_ascii=False, indent=2),
         sentiment_result_json=json.dumps(sentiment_short, ensure_ascii=False, indent=2),
         dataset_summary_json=json.dumps(dataset_short, ensure_ascii=False, indent=2),
+        methodology_json=json.dumps(
+            {"reference": _truncate_methodology(load_methodology_for_report(topic=eventIntroduction), 3800)},
+            ensure_ascii=False,
+            indent=2,
+        ),
     )
 
     model = get_tools_model()
@@ -211,4 +224,3 @@ def generate_interpretation(
         {"result_file_path": str(out_path), "interpretation": interpretation_dict},
         ensure_ascii=False,
     )
-

@@ -14,6 +14,9 @@
 - 数据集摘要（来自 dataset_summary 工具，并已写入文件）：
 {dataset_summary_json}
 
+- 舆情智库与参考资料（用于筛选更贴合事件的理论与维度）：
+{methodology_json}
+
 ## 输出要求
 请只输出一个 JSON 对象，不要输出任何额外说明或 Markdown 代码块。格式如下：
 {{
@@ -31,4 +34,4 @@
 1. 事件阶段 stage 需结合时间线与情感变化趋势做判断，避免凭空猜测。
 2. event_type/domain/theory_names 可以为 None 或空字符串，但指标维度必须给出至少1条。
 3. key_events 与 key_risks 必须与上面的时间线与情感/统计结论一致。
-
+4. theory_names 需优先从“舆情智库与参考资料”中选择与本事件强相关项，避免机械重复固定理论组合。

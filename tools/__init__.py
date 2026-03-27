@@ -5,6 +5,7 @@ from tools.data_collect import data_collect
 from tools.data_num import data_num
 from tools.analysis_timeline import analysis_timeline
 from tools.analysis_sentiment import analysis_sentiment
+from tools.keyword_stats import keyword_stats
 from tools.dataset_summary import dataset_summary
 from tools.generate_interpretation import generate_interpretation
 from tools.report_html import report_html
@@ -16,6 +17,9 @@ from tools.舆情智库 import (
     get_sentiment_case_template,
     get_youth_sentiment_insight,
     load_sentiment_knowledge,
+    search_reference_insights,
+    append_expert_judgement,
+    build_event_reference_links,
 )
 
 __all__ = [
@@ -23,7 +27,8 @@ __all__ = [
     "data_collect", 
     "data_num", 
     "analysis_timeline", 
-    "analysis_sentiment", 
+    "analysis_sentiment",
+    "keyword_stats",
     "dataset_summary",
     "generate_interpretation",
     "report_html",
@@ -35,4 +40,7 @@ __all__ = [
     "get_sentiment_case_template",
     "get_youth_sentiment_insight",
     "load_sentiment_knowledge",
+    "search_reference_insights",
+    "append_expert_judgement",
+    "build_event_reference_links",
 ]

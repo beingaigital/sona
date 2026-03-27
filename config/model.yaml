@@ -37,3 +37,10 @@ report:
   model: qwen3.5-plus
   api_key_env: QWEN_APIKEY
   base_url: https://coding.dashscope.aliyuncs.com/v1
+
+# 情感分析打分模型：analysis_sentiment 默认优先读取该 profile；缺省时自动回退到 tools
+sentiment:
+  provider: qwen
+  model: qwen3.5-plus
+  api_key_env: QWEN_APIKEY
+  base_url: https://coding.dashscope.aliyuncs.com/v1

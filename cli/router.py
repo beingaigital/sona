@@ -415,7 +415,19 @@ class DataDetector:
         for num in re.findall(r"\d{2,4}", normalized):
             add_kw(num)
 
-        return keywords[:16]
+        # 对超长中文短语做实体化切分，提升“分析…” vs “分析一下…”这类近似 query 的复用命中率
+        simplified = normalized
+        for marker in ("分析一下", "帮我分析", "请帮分析", "分析", "事件", "相关", "舆情", "舆论", "报告", "一下"):
+            simplified = simplified.replace(marker, " ")
+        for seg in re.findall(r"[\u4e00-\u9fff]{2,}", simplified):
+            add_kw(seg)
+            # 生成少量 2~4 字片段，帮助匹配人名/事件核心词
+            max_n = min(4, len(seg))
+            for n in range(2, max_n + 1):
+                for i in range(0, len(seg) - n + 1):
+                    add_kw(seg[i : i + n])
+
+        return keywords[:24]
 
     def _find_data_files(self, task_dir: Path, keywords: List[str]) -> List[str]:
         """在 task 目录中查找可复用数据文件（优先可直接分析的 CSV）。"""
@@ -542,10 +554,19 @@ class DataDetector:
 
         # 额外加入字符级相似度，提升对“词序变化/黏连短语”的鲁棒性
         norm_query = self._normalize_text(query)
+        norm_desc = self._normalize_text(description)
+        norm_init = self._normalize_text(initial_query)
+        norm_files = self._normalize_text(file_context)
         norm_context = self._normalize_text(context_text)
-        char_score = self._char_ngram_similarity(norm_query, norm_context, n=2)
+        char_score = max(
+            self._char_ngram_similarity(norm_query, norm_context, n=2),
+            self._char_ngram_similarity(norm_query, norm_desc, n=2),
+            self._char_ngram_similarity(norm_query, norm_init, n=2),
+            self._char_ngram_similarity(norm_query, norm_files, n=2),
+        )
 
-        score = char_score if not keywords else (0.72 * keyword_score + 0.28 * char_score)
+        # 中文场景下关键词抽取常不稳定，提升字符相似度权重
+        score = char_score if not keywords else (0.45 * keyword_score + 0.55 * char_score)
 
         # 数字锚点（如 315/2024）额外加权
         digit_hits = 0
