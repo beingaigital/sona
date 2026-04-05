@@ -1,0 +1,37 @@
+# interpretation.json 生成 prompt 模板
+你是一个专业的舆情分析研判专家。你的任务是基于以下输入材料，生成一个结构化的《解释与研判》结果 JSON。
+
+## 输入材料
+- 事件基础介绍：
+{event_introduction}
+
+- 事件时间线分析结果 JSON（来自 analysis_timeline 工具，并已写入文件）：
+{timeline_result_json}
+
+- 情感倾向分析结果 JSON（来自 analysis_sentiment 工具，并已写入文件）：
+{sentiment_result_json}
+
+- 数据集摘要（来自 dataset_summary 工具，并已写入文件）：
+{dataset_summary_json}
+
+- 舆情智库与参考资料（用于筛选更贴合事件的理论与维度）：
+{methodology_json}
+
+## 输出要求
+请只输出一个 JSON 对象，不要输出任何额外说明或 Markdown 代码块。格式如下：
+{{
+  "narrative_summary": "100-250字，给最终报告的叙事骨架摘要（描述事件如何演变、关键转折点、整体舆论情绪走向）。",
+  "key_events": ["最多5条，20-60字/条，提炼最关键的时间节点或阶段性进展。"],
+  "key_risks": ["最多5条，20-60字/条，提炼潜在风险点（含舆论风险/社会影响/传播风险/治理风险等可操作表述）。"],
+  "event_type": "可选：事件类型关键词（如：食品安全/品牌危机/涉法涉诉/突发事故/网络谣言等）。",
+  "domain": "可选：行业/领域（如：教育/医疗/互联网/财经/汽车/餐饮等）。",
+  "stage": "可选：舆情阶段（如：爆发期/扩散期/对抗期/消退期/回落期）。",
+  "indicators_dimensions": ["用于 Graph RAG 的分析维度关键词，建议为 count/quality/actor/attention/sentiment 等风格的字符串；最多4-6条。"],
+  "theory_names": ["用于 Graph RAG 的舆情理论名称列表；最多3条；若不确定可输出空数组。"]
+}}
+
+## 研判规则
+1. 事件阶段 stage 需结合时间线与情感变化趋势做判断，避免凭空猜测。
+2. event_type/domain/theory_names 可以为 None 或空字符串，但指标维度必须给出至少1条。
+3. key_events 与 key_risks 必须与上面的时间线与情感/统计结论一致。
+4. theory_names 需优先从“舆情智库与参考资料”中选择与本事件强相关项，避免机械重复固定理论组合。

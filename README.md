@@ -96,6 +96,18 @@ pip install -r requirements.txt
 pip install -e .
 ```
 
+#### 方式三：使用 uv（推荐）
+
+项目根目录包含 `pyproject.toml` 与 `uv.lock`，推荐使用 [uv](https://github.com/astral-sh/uv) 管理依赖并启动 CLI（无需先手动创建/激活虚拟环境）：
+
+```bash
+cd sona-master
+uv sync          # 首次或依赖变更后同步环境（可选）
+uv run sona      # 启动交互式 CLI（推荐）
+```
+
+安装 uv：见 [官方文档](https://docs.astral.sh/uv/getting-started/installation/)。
+
 ### 3. 安装 Playwright 浏览器驱动
 
 **重要**：使用 `data_collect` 工具需要安装 Playwright 浏览器驱动。
@@ -142,8 +154,9 @@ python scripts/run_data_collect.py
 # 统一使用 APIKEY 命名（按 openai / gemini / qwen / deepseek 顺序）
 # =============================================================================
 
-# OpenAI（推荐用于主流程）
+# OpenAI
 # 获取地址：https://platform.openai.com/api-keys
+# 说明：是否在主流程使用取决于 config/model.yaml 中 main 的 provider 配置
 OPENAI_APIKEY=sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 
 # Google Gemini
@@ -168,7 +181,7 @@ KIMI_APIKEY=sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 # 网页搜索 API Key（可选，用于 extract_search_terms 工具）
 # =============================================================================
 
-# BoCha AI Search（中文场景推荐）
+# BoCha AI Search（可选，用于 extract_search_terms 网页搜索）
 # 获取地址：https://www.bocha.cn/
 BOCHA_API_KEY=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 
@@ -235,11 +248,6 @@ report:
   api_key_env: QWEN_APIKEY
 ```
 
-**⚠️ 重要提示**：
-
-- **主流程模型（main）不建议使用 Qwen**：LangChain 包装的 Qwen 模型在处理会话恢复时可能存在消息序列问题，导致无法正确加载之前的对话历史。建议主流程模型使用 OpenAI（如 `gpt-4o-mini`）或 DeepSeek，其他场景（tools、report）可以使用 Qwen。
-- 如果必须使用 Qwen 作为主流程模型，请确保会话恢复功能正常工作，或考虑使用 OpenAI/DeepSeek 作为替代方案。
-
 ### 提示词配置
 
 项目使用 `config/prompt.yaml` 配置文件来管理提示词模板：
@@ -267,13 +275,23 @@ report_html_prompt: report_html.txt
 
 ### 命令行交互式使用
 
+**推荐**在项目根目录使用 `uv run`，自动使用当前锁文件中的依赖，无需单独激活虚拟环境：
+
 ```bash
-# 启动交互式 CLI（推荐）
-sona
+cd /path/to/sona-master
+uv run sona              # 启动交互式 CLI（推荐）
 # 或
-sona interactive
+uv run sona interactive
 
 # 查看帮助
+uv run sona --help
+```
+
+若已通过 `pip install -e .` 或 `uv sync` 安装，且已激活对应虚拟环境，也可直接使用：
+
+```bash
+sona
+sona interactive
 sona --help
 ```
 
@@ -285,14 +303,21 @@ sona --help
 - `/memory` - 查看并恢复之前的会话
 - `/models` - 查看所有模型配置
 - `/tools` - 查看所有可用工具
+- `/hot` - 运行独立的热点抓取与态势感知流程（可选参数：配置路径）
 - `/clear` - 清除 memory 和 sandbox
 - `/exit` - 退出程序
 
+**`/hot` 热点流程说明**：
+- 从公网聚合接口拉取各平台热搜（需本机可访问外网），再在本地用 **OpenAI 兼容 API** 做归纳与报告。
+- `.env` 中**至少配置一个**即可自动映射：`QWEN_APIKEY`（Qwen coding plan/OpenAI 兼容，默认）、`OPENAI_APIKEY`、`DEEPSEEK_APIKEY`、`KIMI_APIKEY`（Moonshot）；也可显式设置 `INSIGHT_ENGINE_API_KEY`、`QUERY_ENGINE_API_KEY`（及对应的 `*_BASE_URL`、`*_MODEL_NAME`）。
+- 报告与缓存默认写在项目根目录：`output_langgraph/`、`data_langgraph/`、`data_langgraph_hourly/`。
+- 可选：自建 `config/config.yaml`，在 `platforms` 中配置 `{id, name}` 列表覆盖默认平台；无文件或 `platforms` 为空时使用内置平台列表。
+
 #### 使用示例
 
-1. **启动程序**：
+1. **启动程序**（推荐）：
    ```bash
-   sona
+   uv run sona
    ```
 
 2. **创建新会话**：
@@ -477,7 +502,8 @@ sona/
 │   ├── list_tools.py        # 列出所有工具
 │   ├── run_extract_search_terms.py
 │   ├── run_data_collect.py
-│   └── run_report_html.py
+│   ├── run_report_html.py
+│   └── run_hottopics.py
 ├── memory/                  # 会话存储目录（自动创建）
 ├── sandbox/                 # 任务工作目录（自动创建）
 ├── pyproject.toml           # 项目配置
@@ -507,18 +533,6 @@ A: Playwright 会将浏览器驱动安装到用户目录：
 ### Q: 如何调试 Playwright 登录过程？
 
 A: 设置环境变量 `NETINSIGHT_HEADLESS=false`，这样会显示浏览器窗口，便于观察登录过程。
-
-### Q: 主流程模型可以使用 Qwen 吗？
-
-A: **不建议**。LangChain 包装的 Qwen 模型在处理会话恢复时可能存在消息序列问题，导致无法正确加载之前的对话历史。具体表现为：
-- 恢复会话时出现 `messages with role "tool" must be a response to a preceeding message with "tool_calls"` 错误
-- 消息序列验证失败，导致会话无法正常恢复
-
-**建议配置**：
-- **main（主流程）**：使用 OpenAI（如 `gpt-4o-mini`）或 DeepSeek（如 `deepseek-chat`）
-- **tools、report**：可以使用 Qwen（如 `qwen-plus`）
-
-如果必须使用 Qwen 作为主流程模型，请确保会话恢复功能正常工作，或考虑使用 OpenAI/DeepSeek 作为替代方案。
 
 ### Q: 如何查看 Token 使用情况？
 

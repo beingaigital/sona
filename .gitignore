@@ -79,6 +79,11 @@ sanbox/
 # Memory - 会话记忆
 memory/
 
+# 热点流程产物（独立流程）
+data_langgraph/
+data_langgraph_hourly/
+output_langgraph/
+
 # OS
 .DS_Store
 .DS_Store?

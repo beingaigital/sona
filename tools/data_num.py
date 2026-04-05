@@ -6,7 +6,8 @@ import asyncio
 import json
 import os
 import time
-from typing import Any, Dict, List, Optional
+from typing import Dict, List, Optional
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import requests
 from langchain_core.tools import tool
@@ -100,6 +101,11 @@ BASE_COUNT_PARAMS = {
 }
 
 
+def _should_bypass_netinsight_proxy() -> bool:
+    v = os.environ.get("SONA_NETINSIGHT_NO_PROXY", "false").strip().lower()
+    return v in ("1", "true", "yes", "y", "on")
+
+
 async def _login_and_capture(
     username: str,
     password: str,
@@ -110,21 +116,61 @@ async def _login_and_capture(
     from playwright.async_api import async_playwright
     
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=headless)
+        # 检查是否需要代理
+        launch_options = {"headless": headless}
+        bypass_proxy = _should_bypass_netinsight_proxy()
+
+        if bypass_proxy:
+            launch_options["args"] = ["--no-proxy-server"]
+        else:
+            # 尝试从环境变量获取代理
+            proxy_url = os.environ.get("HTTP_PROXY") or os.environ.get("HTTPS_PROXY") or os.environ.get("ALL_PROXY")
+            if not proxy_url:
+                # 尝试从 .env 文件读取
+                from dotenv import load_dotenv
+                load_dotenv()
+                proxy_url = os.environ.get("HTTP_PROXY") or os.environ.get("HTTPS_PROXY") or os.environ.get("ALL_PROXY")
+
+            if proxy_url:
+                # 解析代理地址
+                proxy_config = {}
+                if proxy_url.startswith("http://"):
+                    proxy_config["server"] = proxy_url
+                elif proxy_url.startswith("socks5://"):
+                    proxy_config["server"] = proxy_url
+                    proxy_config["type"] = "socks5"
+                else:
+                    proxy_config["server"] = f"http://{proxy_url.replace('http://', '').replace('https://', '')}"
+
+                launch_options["proxy"] = proxy_config
+                print(f"[data_num] Using proxy: {proxy_config}")
+        
+        browser = await p.chromium.launch(**launch_options)
         context = await browser.new_context()
         page = await context.new_page()
+        try:
+            login_timeout_ms = max(10000, int(os.getenv("SONA_NETINSIGHT_LOGIN_TIMEOUT_MS", "90000")))
+        except Exception:
+            login_timeout_ms = 90000
         
         try:
-            # 访问登录页面
-            await page.goto(LOGIN_URL, wait_until='networkidle')
-            await page.wait_for_timeout(2000)
+            # 访问登录页：优先等 DOM 完成，避免 networkidle 卡死导致 30s 超时
+            await page.goto(LOGIN_URL, wait_until='domcontentloaded', timeout=login_timeout_ms)
+            await page.wait_for_timeout(4000)
+            try:
+                await page.wait_for_load_state('networkidle', timeout=min(15000, login_timeout_ms))
+            except Exception:
+                # 网络空闲等待失败不致命，继续走登录流程
+                pass
             
             # 填写账号
             account_input = page.locator('input[placeholder="账号"]')
+            await account_input.wait_for(state='visible', timeout=min(15000, login_timeout_ms))
             await account_input.fill(username)
             
             # 填写密码
             password_input = page.locator('input[placeholder="密码"]')
+            await password_input.wait_for(state='visible', timeout=min(15000, login_timeout_ms))
             await password_input.fill(password)
             
             # 点击登录按钮
@@ -133,11 +179,17 @@ async def _login_and_capture(
             
             # 等待登录完成
             await page.wait_for_timeout(3000)
-            await page.wait_for_load_state('networkidle')
+            try:
+                await page.wait_for_load_state('networkidle', timeout=min(20000, login_timeout_ms))
+            except Exception:
+                pass
             await page.wait_for_timeout(5000)
             
             # 再次确认页面完全稳定
-            await page.wait_for_load_state('networkidle')
+            try:
+                await page.wait_for_load_state('networkidle', timeout=min(15000, login_timeout_ms))
+            except Exception:
+                pass
             await page.wait_for_timeout(3000)
             
             # 获取 cookies
@@ -226,9 +278,10 @@ def _query_weibo_count(
     time_range: str,
     headers: Dict[str, str],
     cookies: Dict[str, str],
+    platform_name: str,
     max_retries: int = 3
 ) -> int:
-    """查询单个关键词的微博数量"""
+    """查询单个关键词在指定平台下的数量"""
     # 构建请求参数
     payload = BASE_COUNT_PARAMS.copy()
     payload.update({
@@ -242,6 +295,8 @@ def _query_weibo_count(
     })
     
     session = requests.Session()
+    if _should_bypass_netinsight_proxy():
+        session.trust_env = False
     session.headers.update(headers)
     session.cookies.update(cookies)
     
@@ -261,22 +316,31 @@ def _query_weibo_count(
                 error_msg = f"API返回错误: code={code}, msg={result.get('message', '未知')}"
                 raise RuntimeError(error_msg)
             
-            # 解析返回数据，提取微博数量
+            # 解析返回数据，提取指定平台数量
             data = result.get("data", [])
             if not isinstance(data, list):
                 raise RuntimeError(f"返回数据格式错误: {type(data)}")
             
-            # 查找微博平台的数量
-            weibo_count = 0
+            # 查找指定平台的数量
+            platform_count = 0
+            total_all = 0
             for item in data:
                 if isinstance(item, dict):
                     name = item.get("name", "")
                     value = item.get("value", 0)
-                    if name == "微博":
-                        weibo_count = int(value) if value else 0
-                        break
+                    try:
+                        v_int = int(value) if value else 0
+                    except Exception:
+                        v_int = 0
+                    total_all += v_int
+                    if not platform_name or platform_name == "ALL" or name == platform_name:
+                        platform_count = v_int
+                        if platform_name and platform_name != "ALL":
+                            break
             
-            return weibo_count
+            if not platform_name or platform_name == "ALL":
+                return total_all
+            return platform_count
             
         except requests.exceptions.Timeout:
             if attempt < max_retries:
@@ -341,7 +405,8 @@ def _calculate_proportional_counts(
 def data_num(
     searchWords: str,
     timeRange: str,
-    threshold: int = 2000
+    threshold: int = 2000,
+    platform: str = "微博",
 ) -> str:
     """
     描述：查询不同搜索词在微博渠道的数据数量。根据提供的搜索词列表和时间范围，查询每个搜索词在微博平台的数据总量，并智能分配数量（如果总和超过阈值，则按比例分配使总和接近阈值）。
@@ -350,6 +415,7 @@ def data_num(
     - searchWords（必填）：搜索词列表，JSON字符串格式，例如 '["关键词1", "关键词2", "关键词3"]'。
     - timeRange（必填）：搜索时间范围，格式为 "2026-01-01 00:00:00;2026-01-31 23:59:59"。
     - threshold（可选，默认2000）：数量阈值，如果所有搜索词的总数量超过此值，则按比例分配使总和接近此值。
+    - platform（可选，默认"微博"）：指定平台名称，用于从返回结果中提取对应平台的数量。
     输出：JSON字符串，格式为 {
         "search_matrix": {
             "关键词1": 数量1,
@@ -388,7 +454,7 @@ def data_num(
             "time_range": timeRange,
             "threshold": threshold
         }, ensure_ascii=False)
-    
+
     # 验证阈值参数
     if threshold <= 0:
         return json_module.dumps({
@@ -419,17 +485,36 @@ def data_num(
             "threshold": threshold
         }, ensure_ascii=False)
     
-    # 查询每个关键词的微博数量
+    # 查询每个关键词的平台数量（支持并发）
     keyword_counts = {}
     errors = []
-    
-    for keyword in keywords:
+
+    max_workers = max(1, min(int(os.getenv("SONA_DATA_NUM_MAX_WORKERS", "4")), 8))
+
+    def _query_one(keyword: str) -> tuple[str, int, Optional[str]]:
         try:
-            count = _query_weibo_count(keyword, timeRange, headers, cookies)
-            keyword_counts[keyword] = count
+            count_val = _query_weibo_count(
+                keyword,
+                timeRange,
+                headers,
+                cookies,
+                platform_name=platform,
+            )
+            return keyword, int(count_val), None
         except Exception as e:
-            errors.append(f"查询关键词 '{keyword}' 失败: {str(e)}")
-            keyword_counts[keyword] = 0
+            return keyword, 0, str(e)
+
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = {executor.submit(_query_one, kw): kw for kw in keywords}
+        for future in as_completed(futures):
+            kw = futures[future]
+            try:
+                keyword, count, err = future.result()
+            except Exception as e:
+                keyword, count, err = kw, 0, str(e)
+            keyword_counts[keyword] = count
+            if err:
+                errors.append(f"查询关键词 '{keyword}' 失败: {err}")
     
     # 如果有错误，记录但继续处理
     if errors:
@@ -452,7 +537,7 @@ def data_num(
         "search_matrix": final_counts,
         "total_count": total_count,
         "time_range": timeRange,
-        "threshold": threshold
+        "threshold": threshold,
     }
     
     # 如果有部分错误，在结果中记录警告

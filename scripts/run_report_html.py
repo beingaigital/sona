@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
+import webbrowser
 
 # 添加项目根目录到 Python 路径
 project_root = Path(__file__).resolve().parent.parent
@@ -98,6 +99,13 @@ def main() -> None:
                         if file_url:
                             print(f"  - 文件访问地址: {file_url}")
                             print(f"  - 访问方式: 在浏览器中打开 {file_url}")
+                            
+                            # 自动在默认浏览器中打开生成的报告
+                            try:
+                                webbrowser.open(file_url)
+                                print(f"\n已在默认浏览器中打开报告: {file_url}")
+                            except Exception as open_err:
+                                print(f"\n警告：自动在浏览器中打开报告失败: {open_err}")
                         else:
                             print("  未返回文件访问地址")
                         

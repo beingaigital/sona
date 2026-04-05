@@ -78,6 +78,11 @@ def get_report_html_prompt() -> str:
     return get_prompt_config().get("report_html_prompt", "").strip()
 
 
+def get_interpretation_prompt() -> str:
+    """获取「解释与研判 JSON」任务使用的 prompt，供 interpretation 模型使用"""
+    return get_prompt_config().get("interpretation_prompt", "").strip()
+
+
 def format_tool_registry_for_prompt(tools: List[Any]) -> str:
     """根据当前注册的工具列表生成「可用的工具列表及描述」段落，用于拼接到 system_prompt"""
     if not tools:

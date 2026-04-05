@@ -8,6 +8,7 @@ import json
 import os
 import re
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -132,146 +133,92 @@ API_URL = "https://pro.netinsight.com.cn/netInsight/general/advancedSearch/infoL
 LOGIN_URL = "https://pro.netinsight.com.cn/login"
 
 
+def _should_bypass_netinsight_proxy() -> bool:
+    v = os.environ.get("SONA_NETINSIGHT_NO_PROXY", "false").strip().lower()
+    return v in ("1", "true", "yes", "y", "on")
+
+
 async def _login_and_capture(
     username: str,
     password: str,
     keyword: str = "元宝派",
     headless: bool = True
 ) -> RequestContext:
-    """使用 Playwright 登录并捕获请求凭证"""
-    captured_request: Optional[Dict] = None
-    
-    async def handle_request(request):
-        """请求拦截处理器"""
-        nonlocal captured_request
-        url = request.url
-        target_url_pattern = 'netInsight/general/advancedSearch/infoList'
-        if target_url_pattern in url:
-            if captured_request is None:  # 只捕获第一个匹配的请求
-                captured_request = {
-                    'url': url,
-                    'method': request.method,
-                    'headers': dict(request.headers),
-                    'post_data': request.post_data
-                }
-    
-    async def handle_response(response):
-        """响应监听器（用于调试）"""
-        url = response.url
-        target_url_pattern = 'netInsight/general/advancedSearch/infoList'
-        if target_url_pattern in url:
-            pass  # 可以在这里添加调试信息
-    
+    """使用 Playwright 登录并获取请求凭证（仅依赖登录 cookies）"""
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=headless)
+        from dotenv import load_dotenv
+        load_dotenv()
+        
+        launch_options = {"headless": headless}
+        bypass_proxy = _should_bypass_netinsight_proxy()
+        if bypass_proxy:
+            launch_options["args"] = ["--no-proxy-server"]
+        else:
+            proxy_url = os.environ.get("HTTP_PROXY") or os.environ.get("HTTPS_PROXY") or os.environ.get("ALL_PROXY")
+            if proxy_url:
+                proxy_config = {}
+                if proxy_url.startswith("http://"):
+                    proxy_config["server"] = proxy_url
+                elif proxy_url.startswith("socks5://"):
+                    proxy_config["server"] = proxy_url
+                    proxy_config["type"] = "socks5"
+                else:
+                    proxy_config["server"] = f"http://{proxy_url.replace('http://', '').replace('https://', '')}"
+                launch_options["proxy"] = proxy_config
+                print(f"[data_collect] Using proxy: {proxy_config}")
+        
+        browser = await p.chromium.launch(**launch_options)
         context = await browser.new_context()
         page = await context.new_page()
-        
-        # 在 context 级别注册监听器（可以捕获所有页面的请求）
-        context.on('request', handle_request)
-        context.on('response', handle_response)
-        # 也在当前页面注册
-        page.on('request', handle_request)
-        page.on('response', handle_response)
+        try:
+            login_timeout_ms = max(10000, int(os.getenv("SONA_NETINSIGHT_LOGIN_TIMEOUT_MS", "90000")))
+        except Exception:
+            login_timeout_ms = 90000
         
         try:
-            # 访问登录页面
-            await page.goto(LOGIN_URL, wait_until='networkidle')
-            await page.wait_for_timeout(2000)
+            # 访问登录页：优先等 DOM 完成，避免 networkidle 卡死。
+            await page.goto(LOGIN_URL, wait_until='domcontentloaded', timeout=login_timeout_ms)
+            await page.wait_for_timeout(4000)
+            try:
+                await page.wait_for_load_state('networkidle', timeout=min(15000, login_timeout_ms))
+            except Exception:
+                pass
             
             # 填写账号
             account_input = page.locator('input[placeholder="账号"]')
+            await account_input.wait_for(state='visible', timeout=min(15000, login_timeout_ms))
             await account_input.fill(username)
             
             # 填写密码
             password_input = page.locator('input[placeholder="密码"]')
+            await password_input.wait_for(state='visible', timeout=min(15000, login_timeout_ms))
             await password_input.fill(password)
             
-            # 点击登录按钮
+            # 点击登录按钮（兼容“登 录/登录”两种文案）
             login_button = page.locator('button.el-button--primary:has-text("登 录")')
+            if await login_button.count() == 0:
+                login_button = page.locator('button.el-button--primary:has-text("登录")')
+            if await login_button.count() == 0:
+                login_button = page.locator("button.el-button--primary")
             await login_button.click()
             
             # 等待登录完成
             await page.wait_for_timeout(3000)
-            await page.wait_for_load_state('networkidle')
-            await page.wait_for_timeout(5000)  # 增加等待时间
-            
-            # 再次确认页面完全稳定
-            await page.wait_for_load_state('networkidle')
+            try:
+                await page.wait_for_load_state('networkidle', timeout=min(20000, login_timeout_ms))
+            except Exception:
+                pass
+            await page.wait_for_timeout(5000)
+            try:
+                await page.wait_for_load_state('networkidle', timeout=min(15000, login_timeout_ms))
+            except Exception:
+                pass
             await page.wait_for_timeout(3000)
-            
-            # 重置捕获状态（准备捕获搜索请求）
-            captured_request = None
-            
-            # 查找关键词输入框（增加等待时间）
-            await page.wait_for_timeout(2000)
-            keyword_input = page.locator('input[name="plname"][placeholder="请输入搜索关键字"]')
-            await keyword_input.wait_for(state='visible', timeout=15000)
-            
-            # 输入关键词（减慢速度）
-            await page.wait_for_timeout(2000)
-            await keyword_input.click()
-            await page.wait_for_timeout(1000)
-            await keyword_input.fill(keyword)
-            await page.wait_for_timeout(2000)
-            
-            # 触发搜索（尝试多种方式）
-            search_triggered = False
-            
-            # 方式1: 点击搜索图标
-            try:
-                search_icon = page.locator('input[name="plname"]').locator('xpath=ancestor::div[contains(@class, "el-input")]//svg[contains(@class, "icon-search")]').first
-                await search_icon.wait_for(state='visible', timeout=3000)
-                await search_icon.click()
-                search_triggered = True
-            except Exception:
-                pass
-            
-            # 方式2: 如果点击失败，尝试按 Enter 键
-            if not search_triggered:
-                try:
-                    await keyword_input.press('Enter')
-                    search_triggered = True
-                except Exception:
-                    pass
-            
-            # 方式3: 如果都失败，尝试找到并点击搜索图标的父元素
-            if not search_triggered:
-                try:
-                    search_parent = page.locator('span.el-input__suffix svg.icon-search').first
-                    await search_parent.wait_for(state='visible', timeout=3000)
-                    await search_parent.click()
-                    search_triggered = True
-                except Exception:
-                    pass
-            
-            # 尝试等待新页面打开
-            try:
-                new_page = await context.wait_for_event('page', timeout=10000)
-                # 在新页面注册监听器
-                new_page.on('request', handle_request)
-                await new_page.wait_for_timeout(3000)
-                page = new_page
-            except Exception:
-                pass
-            
-            # 等待搜索请求被捕获
-            max_wait_time = 10  # 最多等待10秒
-            wait_interval = 0.5
-            waited_time = 0
-            
-            while captured_request is None and waited_time < max_wait_time:
-                await asyncio.sleep(wait_interval)
-                waited_time += wait_interval
-            
-            if not captured_request:
-                raise RuntimeError("未能捕获到搜索请求")
-            
+
             # 获取 cookies 并提取需要的两个参数
             cookies_list = await context.cookies()
             cookies_dict = {cookie['name']: cookie['value'] for cookie in cookies_list}
             
-            # 只提取需要的两个 cookies
             trs_session_id = cookies_dict.get('TRSJSESSIONID')
             trs_session_id_web = cookies_dict.get('TRSJSESSIONIDWEB')
             
@@ -282,13 +229,11 @@ async def _login_and_capture(
                     f"TRSJSESSIONIDWEB: {trs_session_id_web is not None}"
                 )
             
-            # 只使用两个必要的 cookies
             final_cookies = {
                 "TRSJSESSIONID": trs_session_id,
                 "TRSJSESSIONIDWEB": trs_session_id_web
             }
             
-            # 使用固定的请求头
             headers_dict = _build_headers(trs_session_id_web)
             
             return RequestContext(
@@ -412,6 +357,8 @@ def _fetch_page(
     payload = _build_payload(config, page_no, page_id, context)
     
     session = requests.Session()
+    if _should_bypass_netinsight_proxy():
+        session.trust_env = False
     session.headers.update(context.headers)
     session.cookies.update(context.cookies)
     
@@ -617,7 +564,8 @@ def _get_field_descriptions() -> Dict[str, str]:
 @tool
 def data_collect(
     searchMatrix: str,
-    timeRange: str
+    timeRange: str,
+    platform: str = "微博",
 ) -> str:
     """
     描述：根据搜索矩阵和时间范围循环抓取微博渠道的舆情数据。根据提供的搜索矩阵（包含多个搜索词及其对应的数量），循环爬取每个搜索词的数据，最终汇总到一个CSV文件并按照内容列进行去重。
@@ -712,80 +660,77 @@ def data_collect(
             "meta": {}
         }, ensure_ascii=False)
     
-    # 固定平台为微博
-    group_name = "微博"
-    
-    # 循环爬取每个搜索词的数据
+    # 平台由入参决定（默认微博）
+    group_name = platform or "微博"
+    # 并发爬取每个搜索词的数据（每个关键词内部分页仍顺序执行，降低风控风险）
     all_items = []
     search_summary = {}
-    
-    try:
-        for keyword, target_count in matrix.items():
-            # 创建配置
-            config = SearchConfig(
-                keywords=[keyword],  # 单个关键词
-                time_range=timeRange,
-                group_name=group_name,
-                sort="-commtCount",  # 按评论数降序排序（支持翻页）
-                page_size=50,
-                info_type="2"  # 2=内容（不是全部）
-            )
-            
-            # 计算需要抓取的页数
-            max_pages = (target_count + config.page_size - 1) // config.page_size
-            
-            # 抓取当前关键词的数据
-            keyword_items = []
-            page_id = None
-            no_data_flag = False
-            
-            for page_no in range(max_pages):
-                items, page_id, is_no_data = _fetch_page(config, context, page_no, page_id)
-                
-                # 检查是否是没有数据的标记
-                if is_no_data:
-                    no_data_flag = True
-                    break
-                
-                if not items:
-                    break
-                
-                keyword_items.extend(items)
-                
-                # 如果已达到目标数量，停止抓取
-                if len(keyword_items) >= target_count:
-                    keyword_items = keyword_items[:target_count]
-                    break
-                
-                # 如果本页数据少于page_size，说明已到最后一页
-                if len(items) < config.page_size:
-                    break
-                
-                # 延迟避免风控
-                if page_no < max_pages - 1:
-                    time.sleep(2.0)
-            
-            # 记录每个关键词的爬取情况
-            actual_count = len(keyword_items)
-            search_summary[keyword] = {
-                "target": target_count,
-                "actual": actual_count,
-                "status": "no_data" if no_data_flag and actual_count == 0 else "success" if actual_count > 0 else "failed"
-            }
-            
-            # 添加到总数据列表
-            all_items.extend(keyword_items)
-            
-            # 关键词之间的延迟
-            if keyword != list(matrix.keys())[-1]:  # 不是最后一个关键词
+
+    def _collect_one_keyword(keyword: str, target_count: int) -> tuple[str, List[Dict[str, Any]], Dict[str, Any]]:
+        config = SearchConfig(
+            keywords=[keyword],  # 单个关键词
+            time_range=timeRange,
+            group_name=group_name,
+            sort="-commtCount",  # 按评论数降序排序（支持翻页）
+            page_size=50,
+            info_type="2",  # 2=内容（不是全部）
+        )
+
+        max_pages = (target_count + config.page_size - 1) // config.page_size
+        keyword_items: List[Dict[str, Any]] = []
+        page_id = None
+        no_data_flag = False
+
+        for page_no in range(max_pages):
+            items, page_id, is_no_data = _fetch_page(config, context, page_no, page_id)
+            if is_no_data:
+                no_data_flag = True
+                break
+            if not items:
+                break
+
+            keyword_items.extend(items)
+            if len(keyword_items) >= target_count:
+                keyword_items = keyword_items[:target_count]
+                break
+            if len(items) < config.page_size:
+                break
+            if page_no < max_pages - 1:
+                # 关键词内部分页间隔（降低风控）
                 time.sleep(1.0)
-    
+
+        actual_count = len(keyword_items)
+        summary = {
+            "target": target_count,
+            "actual": actual_count,
+            "status": "no_data" if no_data_flag and actual_count == 0 else "success" if actual_count > 0 else "failed",
+        }
+        return keyword, keyword_items, summary
+
+    try:
+        max_workers = max(1, min(int(os.getenv("SONA_DATA_COLLECT_MAX_WORKERS", "3")), 8))
+        if len(matrix) <= 1:
+            max_workers = 1
+
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            future_map = {
+                executor.submit(_collect_one_keyword, keyword, target_count): keyword
+                for keyword, target_count in matrix.items()
+            }
+            for future in as_completed(future_map):
+                keyword = future_map[future]
+                try:
+                    kw, keyword_items, summary = future.result()
+                except Exception as e:
+                    search_summary[keyword] = {"target": matrix.get(keyword, 0), "actual": 0, "status": "failed"}
+                    continue
+                search_summary[kw] = summary
+                all_items.extend(keyword_items)
     except Exception as e:
-        return json_module.dumps({
-            "error": f"数据抓取失败: {str(e)}",
-            "save_path": "",
-            "meta": {}
-        }, ensure_ascii=False)
+        return json_module.dumps(
+            {"error": f"数据抓取失败: {str(e)}", "save_path": "", "meta": {}},
+            ensure_ascii=False,
+        )
     
     # 去重：按照"内容"列进行去重
     if all_items:
@@ -854,7 +799,7 @@ def data_collect(
             "fields": list(field_info.keys()),
             "field_types": field_info,
             "field_descriptions": _get_field_descriptions(),
-            "search_summary": search_summary
+            "search_summary": search_summary,
         }
     }
     

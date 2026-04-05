@@ -6,7 +6,7 @@ import csv
 import re
 import json as json_module
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Sequence
 
 from datetime import datetime
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -62,18 +62,31 @@ TIME_PATTERNS = [
 
 
 def _read_csv_data(file_path: str) -> List[Dict[str, Any]]:
-    """读取CSV文件数据"""
+    """读取CSV文件数据（自适应常见编码，避免表头乱码）。"""
     file = Path(file_path)
     if not file.exists():
         raise FileNotFoundError(f"数据文件不存在: {file_path}")
-    
-    data = []
-    with open(file, 'r', encoding='utf-8-sig', errors='replace') as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            data.append(row)
-    
-    return data
+
+    rows: List[Dict[str, Any]] = []
+    encodings_to_try: Sequence[str] = ("utf-8-sig", "utf-8", "gb18030", "gbk")
+    last_error: Optional[Exception] = None
+    for enc in encodings_to_try:
+        try:
+            with open(file, "r", encoding=enc, errors="strict") as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    rows.append(row)
+            break
+        except Exception as e:
+            rows = []
+            last_error = e
+            continue
+    if not rows and last_error is not None:
+        with open(file, "r", encoding="utf-8-sig", errors="replace") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                rows.append(row)
+    return rows
 
 
 def _identify_columns(data: List[Dict[str, Any]]) -> tuple[Optional[str], Optional[str]]:
@@ -83,7 +96,7 @@ def _identify_columns(data: List[Dict[str, Any]]) -> tuple[Optional[str], Option
     
     # 可能的列名
     content_candidates = ["内容", "content", "正文", "text", "摘要", "abstract"]
-    time_candidates = ["发布时间", "发布时间戳", "time", "timeBak", "发布时间", "发布", "时间"]
+    time_candidates = ["发布时间", "发布时间戳", "time", "timeBak", "发布", "时间"]
     
     # 获取所有列名
     columns = list(data[0].keys())
@@ -91,14 +104,16 @@ def _identify_columns(data: List[Dict[str, Any]]) -> tuple[Optional[str], Option
     # 查找内容列
     content_col = None
     for col in columns:
-        if any(candidate in col for candidate in content_candidates):
+        n = str(col or "").strip()
+        if any(candidate in n for candidate in content_candidates):
             content_col = col
             break
     
     # 查找发布时间列
     time_col = None
     for col in columns:
-        if any(candidate in col for candidate in time_candidates):
+        n = str(col or "").strip()
+        if any(candidate in n for candidate in time_candidates):
             time_col = col
             break
     
@@ -205,7 +220,9 @@ def _generate_result_filename(retryContext: Optional[str] = None) -> str:
 def analysis_timeline(
     eventIntroduction: str,
     dataFilePath: str,
-    retryContext: Optional[str] = None
+    retryContext: Optional[str] = None,
+    contentColumn: Optional[str] = None,
+    timeColumn: Optional[str] = None,
 ) -> str:
     """
     描述：分析事件时间线。根据提供的事件基础介绍和数据文件，从舆情数据中提取时间相关信息，生成事件时间线。只有当热点事件可能包含时间线（跨度比较长）时才使用本工具。
@@ -251,8 +268,20 @@ def analysis_timeline(
             "result_file_path": ""
         }, ensure_ascii=False)
     
-    # 识别内容列和发布时间列
-    content_col, time_col = _identify_columns(all_data)
+    # 识别内容列和发布时间列（支持外部显式指定）
+    header_set = {str(h).strip() for h in list(all_data[0].keys())}
+    content_col: Optional[str] = None if contentColumn is None else (str(contentColumn).strip() or None)
+    time_col: Optional[str] = None if timeColumn is None else (str(timeColumn).strip() or None)
+    if content_col and content_col not in header_set:
+        content_col = None
+    if time_col and time_col not in header_set:
+        time_col = None
+    if not content_col or not time_col:
+        auto_content_col, auto_time_col = _identify_columns(all_data)
+        if not content_col:
+            content_col = auto_content_col
+        if not time_col:
+            time_col = auto_time_col
     
     if not content_col:
         return json_module.dumps({
