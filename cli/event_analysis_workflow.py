@@ -27,6 +27,9 @@ from tools import (
     analysis_timeline,
     analysis_sentiment,
     keyword_stats,
+    region_stats,
+    author_stats,
+    volume_stats,
     dataset_summary,
     generate_interpretation,
     graph_rag_query,
@@ -1712,6 +1715,58 @@ def run_event_analysis_workflow(
             data={"error": str(e)},
         )
 
+    # ============ 6.6) region_stats（可选，失败可跳过） ============
+    if debug:
+        console.print("[bold]Step6.6: region_stats (optional)[/bold]")
+
+    try:
+        region_json = _invoke_tool_to_json(
+            region_stats,
+            {
+                "dataFilePath": save_path,
+                "top_n": 10,
+            },
+        )
+        region_stats_path = str(region_json.get("result_file_path") or "")
+        if debug and region_stats_path:
+            console.print(f"[green]✅ 地域统计完成[/green] result_file_path={region_stats_path}")
+    except Exception as e:
+        if debug:
+            console.print("[yellow]⚠️ region_stats 执行失败，已跳过，不影响后续流程[/yellow]")
+        _append_ndjson_log(
+            run_id="event_analysis_region_stats",
+            hypothesis_id="H34_region_stats_optional_skip_on_error",
+            location="cli/event_analysis_workflow.py:region_stats_optional",
+            message="region_stats 执行失败，已按可选步骤跳过",
+            data={"error": str(e)},
+        )
+
+    # ============ 6.7) author_stats（可选，失败可跳过） ============
+    if debug:
+        console.print("[bold]Step6.7: author_stats (optional)[/bold]")
+
+    try:
+        author_json = _invoke_tool_to_json(
+            author_stats,
+            {
+                "dataFilePath": save_path,
+                "top_n": 10,
+            },
+        )
+        author_stats_path = str(author_json.get("result_file_path") or "")
+        if debug and author_stats_path:
+            console.print(f"[green]✅ 作者统计完成[/green] result_file_path={author_stats_path}")
+    except Exception as e:
+        if debug:
+            console.print("[yellow]⚠️ author_stats 执行失败，已跳过，不影响后续流程[/yellow]")
+        _append_ndjson_log(
+            run_id="event_analysis_author_stats",
+            hypothesis_id="H35_author_stats_optional_skip_on_error",
+            location="cli/event_analysis_workflow.py:author_stats_optional",
+            message="author_stats 执行失败，已按可选步骤跳过",
+            data={"error": str(e)},
+        )
+
     # ============ 7) 舆情分析（timeline + sentiment，并发执行） ============
     if debug:
         console.print("[bold]Step7/8: analysis_timeline + analysis_sentiment (并发)[/bold]")
@@ -1933,6 +1988,31 @@ def run_event_analysis_workflow(
     # #endregion debug_log_H25_analysis_result_paths
 
     # ============ 8) 初步解读（interpretation.json） ============
+    # ============ 7.5) 声量分析（可选，失败可跳过） ============
+    if debug:
+        console.print("[bold]Step7.5: volume_stats (optional)[/bold]")
+
+    try:
+        volume_json = _invoke_tool_to_json(
+            volume_stats,
+            {
+                "dataFilePath": save_path,
+            },
+        )
+        volume_stats_path = str(volume_json.get("result_file_path") or "")
+        if debug and volume_stats_path:
+            console.print(f"[green]✅ 声量统计完成[/green] result_file_path={volume_stats_path}")
+    except Exception as e:
+        if debug:
+            console.print("[yellow]⚠️ volume_stats 执行失败，已跳过，不影响后续流程[/yellow]")
+        _append_ndjson_log(
+            run_id="event_analysis_volume_stats",
+            hypothesis_id="H36_volume_stats_optional_skip_on_error",
+            location="cli/event_analysis_workflow.py:volume_stats_optional",
+            message="volume_stats 执行失败，已按可选步骤跳过",
+            data={"error": str(e)},
+        )
+
     if debug:
         console.print("[bold]Step9: generate_interpretation[/bold]")
 

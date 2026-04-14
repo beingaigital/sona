@@ -16,5 +16,11 @@ analysis_sentiment_prompt: analysis_sentiment.txt
 # 使用增强版（集成舆情智库方法论）
 report_html_prompt: report_html_enhanced.txt
 
+# 固定 HTML 模板（文件名，位于 prompt/；勿用 get_prompt_config 读取此项）
+report_html_template: report_html_morandi_template.html
+
+# 模板模式叙事填充：模型仅输出 JSON 占位符
+report_html_template_fill: report_html_template_fill.txt
+
 # 解释与研判 JSON 生成：供 interpretation 模型使用
 interpretation_prompt: interpretation.txt

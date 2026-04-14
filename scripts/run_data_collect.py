@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import sys
-import uuid
 from pathlib import Path
 
 # 添加项目根目录到 Python 路径
@@ -38,13 +37,13 @@ def main() -> None:
         print(f"平台: 微博（固定）")
         print("-" * 80)
         
-        # 生成任务ID并设置上下文
-        task_id = str(uuid.uuid4())
+        # 统一测试输出目录：sandbox/测试/过程文件
+        task_id = "测试"
         ensure_task_dirs(task_id)
         set_task_id(task_id)
         
         print(f"任务ID: {task_id}")
-        print(f"数据将保存到: sandbox/{task_id}/过程文件/")
+        print("数据将保存到: sandbox/测试/过程文件/")
         
         try:
             # 调用工具

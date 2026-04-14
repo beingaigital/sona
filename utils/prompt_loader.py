@@ -78,6 +78,18 @@ def get_report_html_prompt() -> str:
     return get_prompt_config().get("report_html_prompt", "").strip()
 
 
+def get_report_html_template_basename() -> str:
+    """
+    固定 HTML 报告模板文件名（位于 prompt/ 下）。
+    注意：不能走 get_prompt_config()，否则会把 .html 文件内容当作「配置字符串」读入。
+    """
+    raw = _load_prompt_yaml()
+    v = raw.get("report_html_template")
+    if v is None:
+        return ""
+    return str(v).strip()
+
+
 def get_interpretation_prompt() -> str:
     """获取「解释与研判 JSON」任务使用的 prompt，供 interpretation 模型使用"""
     return get_prompt_config().get("interpretation_prompt", "").strip()

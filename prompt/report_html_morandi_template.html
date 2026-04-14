@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{REPORT_TITLE}} | 舆情智库深度研判</title>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+    <style>
+        :root {
+            --primary: #5d8aa8;         /* 莫兰迪蓝 */
+            --primary-strong: #4a6fa5;
+            --accent: #4ea5ff;          /* 强调蓝 */
+            --bg-grad-start: #f8fafc;
+            --bg-grad-end: #f1f5f9;
+            --card-bg: #ffffff;
+            --analysis-bg: rgba(78, 165, 255, 0.05);
+            --text-main: #1f2937;
+            --text-muted: #6b7280;
+            --border-color: #e5e7eb;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: linear-gradient(180deg, var(--bg-grad-start) 0%, var(--bg-grad-end) 100%);
+            color: var(--text-main);
+            line-height: 1.6;
+            padding-bottom: 60px;
+        }
+
+        .container { max-width: 1400px; margin: 0 auto; padding: 0 30px; }
+
+        /* --- Header Section --- */
+        header {
+            background: linear-gradient(135deg, var(--primary), var(--primary-strong));
+            color: white;
+            padding: 45px 0 60px;
+            margin-bottom: 30px;
+            border-radius: 0 0 20px 20px;
+            box-shadow: 0 10px 30px rgba(74, 111, 165, 0.2);
+        }
+        .event-title { font-size: 2.6rem; font-weight: 800; margin-bottom: 10px; }
+        .event-subtitle { font-size: 1.25rem; opacity: 0.9; max-width: 1000px; }
+        .badge-group { display: flex; gap: 10px; margin-top: 20px; flex-wrap: wrap; }
+        .badge { background: rgba(255, 255, 255, 0.2); padding: 5px 15px; border-radius: 20px; font-size: 0.85rem; font-weight: 600; }
+
+        /* --- KPI Grid --- */
+        .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 20px; margin-top: -45px; margin-bottom: 40px; }
+        .kpi-card { background: var(--card-bg); padding: 25px; border-radius: 12px; box-shadow: 0 6px 16px rgba(0,0,0,0.05); }
+        .kpi-label { font-size: 0.9rem; color: var(--text-muted); }
+        .kpi-value { font-size: 2rem; font-weight: 800; color: var(--text-main); margin-top: 5px; }
+
+        /* --- Main Sections --- */
+        section { margin-bottom: 40px; }
+        .section-title { font-size: 1.8rem; font-weight: 700; margin-bottom: 25px; padding-bottom: 10px; border-bottom: 3px solid var(--primary); display: flex; align-items: center; }
+        .card { background: var(--card-bg); border-radius: 12px; padding: 30px; margin-bottom: 25px; box-shadow: 0 4px 15px rgba(0,0,0,0.03); }
+        .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 25px; }
+
+        /* --- Analysis Conclusion Boxes --- */
+        .analysis-summary { background: var(--analysis-bg); border-left: 5px solid var(--accent); padding: 20px 25px; border-radius: 0 8px 8px 0; margin-top: 20px; }
+        .analysis-summary h3 { font-size: 1.1rem; color: var(--primary-strong); margin-bottom: 15px; }
+        .analysis-summary ul { padding-left: 20px; }
+        .analysis-summary li { margin-bottom: 10px; font-size: 0.95rem; }
+        .highlight { background: rgba(78, 165, 255, 0.15); padding: 2px 8px; border-radius: 4px; font-weight: 600; }
+
+        /* --- Specific Content Elements --- */
+        .chart-box { height: 420px; width: 100%; margin-top: 15px; }
+        .timeline-list { list-style: none; }
+        .timeline-item { padding: 18px 0; border-bottom: 1px dashed var(--border-color); position: relative; padding-left: 25px; }
+        .timeline-item::before { content: "•"; color: var(--accent); position: absolute; left: 0; font-size: 1.8rem; top: 12px; }
+        .timeline-time { font-weight: 700; color: var(--primary-strong); margin-bottom: 5px; }
+
+        /* --- Footer --- */
+        footer { text-align: center; padding: 50px; color: var(--text-muted); border-top: 1px solid var(--border-color); font-size: 0.9rem; }
+
+        @media (max-width: 1000px) { .grid-2 { grid-template-columns: 1fr; } }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <header>
+        <div class="header-content">
+            <h1 class="event-title">{{REPORT_TITLE}}</h1>
+            <p class="event-subtitle">{{REPORT_SUBTITLE}}</p>
+            <div class="badge-group">
+                <span class="badge">事件类型：{{EVENT_TYPE}}</span>
+                <span class="badge">核心客体：{{OBJECT_NAME}}</span>
+                <span class="badge">阶段判定：{{PHASE_STATUS}}</span>
+            </div>
+        </div>
+    </header>
+
+    <div class="kpi-grid">
+        <div class="kpi-card"><div class="kpi-label">总样本量</div><div class="kpi-value">{{KPI_TOTAL}}</div></div>
+        <div class="kpi-card"><div class="kpi-label">有效声量</div><div class="kpi-value">{{KPI_EFFECTIVE}}</div></div>
+        <div class="kpi-card"><div class="kpi-label">正面情绪占比</div><div class="kpi-value" style="color: #4ecdc4;">{{KPI_POS_RATIO}}</div></div>
+        <div class="kpi-card"><div class="kpi-label">负面情绪占比</div><div class="kpi-value" style="color: #ff6b6b;">{{KPI_NEG_RATIO}}</div></div>
+    </div>
+
+    <section>
+        <h2 class="section-title">事件基础介绍</h2>
+        <div class="card">
+            <p><strong>事件背景：</strong>{{INTRO_BACKGROUND}}</p>
+            <p style="margin-top:15px;"><strong>舆情触发点：</strong>{{INTRO_TRIGGERS}}</p>
+            <div class="analysis-summary">
+                <h3>概览研判结论</h3>
+                <ul>{{SUMMARY_BULLETS}}</ul>
+            </div>
+        </div>
+    </section>
+
+    <section>
+        <h2 class="section-title">数据分析板块</h2>
+
+        <div class="grid-2">
+            <div class="card">
+                <h3>情感倾向分析结果</h3>
+                <div id="sentimentChart" class="chart-box"></div>
+                <div class="analysis-summary">
+                    <h3>简要分析结论</h3>
+                    <ul>{{CHART_SENTIMENT_ANALYSIS}}</ul>
+                </div>
+            </div>
+            <div class="card">
+                <h3>关键时间线节点 (按发生时序)</h3>
+                <ul class="timeline-list" id="timelineList"></ul>
+                <div class="analysis-summary">
+                    <h3>简要分析结论</h3>
+                    <ul>{{CHART_TIMELINE_ANALYSIS}}</ul>
+                </div>
+            </div>
+        </div>
+
+        <div class="grid-2">
+            <div class="card">
+                <h3>每日声量趋势分析</h3>
+                <div id="volumeChart" class="chart-box"></div>
+                <div class="analysis-summary">
+                    <h3>简要分析结论</h3>
+                    <ul>{{CHART_VOLUME_ANALYSIS}}</ul>
+                </div>
+            </div>
+            <div class="card">
+                <h3>发布地域 Top10 分析 (省级)</h3>
+                <div id="regionChart" class="chart-box"></div>
+                <div class="analysis-summary">
+                    <h3>简要分析结论</h3>
+                    <ul>{{CHART_REGION_ANALYSIS}}</ul>
+                </div>
+            </div>
+        </div>
+
+        <div class="grid-2">
+            <div class="card">
+                <h3>核心发布者 Top10 分析</h3>
+                <div id="authorChart" class="chart-box"></div>
+                <div class="analysis-summary">
+                    <h3>简要分析结论</h3>
+                    <ul>{{CHART_AUTHOR_ANALYSIS}}</ul>
+                </div>
+            </div>
+            <div class="card">
+                <h3>关键词热度 Top20 分析</h3>
+                <div id="keywordChart" class="chart-box"></div>
+                <div class="analysis-summary">
+                    <h3>简要分析结论</h3>
+                    <ul>{{CHART_KEYWORD_ANALYSIS}}</ul>
+                </div>
+            </div>
+        </div>
+
+        <div class="grid-2">
+            <div class="card">
+                <h3>舆情核心五维分析 (雷达图)</h3>
+                <div id="radarChart" class="chart-box"></div>
+                <div class="analysis-summary">
+                    <h3>简要分析结论</h3>
+                    <ul>{{CHART_RADAR_ANALYSIS}}</ul>
+                </div>
+            </div>
+            <div class="card">
+                <h3>舆情生命周期阶段研判</h3>
+                <div id="lifecycleChart" class="chart-box"></div>
+                <div class="analysis-summary">
+                    <h3>简要分析结论</h3>
+                    <ul>{{CHART_LIFECYCLE_ANALYSIS}}</ul>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section>
+        <h2 class="section-title">理论研判与复盘总结</h2>
+        
+        <div class="card">
+            <h3>理论规律分析</h3>
+            <div class="analysis-summary" style="background:none; border-left-color:var(--primary);">
+                <h4>沉默螺旋规律</h4><p>{{THEORY_SILENCE}}</p><br>
+                <h4>议程设置规律</h4><p>{{THEORY_AGENDA}}</p><br>
+                <h4>蝴蝶效应规律</h4><p>{{THEORY_BUTTERFLY}}</p>
+            </div>
+        </div>
+
+        <div class="card">
+            <h3>回应观察与分析</h3>
+            <div class="analysis-summary">
+                <ul>{{RESPONSE_ANALYSIS_BULLETS}}</ul>
+            </div>
+        </div>
+
+        <div class="card">
+            <h3>总结复盘</h3>
+            <div class="grid-2">
+                <div><h4>话语分析</h4><p>{{RECAP_DISCOURSE}}</p></div>
+                <div><h4>议题泛化趋势</h4><p>{{RECAP_TRENDS}}</p></div>
+            </div>
+            <div class="analysis-summary" style="margin-top:20px;">
+                <h4>舆情推手分析</h4>
+                <ul>{{RECAP_DRIVERS_BULLETS}}</ul>
+            </div>
+        </div>
+    </section>
+
+    <footer>
+        <p>舆情智库｜基于真实数据的深度研判 · 报告生成时间：{{GEN_TIME}}</p>
+        <p>方法论依据：《舆情智库方法论》 ｜ 数据来源：{{DATA_SOURCE}}</p>
+    </footer>
+</div>
+
+<script>
+    /**
+     * 🚀 全量 JSON 配置对象
+     * 调用时请确保 JSON 结构完整
+     */
+    const REPORT_DATA = __REPORT_JSON_DATA__;
+
+    const chartInstances = {};
+
+    function initAll() {
+        // 1. 情感饼图
+        chartInstances.sentiment = echarts.init(document.getElementById('sentimentChart'));
+        chartInstances.sentiment.setOption({
+            tooltip: { trigger: 'item' },
+            legend: { bottom: '5%', left: 'center' },
+            series: [{
+                type: 'pie', radius: ['40%', '70%'],
+                itemStyle: { borderRadius: 8, borderColor: '#fff', borderWidth: 2 },
+                data: REPORT_DATA.charts.sentiment
+            }]
+        });
+
+        // 2. 声量趋势
+        chartInstances.volume = echarts.init(document.getElementById('volumeChart'));
+        chartInstances.volume.setOption({
+            tooltip: { trigger: 'axis' },
+            legend: { top: '2%', left: 'center', data: ['声量趋势'] },
+            xAxis: { type: 'category', data: REPORT_DATA.charts.volume.dates },
+            yAxis: { type: 'value' },
+            series: [{
+                name: '声量趋势',
+                data: REPORT_DATA.charts.volume.values, type: 'line', smooth: true,
+                areaStyle: { color: 'rgba(78, 165, 255, 0.2)' }, lineStyle: { color: '#4ea5ff' }
+            }]
+        });
+
+        // 3. 地域柱状图
+        chartInstances.region = echarts.init(document.getElementById('regionChart'));
+        chartInstances.region.setOption({
+            tooltip: { trigger: 'axis' },
+            legend: { top: '2%', left: 'center', data: ['地域声量'] },
+            xAxis: { type: 'category', data: REPORT_DATA.charts.region.names },
+            yAxis: { type: 'value' },
+            series: [{ name: '地域声量', type: 'bar', data: REPORT_DATA.charts.region.values, itemStyle: { color: '#5d8aa8' } }]
+        });
+
+        // 4. 作者柱状图 (横向)
+        chartInstances.author = echarts.init(document.getElementById('authorChart'));
+        chartInstances.author.setOption({
+            tooltip: { trigger: 'axis' },
+            legend: { top: '2%', left: 'center', data: ['作者发文量'] },
+            grid: { left: '20%' },
+            xAxis: { type: 'value' },
+            yAxis: { type: 'category', data: REPORT_DATA.charts.author.names.reverse() },
+            series: [{ name: '作者发文量', type: 'bar', data: REPORT_DATA.charts.author.values.reverse(), itemStyle: { color: '#4ea5ff' } }]
+        });
+
+        // 5. 关键词柱状图
+        chartInstances.keyword = echarts.init(document.getElementById('keywordChart'));
+        chartInstances.keyword.setOption({
+            tooltip: { trigger: 'axis' },
+            legend: { top: '2%', left: 'center', data: ['关键词热度'] },
+            xAxis: { type: 'category', data: REPORT_DATA.charts.keyword.names, axisLabel: { rotate: 45 } },
+            yAxis: { type: 'value' },
+            series: [{ name: '关键词热度', type: 'bar', data: REPORT_DATA.charts.keyword.values, itemStyle: { color: '#5d8aa8' } }]
+        });
+
+        // 6. 五维雷达图
+        chartInstances.radar = echarts.init(document.getElementById('radarChart'));
+        chartInstances.radar.setOption({
+            legend: { top: '2%', left: 'center', data: ['五维评估'] },
+            radar: {
+                indicator: [
+                    { name: '量', max: 10 }, { name: '质', max: 10 },
+                    { name: '人', max: 10 }, { name: '场', max: 10 }, { name: '效', max: 10 }
+                ]
+            },
+            series: [{ type: 'radar', data: [{ name: '五维评估', value: REPORT_DATA.charts.radarValues, areaStyle: { color: 'rgba(93, 138, 168, 0.4)' } }] }]
+        });
+
+        // 7. 生命周期面积图
+        chartInstances.lifecycle = echarts.init(document.getElementById('lifecycleChart'));
+        chartInstances.lifecycle.setOption({
+            tooltip: { trigger: 'axis' },
+            legend: { top: '2%', left: 'center' },
+            xAxis: { type: 'category', boundaryGap: false, data: REPORT_DATA.charts.lifecycle.dates },
+            yAxis: { show: false },
+            series: REPORT_DATA.charts.lifecycle.series.map(s => ({
+                name: s.name, type: 'line', stack: 'Total', smooth: true,
+                areaStyle: { opacity: 0.5 }, data: s.data
+            }))
+        });
+
+        // 渲染时间线
+        const tlList = document.getElementById('timelineList');
+        REPORT_DATA.timeline.forEach(item => {
+            tlList.innerHTML += `<li class="timeline-item"><div class="timeline-time">${item.time}</div><div>${item.event}</div></li>`;
+        });
+    }
+
+    document.addEventListener('DOMContentLoaded', initAll);
+    window.onresize = () => Object.values(chartInstances).forEach(c => c.resize());
+</script>
+
+</body>
+</html>

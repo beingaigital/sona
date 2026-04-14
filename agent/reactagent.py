@@ -21,6 +21,9 @@ from tools import (
     analysis_timeline,
     analysis_sentiment,
     keyword_stats,
+    region_stats,
+    author_stats,
+    volume_stats,
     report_html,
     graph_rag_query,
 )
@@ -40,6 +43,9 @@ AGENT_TOOLS = [
     analysis_timeline,
     analysis_sentiment,
     keyword_stats,
+    region_stats,
+    author_stats,
+    volume_stats,
     report_html,
     graph_rag_query,
 ]

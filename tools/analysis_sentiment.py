@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import csv
 import json
-import os
 import re
 from datetime import datetime
 from pathlib import Path
@@ -13,13 +12,21 @@ from typing import Any, Dict, List, Optional, Tuple
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.tools import tool
 
-from model.factory import get_sentiment_model, get_tools_model
+from model.factory import get_sentiment_model
 from tools.keyword_stats import CONTENT_COLUMN_KEYWORDS, _identify_content_columns
 from utils.content_text import clean_text_like_keyword_stats
 from utils.path import ensure_task_dirs, get_task_process_dir
 from utils.prompt_loader import get_analysis_sentiment_prompt
 from utils.task_context import get_task_id
 
+_BATCH_SIZE: int = 12
+_MAX_CHARS_PER_TEXT: int = 2800
+
+# 并发配置（通过环境变量可调）
+import os  # noqa: E402
+import random  # noqa: E402
+import threading  # noqa: E402
+from concurrent.futures import ThreadPoolExecutor, as_completed  # noqa: E402
 
 def _env_int(name: str, default: int, low: int, high: int) -> int:
     raw = str(os.environ.get(name, str(default))).strip()
@@ -29,9 +36,8 @@ def _env_int(name: str, default: int, low: int, high: int) -> int:
         val = default
     return max(low, min(high, val))
 
-
-_BATCH_SIZE: int = _env_int("SONA_SENTIMENT_BATCH_SIZE", 24, 4, 80)
-_MAX_CHARS_PER_TEXT: int = _env_int("SONA_SENTIMENT_MAX_CHARS", 700, 200, 4000)
+_SENTIMENT_BATCH_PARALLEL_WORKERS: int = _env_int("SONA_SENTIMENT_BATCH_PARALLEL_WORKERS", 2, 1, 8)
+_SENTIMENT_BATCH_JITTER_MS: int = _env_int("SONA_SENTIMENT_BATCH_JITTER_MS", 100, 0, 1000)
 
 _SCORE_SYSTEM_PROMPT = """你是舆情情感分析助手。结合「事件背景」，对每条文本给出整数情感分 score，范围 0～10：
 - 0 为最负面，10 为最正面
@@ -46,15 +52,34 @@ _SCORE_SYSTEM_PROMPT = """你是舆情情感分析助手。结合「事件背景
 """
 
 
+
+
+
 def _read_csv_data(file_path: str) -> List[Dict[str, Any]]:
     file = Path(file_path)
     if not file.exists():
         raise FileNotFoundError(f"数据文件不存在: {file_path}")
     data: List[Dict[str, Any]] = []
-    with open(file, "r", encoding="utf-8-sig", errors="replace") as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            data.append(row)
+    # 兼容常见中文编码，避免“乱码”导致表头识别失败
+    encodings_to_try: List[str] = ["utf-8-sig", "utf-8", "gb18030", "gbk"]
+    last_error: Optional[Exception] = None
+    for enc in encodings_to_try:
+        try:
+            with open(file, "r", encoding=enc, errors="strict") as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    data.append(row)
+            break
+        except Exception as e:
+            data = []
+            last_error = e
+            continue
+    if not data and last_error is not None:
+        # 最后一次失败也读不到，回退到宽容模式读取，避免完全失败
+        with open(file, "r", encoding="utf-8-sig", errors="replace") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                data.append(row)
     return data
 
 
@@ -246,6 +271,26 @@ def _score_batch(
     return out
 
 
+def _score_batch_worker(
+    *, event_introduction: str, batch: List[Tuple[int, str]]
+) -> Dict[int, int]:
+    # 轻微抖动，降低并发瞬时触发限流
+    if _SENTIMENT_BATCH_JITTER_MS > 0:
+        try:
+            time_to_sleep = random.random() * (_SENTIMENT_BATCH_JITTER_MS / 1000.0)
+            if time_to_sleep > 0:
+                threading.Event().wait(time_to_sleep)
+        except Exception:
+            pass
+    # 每个线程内独立获取模型实例（model.factory 内部已做线程局部缓存）
+    model = get_sentiment_model()
+    try:
+        return _score_batch(model, event_introduction=event_introduction, batch=batch)
+    except Exception:
+        # 兜底：该批次统一给 5 分，保证流程不中断
+        return {idx: 5 for idx, _ in batch}
+
+
 def _build_statistics(
     total: int,
     scores_by_row: Dict[int, Optional[int]],
@@ -341,6 +386,7 @@ def analysis_sentiment(
     dataFilePath: str,
     retryContext: Optional[str] = None,
     preferExistingSentimentColumn: Optional[bool] = None,
+    contentColumns: Optional[List[str]] = None,
 ) -> str:
     """
     描述：分析情感倾向。自动识别与关键词工具一致的内容列，先做相同规则的文本清洗，再使用通义 qwen-plus
@@ -386,7 +432,13 @@ def analysis_sentiment(
         )
 
     fieldnames = list(all_data[0].keys())
-    content_columns = _identify_content_columns(fieldnames)
+    # 如果外部强制指定内容列，优先使用（仅保留存在于文件表头的列）
+    forced_cols: List[str] = []
+    if contentColumns:
+        normalized = [str(c or "").strip() for c in contentColumns if str(c or "").strip()]
+        header_set = {str(h) for h in fieldnames}
+        forced_cols = [c for c in normalized if c in header_set]
+    content_columns = forced_cols if forced_cols else _identify_content_columns(fieldnames)
     if not content_columns:
         return json_module.dumps(
             {
@@ -403,12 +455,10 @@ def analysis_sentiment(
         )
 
     n = len(all_data)
-    sentiment_col = _identify_sentiment_column(all_data)
-    prefer_existing_sentiment = _to_bool(
-        preferExistingSentimentColumn,
-        default=_to_bool(os.environ.get("SONA_SENTIMENT_PREFER_EXISTING_COLUMN"), default=False),
-    )
-    use_existing_sentiment = prefer_existing_sentiment and _should_use_existing_sentiment(all_data, sentiment_col)
+    # 变更：无条件使用 LLM 重判（不再复用现有情感列）
+    sentiment_col = None
+    prefer_existing_sentiment = False
+    use_existing_sentiment = False
 
     summary_model: Any = None
     scoring_model_name = ""
@@ -416,87 +466,69 @@ def analysis_sentiment(
     scores_by_row: Dict[int, Optional[int]] = {}
     row_meta: List[Dict[str, Any]] = []
     row_scores_brief: List[Dict[str, Any]] = []
-    if use_existing_sentiment and sentiment_col:
-        for i, row in enumerate(all_data):
-            cleaned = _row_cleaned_content(row, content_columns)
-            label = _normalize_sentiment_label(row.get(sentiment_col, "")) or "中立"
-            score = _label_to_score(label)
-            scores_by_row[i] = score
-            row_meta.append({"cleaned": cleaned, "label": label, "score": score})
-            preview = (cleaned[:200] + "...") if len(cleaned) > 200 else cleaned
-            row_scores_brief.append({"row_index": i, "score": score, "label": label, "text_preview": preview})
+    # LLM 重判（默认路径）
+    try:
+        score_model = get_sentiment_model()
+    except Exception as e:
+        return json_module.dumps(
+            {
+                "error": f"获取情感分析模型失败: {str(e)}",
+                "statistics": {},
+                "positive_summary": [],
+                "negative_summary": [],
+                "result_file_path": "",
+            },
+            ensure_ascii=False,
+        )
 
-        statistics = _build_statistics(n, scores_by_row)
-        statistics["sentiment_source"] = "existing_sentiment_column"
-        statistics["sentiment_column"] = sentiment_col
-        statistics["sentiment_strategy"] = "reuse_existing_column"
-        try:
-            summary_model = get_tools_model()
-        except Exception as e:
-            return json_module.dumps(
-                {
-                    "error": f"获取情感总结模型失败: {str(e)}",
-                    "statistics": statistics,
-                    "positive_summary": [],
-                    "negative_summary": [],
-                    "content_columns": content_columns,
-                    "row_scores": row_scores_brief,
-                    "result_file_path": "",
-                },
-                ensure_ascii=False,
-            )
-        scoring_model_name = "existing_sentiment_column"
-        scoring_profile = "tools"
-    else:
-        try:
-            score_model = get_sentiment_model()
-        except Exception as e:
-            return json_module.dumps(
-                {
-                    "error": f"获取情感分析模型失败: {str(e)}",
-                    "statistics": {},
-                    "positive_summary": [],
-                    "negative_summary": [],
-                    "result_file_path": "",
-                },
-                ensure_ascii=False,
-            )
+    to_score: List[Tuple[int, str]] = []
+    for i, row in enumerate(all_data):
+        cleaned = _row_cleaned_content(row, content_columns)
+        if not cleaned:
+            scores_by_row[i] = None
+            continue
+        to_score.append((i, cleaned))
 
-        to_score: List[Tuple[int, str]] = []
-        for i, row in enumerate(all_data):
-            cleaned = _row_cleaned_content(row, content_columns)
-            if not cleaned:
-                scores_by_row[i] = None
-                continue
-            to_score.append((i, cleaned))
+    # 组批
+    chunks: List[List[Tuple[int, str]]] = [
+        to_score[start : start + _BATCH_SIZE] for start in range(0, len(to_score), _BATCH_SIZE)
+    ]
 
-        for start in range(0, len(to_score), _BATCH_SIZE):
-            chunk = to_score[start : start + _BATCH_SIZE]
+    # 并发批次打分（按批次级别并发，线程安全且可控），不足时退回串行
+    parallel_workers = min(_SENTIMENT_BATCH_PARALLEL_WORKERS, len(chunks)) if chunks else 1
+    if parallel_workers <= 1:
+        for chunk in chunks:
             part = _score_batch(score_model, event_introduction=eventIntroduction, batch=chunk)
             for idx, _txt in chunk:
                 scores_by_row[idx] = part.get(idx, 5)
+    else:
+        with ThreadPoolExecutor(max_workers=parallel_workers) as executor:
+            futures = {}
+            for chunk in chunks:
+                fut = executor.submit(_score_batch_worker, event_introduction=eventIntroduction, batch=chunk)
+                futures[fut] = chunk
+            for fut in as_completed(list(futures.keys())):
+                chunk = futures.get(fut) or []
+                try:
+                    part = fut.result()
+                except Exception:
+                    part = {idx: 5 for idx, _txt in chunk}
+                for idx, _txt in chunk:
+                    scores_by_row[idx] = part.get(idx, 5)
 
-        for i, row in enumerate(all_data):
-            cleaned = _row_cleaned_content(row, content_columns)
-            s = scores_by_row.get(i)
-            if s is None:
-                label = "中立"
-            else:
-                label = _label_from_score(s)
-            row_meta.append({"cleaned": cleaned, "label": label, "score": s})
-            preview = (cleaned[:200] + "...") if len(cleaned) > 200 else cleaned
-            row_scores_brief.append({"row_index": i, "score": s, "label": label, "text_preview": preview})
+    for i, row in enumerate(all_data):
+        cleaned = _row_cleaned_content(row, content_columns)
+        s = scores_by_row.get(i)
+        if s is None:
+            label = "中立"
+        else:
+            label = _label_from_score(s)
+        row_meta.append({"cleaned": cleaned, "label": label, "score": s})
+        preview = (cleaned[:200] + "...") if len(cleaned) > 200 else cleaned
+        row_scores_brief.append({"row_index": i, "score": s, "label": label, "text_preview": preview})
 
-        statistics = _build_statistics(n, scores_by_row)
-        statistics["sentiment_source"] = "llm_scoring"
-        statistics["sentiment_strategy"] = "rejudge_all_posts"
-        summary_model = score_model
-        scoring_model_name = "qwen-plus"
-        scoring_profile = "sentiment"
-
+    statistics = _build_statistics(n, scores_by_row)
     statistics["content_columns"] = content_columns
-    if sentiment_col:
-        statistics["sentiment_column_detected"] = sentiment_col
 
     positive_contents = _extract_contents_by_label(row_meta, "正面", limit=10)
     negative_contents = _extract_contents_by_label(row_meta, "负面", limit=10)
@@ -539,21 +571,26 @@ def analysis_sentiment(
         suggestions=suggestions_section,
     )
 
-    summary_error = ""
     try:
         summary_messages = [
             SystemMessage(content="你是一个专业的情感倾向分析专家。"),
             HumanMessage(content=prompt),
         ]
-        summary_resp = summary_model.invoke(summary_messages)
+        summary_resp = score_model.invoke(summary_messages)
         result_text = summary_resp.content if hasattr(summary_resp, "content") else str(summary_resp)
     except Exception as e:
-        summary_error = f"模型总结失败: {str(e)}"
-        fallback_obj = {
-            "positive_summary": _fallback_summary_from_contents(positive_contents, max_items=3) if need_positive else [],
-            "negative_summary": _fallback_summary_from_contents(negative_contents, max_items=3) if need_negative else [],
-        }
-        result_text = json_module.dumps(fallback_obj, ensure_ascii=False)
+        return json_module.dumps(
+            {
+                "error": f"模型总结失败: {str(e)}",
+                "statistics": statistics,
+                "positive_summary": [],
+                "negative_summary": [],
+                "content_columns": content_columns,
+                "row_scores": row_scores_brief,
+                "result_file_path": "",
+            },
+            ensure_ascii=False,
+        )
 
     try:
         json_match = re.search(r"\{[\s\S]*\}", result_text)
@@ -594,12 +631,10 @@ def analysis_sentiment(
         "negative_summary": parsed.get("negative_summary", []),
         "content_columns": content_columns,
         "row_scores": row_scores_brief,
-        "scoring_model": scoring_model_name,
-        "scoring_profile": scoring_profile,
+        "scoring_model": "qwen-plus",
+        "scoring_profile": "sentiment",
         "raw_summary": None,
     }
-    if summary_error:
-        full_result["summary_warning"] = summary_error
 
     task_id = get_task_id()
     if task_id:
@@ -619,16 +654,10 @@ def analysis_sentiment(
 
     # 终端/交互展示：保持简洁（详细打分与样本请看保存文件）
     result_file_path = str(full_result.get("result_file_path") or "")
-    if statistics.get("sentiment_source") == "existing_sentiment_column":
-        summary_message = (
-            f"情感分析完成：共 {n} 行，优先复用现有情感列；"
-            f"命中 {len(content_columns)} 个内容列，统计与观点已写入过程文件。"
-        )
-    else:
-        summary_message = (
-            f"情感重判完成：共 {n} 行，命中 {len(content_columns)} 个内容列；"
-            f"按 0-10 分（0-3负/4-6中/7-10正）统计已生成并写入过程文件。"
-        )
+    summary_message = (
+        f"情感打分完成：共 {n} 行，命中 {len(content_columns)} 个内容列；"
+        f"按 0-10 分（0-3负/4-6中/7-10正）统计已生成并写入过程文件。"
+    )
     summary_payload: Dict[str, Any] = {
         "message": summary_message,
         "statistics": statistics,
@@ -641,7 +670,5 @@ def analysis_sentiment(
     }
     if full_result.get("save_error"):
         summary_payload["save_error"] = full_result.get("save_error")
-    if summary_error:
-        summary_payload["summary_warning"] = summary_error
 
     return json_module.dumps(summary_payload, ensure_ascii=False)

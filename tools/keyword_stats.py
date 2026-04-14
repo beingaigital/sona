@@ -68,10 +68,24 @@ def _read_csv_rows(file_path: str) -> List[Dict[str, Any]]:
         raise FileNotFoundError(f"数据文件不存在: {file_path}")
 
     rows: List[Dict[str, Any]] = []
-    with open(file, "r", encoding="utf-8-sig", errors="replace") as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            rows.append(row)
+    encodings_to_try: List[str] = ["utf-8-sig", "utf-8", "gb18030", "gbk"]
+    last_error: Optional[Exception] = None
+    for enc in encodings_to_try:
+        try:
+            with open(file, "r", encoding=enc, errors="strict") as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    rows.append(row)
+            break
+        except Exception as e:
+            rows = []
+            last_error = e
+            continue
+    if not rows and last_error is not None:
+        with open(file, "r", encoding="utf-8-sig", errors="replace") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                rows.append(row)
     return rows
 
 
@@ -169,6 +183,7 @@ def keyword_stats(
     dataFilePath: str,
     top_n: int = 20,
     min_len: int = 2,
+    contentColumns: Optional[List[str]] = None,
 ) -> str:
     """
     描述：关键词统计识别。对采集到的CSV数据进行内容列识别、语料拼接、分词与过滤、停用词过滤，并统计 TopN 关键词词频。
@@ -223,7 +238,14 @@ def keyword_stats(
         )
 
     fieldnames = list(rows[0].keys())
-    content_columns = _identify_content_columns(fieldnames)
+    content_columns: List[str] = []
+    if contentColumns:
+        normalized_headers = {str(h).strip() for h in fieldnames}
+        specified = [c for c in (str(x).strip() for x in contentColumns) if c in normalized_headers]
+        if specified:
+            content_columns = specified
+    if not content_columns:
+        content_columns = _identify_content_columns(fieldnames)
     if not content_columns:
         return json_module.dumps(
             {

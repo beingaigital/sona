@@ -27,7 +27,7 @@ def main() -> None:
         # 测试配置示例
         test_configs = [
             {
-                "eventIntroduction": "美伊战争相关舆情事件，关注军事行动、外交谈判破裂、地区外溢及国际反应。",
+                "eventIntroduction": "洛克王国世界相关舆情事件，关注游戏开服、玩家体验、游戏质量、玩家反馈",
                 "analysisResultsDir": "sandbox/测试/过程文件"
             }
         ]

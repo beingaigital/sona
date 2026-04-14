@@ -13,34 +13,26 @@
 # deepseek:DEEPSEEK_APIKEY
 # kimi:KIMI_APIKEY
 
-# Base URL 配置（可选，用于自定义端点）
-# qwen 默认: https://dashscope.aliyuncs.com/compatible-mode/v1
-# coding plan: https://coding.dashscope.aliyuncs.com/v1
-
 # 主流程模型：作为 ReAct Agent 的底座
 main:
-  provider: qwen
-  model: qwen3.5-plus
-  api_key_env: QWEN_APIKEY
-  base_url: https://coding.dashscope.aliyuncs.com/v1
+  provider: deepseek
+  model: deepseek-chat
+  api_key_env: DEEPSEEK_APIKEY
 
 # 工具模型：用于各种工具调用（搜索词提取、时间线分析、情感分析等）
 tools:
   provider: qwen
-  model: qwen3.5-plus
+  model: qwen-plus
   api_key_env: QWEN_APIKEY
-  base_url: https://coding.dashscope.aliyuncs.com/v1
 
 # HTML报告生成模型：生成舆情分析HTML报告
 report:
   provider: qwen
-  model: qwen3.5-plus
+  model: qwen-plus
   api_key_env: QWEN_APIKEY
-  base_url: https://coding.dashscope.aliyuncs.com/v1
 
-# 情感分析打分模型：analysis_sentiment 默认优先读取该 profile；缺省时自动回退到 tools
+# 情感分析打分模型：对清洗后的内容列做 0-10 分情感评分（默认 qwen-plus）
 sentiment:
   provider: qwen
-  model: qwen3.5-plus
+  model: qwen-plus
   api_key_env: QWEN_APIKEY
-  base_url: https://coding.dashscope.aliyuncs.com/v1

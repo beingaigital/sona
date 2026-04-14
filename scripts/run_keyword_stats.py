@@ -45,6 +45,27 @@ def main(argv: Optional[list[str]] = None) -> None:
 
     args = _parse_args(argv)
 
+    # 编码探测辅助：用常见编码读取表头，便于快速发现编码问题
+    def _read_headers(csv_path: Path) -> list[str]:
+        encodings = ["utf-8-sig", "utf-8", "gb18030", "gbk"]
+        for enc in encodings:
+            try:
+                with csv_path.open("r", encoding=enc, errors="strict") as f:
+                    import csv as _csv  # 局部导入
+                    reader = _csv.reader(f)
+                    header = next(reader, [])
+                    return [str(h) for h in header]
+            except Exception:
+                continue
+        try:
+            with csv_path.open("r", encoding="utf-8-sig", errors="replace") as f:
+                import csv as _csv
+                reader = _csv.reader(f)
+                header = next(reader, [])
+                return [str(h) for h in header]
+        except Exception:
+            return []
+
     data_path = Path(args.data)
     if not data_path.exists():
         raise FileNotFoundError(f"数据文件不存在: {data_path}")
@@ -62,12 +83,26 @@ def main(argv: Optional[list[str]] = None) -> None:
         print(f"top_n: {int(args.top_n)}")
         print(f"min_len: {int(args.min_len)}")
         print("-" * 80)
+        headers = _read_headers(data_path)
+        if headers:
+            print(f"[表头预览] {headers}")
+        else:
+            print("[表头预览] 读取失败（可能是编码或文件问题）")
+
+        # 若命中“内容”，则显式指定，以提升识别稳定性
+        forced_contents = []
+        normalized_headers = [str(h).strip() for h in headers]
+        if "内容" in normalized_headers:
+            forced_contents.append("内容")
 
         invoke_params: Dict[str, Any] = {
             "dataFilePath": str(data_path),
             "top_n": int(args.top_n),
             "min_len": int(args.min_len),
         }
+        if forced_contents:
+            print(f"[内容列] 使用指定列: {forced_contents}")
+            invoke_params["contentColumns"] = forced_contents
         result = keyword_stats.invoke(invoke_params)
 
         if isinstance(result, str):
