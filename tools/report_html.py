@@ -189,6 +189,32 @@ def _build_reference_context(json_files: List[Dict[str, Any]]) -> Tuple[str, boo
     return "\n".join(lines), bool(ref_hits)
 
 
+def _build_yqzk_snapshot_context(json_files: List[Dict[str, Any]]) -> Tuple[str, bool]:
+    """
+    汇总 yqzk_knowledge_snapshot.json 中的方法论/案例/指标要点，作为高优先级知识上下文。
+    """
+    snapshot: Dict[str, Any] = {}
+    for item in json_files:
+        if str(item.get("filename", "") or "").strip() == "yqzk_knowledge_snapshot.json":
+            c = item.get("content")
+            if isinstance(c, dict):
+                snapshot = c
+            break
+    if not snapshot:
+        return "", False
+
+    lines: List[str] = ["舆情智库知识快照（yqzk）:"]
+    # 兼容 load_sentiment_knowledge 返回 shape：{"keyword":...,"knowledge":...} 或检索 JSON 字符串
+    knowledge_text = str(snapshot.get("knowledge", "") or "").strip()
+    if knowledge_text:
+        lines.append(knowledge_text[:1800] + ("..." if len(knowledge_text) > 1800 else ""))
+    else:
+        # 退化：直接摘取顶层结构
+        compact = json.dumps(snapshot, ensure_ascii=False)[:1800]
+        lines.append(compact + ("..." if len(compact) >= 1800 else ""))
+    return "\n".join(lines), True
+
+
 def _build_collab_context(json_files: List[Dict[str, Any]]) -> Tuple[str, bool]:
     """
     汇总用户协同输入与外部补充参考。
@@ -379,6 +405,34 @@ def _needs_quality_retry(html_content: str) -> bool:
     if conclusion_hits < 3:
         return True
     return False
+
+
+def _has_effective_yqzk_reference(
+    *,
+    html_content: str,
+    has_yqzk_snapshot: bool,
+) -> bool:
+    """
+    检查报告正文是否体现 yqzk 知识库引用。
+    仅在存在 yqzk 快照输入时启用检查。
+    """
+    if not has_yqzk_snapshot:
+        return True
+    text = str(html_content or "")
+    if not text:
+        return False
+    # 命中“知识库/智库/wiki/方法论/案例”等关键词至少 2 类，认为有体现
+    keyword_groups = [
+        ("舆情智库", "知识库", "yqzk"),
+        ("wiki", "概念", "方法论"),
+        ("相似案例", "历史案例", "案例对比"),
+    ]
+    hit_groups = 0
+    lower = text.lower()
+    for group in keyword_groups:
+        if any((k.lower() in lower) for k in group):
+            hit_groups += 1
+    return hit_groups >= 2
 
 
 def _sanitize_echarts_invalid_js_css_var_calls(html_content: str) -> str:
@@ -1298,6 +1352,17 @@ def report_html(
         analysis_results_text += reference_summary
         analysis_results_text += "\n"
 
+    yqzk_snapshot_summary, has_yqzk_snapshot = _build_yqzk_snapshot_context(json_files)
+    if yqzk_snapshot_summary:
+        analysis_results_text += "\n## 舆情智库知识快照（高优先级）\n"
+        analysis_results_text += yqzk_snapshot_summary
+        analysis_results_text += "\n"
+        methodology_content = (
+            methodology_content
+            + "\n\n【yqzk知识快照补充】\n"
+            + yqzk_snapshot_summary
+        )
+
     collab_summary, has_collab_context = _build_collab_context(json_files)
     if collab_summary:
         analysis_results_text += "\n## 用户协同输入与外部参考（结构化提炼）\n"
@@ -1306,6 +1371,11 @@ def report_html(
 
     template_path = get_report_html_template_path()
     model_error = ""
+    yqzk_warning = ""
+    yqzk_enforce_note = (
+        "\n\n【强制补充】本报告输入已提供 yqzk 知识快照。"
+        "请在理论研判、舆论引导与处置建议、总结复盘中显式引用知识库概念或案例，并与本次数据交叉验证。"
+    )
 
     if template_path:
         try:
@@ -1316,6 +1386,16 @@ def report_html(
                 analysis_results_text=analysis_results_text,
                 methodology_text=methodology_content,
             )
+            if not _has_effective_yqzk_reference(html_content=html_content, has_yqzk_snapshot=has_yqzk_snapshot):
+                html_content = build_html_from_morandi_template(
+                    template_path=template_path,
+                    json_files=json_files,
+                    event_introduction=eventIntroduction,
+                    analysis_results_text=analysis_results_text + yqzk_enforce_note,
+                    methodology_text=methodology_content + yqzk_enforce_note,
+                )
+                if not _has_effective_yqzk_reference(html_content=html_content, has_yqzk_snapshot=has_yqzk_snapshot):
+                    yqzk_warning = "报告已重试生成，但 yqzk 引用仍不足，建议补充更明确的知识库关键词。"
         except Exception as e:
             model_error = f"模板报告生成失败: {str(e)}"
             html_content = _build_fallback_html(
@@ -1389,6 +1469,13 @@ def report_html(
                 "理论/观点优先使用 reference_insights 与 Graph RAG 中真实出现的内容；未出现者不得强行套用。\n"
                 "若证据不足，请明确写“证据不足”。"
             )
+        if has_yqzk_snapshot:
+            prompt += (
+                "\n\n【yqzk强制引用要求】\n"
+                "输入中已提供“舆情智库知识快照（高优先级）”。请在以下至少三处显式引用其概念/案例并与本次数据交叉验证：\n"
+                "1) 理论研判；2) 舆论引导与处置建议；3) 总结复盘。\n"
+                "禁止只复述知识库观点，必须写出“本次数据证据 -> yqzk概念 -> 结论/建议”的链路。"
+            )
         if has_collab_context:
             prompt += (
                 "\n\n【协同输入对齐要求】\n"
@@ -1406,7 +1493,9 @@ def report_html(
             html_content = response.content if hasattr(response, "content") else str(response)
 
             # 质量兜底：过于浅层时进行一次强化重试
-            if _needs_quality_retry(str(html_content)):
+            if _needs_quality_retry(str(html_content)) or (
+                not _has_effective_yqzk_reference(html_content=str(html_content), has_yqzk_snapshot=has_yqzk_snapshot)
+            ):
                 retry_prompt = (
                     prompt
                     + "\n\n【强制质量要求】\n"
@@ -1424,6 +1513,8 @@ def report_html(
                 retry_html = retry_resp.content if hasattr(retry_resp, "content") else str(retry_resp)
                 if retry_html and len(str(retry_html).strip()) >= len(str(html_content).strip()):
                     html_content = retry_html
+            if not _has_effective_yqzk_reference(html_content=str(html_content), has_yqzk_snapshot=has_yqzk_snapshot):
+                yqzk_warning = "报告已重试生成，但 yqzk 引用仍不足，建议补充更明确的知识库关键词。"
         except Exception as e:
             model_error = f"模型生成HTML失败: {str(e)}"
             html_content = _build_fallback_html(
@@ -1478,6 +1569,8 @@ def report_html(
     }
     if model_error:
         result["warning"] = model_error
+    if yqzk_warning:
+        result["yqzk_warning"] = yqzk_warning
 
     # 尝试在默认浏览器中自动打开（失败不影响主流程）
     try:

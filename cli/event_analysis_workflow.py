@@ -8,17 +8,17 @@ import sys
 import webbrowser
 import re
 import hashlib
-import html
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
 import select
 import time
 from typing import Any, Dict, List, Optional, Tuple
-from concurrent.futures import ThreadPoolExecutor, wait
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 
 from rich.console import Console
 from rich.prompt import Prompt
+from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn, TimeElapsedColumn
 
 from tools import (
     extract_search_terms,
@@ -26,6 +26,7 @@ from tools import (
     data_collect,
     analysis_timeline,
     analysis_sentiment,
+    user_portrait,
     keyword_stats,
     region_stats,
     author_stats,
@@ -34,10 +35,12 @@ from tools import (
     generate_interpretation,
     graph_rag_query,
     report_html,
+    weibo_aisearch,
     search_reference_insights,
     build_event_reference_links,
+    load_sentiment_knowledge,
 )
-from utils.path import ensure_task_dirs, get_sandbox_dir
+from utils.path import ensure_task_dirs, get_sandbox_dir, ensure_task_readable_alias
 from utils.task_context import set_task_id
 from utils.session_manager import SessionManager
 
@@ -192,6 +195,33 @@ def _invoke_tool_with_timing(tool_obj: Any, payload: Dict[str, Any]) -> tuple[Di
     return result, elapsed
 
 
+def _invoke_tool_to_json_with_timeout(
+    tool_obj: Any,
+    payload: Dict[str, Any],
+    *,
+    timeout_sec: int,
+    tool_name: str,
+) -> Dict[str, Any]:
+    """
+    为单个工具调用增加超时保护，避免顺序执行场景下某一步无限阻塞。
+    """
+    sec = max(10, min(int(timeout_sec or 120), 3600))
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        fut = pool.submit(_invoke_tool_to_json, tool_obj, payload)
+        try:
+            return fut.result(timeout=sec)
+        except FuturesTimeoutError:
+            return {
+                "error": f"{tool_name} 超时（>{sec}s）",
+                "result_file_path": "",
+            }
+        except Exception as e:
+            return {
+                "error": f"{tool_name} 执行异常: {str(e)}",
+                "result_file_path": "",
+            }
+
+
 def _ensure_analysis_result_file(
     *,
     process_dir: Path,
@@ -234,23 +264,151 @@ def _validate_time_range(time_range: str) -> bool:
 
     if not time_range or ";" not in time_range:
         return False
-    start, end = [x.strip() for x in time_range.split(";", maxsplit=1)]
+    normalized = _normalize_time_range_input(time_range)
+    if not normalized:
+        return False
+    start, end = [x.strip() for x in normalized.split(";", maxsplit=1)]
     if not start or not end:
         return False
+    return True
+
+
+def _normalize_time_range_input(time_range: str) -> str:
+    """
+    规范化 timeRange：
+    - 支持 `YYYY-MM-DD;YYYY-MM-DD`
+    - 支持 `YYYY-MM-DD HH:MM:SS;YYYY-MM-DD HH:MM:SS`
+    - 自动统一输出为 `YYYY-MM-DD HH:MM:SS;YYYY-MM-DD HH:MM:SS`
+    """
+    if not time_range or ";" not in time_range:
+        return ""
+    start_raw, end_raw = [x.strip() for x in time_range.split(";", maxsplit=1)]
+    if not start_raw or not end_raw:
+        return ""
+
     from datetime import datetime as dt
 
-    for value in (start, end):
-        ok = False
-        for fmt in ("%Y-%m-%d %H:%M:%S", "%Y/%m/%d %H:%M:%S", "%Y-%m-%d"):
+    def _parse_one(value: str, *, is_end: bool) -> Optional[dt]:
+        for fmt in ("%Y-%m-%d %H:%M:%S", "%Y/%m/%d %H:%M:%S", "%Y-%m-%d", "%Y/%m/%d"):
             try:
-                dt.strptime(value, fmt)
-                ok = True
-                break
+                parsed = dt.strptime(value, fmt)
+                if fmt in ("%Y-%m-%d", "%Y/%m/%d"):
+                    if is_end:
+                        parsed = parsed.replace(hour=23, minute=59, second=59)
+                    else:
+                        parsed = parsed.replace(hour=0, minute=0, second=0)
+                return parsed
             except Exception:
                 continue
-        if not ok:
-            return False
-    return True
+        return None
+
+    start_dt = _parse_one(start_raw, is_end=False)
+    end_dt = _parse_one(end_raw, is_end=True)
+    if not start_dt or not end_dt or start_dt > end_dt:
+        return ""
+    return f"{start_dt.strftime('%Y-%m-%d %H:%M:%S')};{end_dt.strftime('%Y-%m-%d %H:%M:%S')}"
+
+
+def _time_range_to_user_date_range(time_range: str) -> str:
+    normalized = _normalize_time_range_input(time_range)
+    if not normalized or ";" not in normalized:
+        return time_range
+    start, end = [x.strip() for x in normalized.split(";", maxsplit=1)]
+    return f"{start[:10]};{end[:10]}"
+
+
+def _should_force_sentiment_rerun(user_query: str) -> bool:
+    q = str(user_query or "").strip().lower()
+    keys = (
+        "重新跑情感",
+        "重跑情感",
+        "重新分析情感",
+        "重算情感",
+        "重做情感",
+        "rerun sentiment",
+        "re-run sentiment",
+    )
+    return any(k in q for k in keys)
+
+
+def _count_csv_rows(file_path: str) -> int:
+    try:
+        import csv
+
+        for enc in ("utf-8-sig", "utf-8", "gb18030", "gbk"):
+            try:
+                with open(file_path, "r", encoding=enc, errors="strict") as f:
+                    return sum(1 for _ in csv.DictReader(f))
+            except Exception:
+                continue
+    except Exception:
+        return 0
+    return 0
+
+
+def _normalize_search_words_for_collection(words: List[str], user_query: str) -> List[str]:
+    """
+    采集前关键词增强：
+    - 保留原词
+    - 去掉“舆情分析/事件分析/报告”等后缀，生成更可检索短语
+    - 结合 query 提取候选词，避免单个超长词导致 data_num/data_collect 命中低
+    """
+    base = [str(w or "").strip() for w in words if str(w or "").strip()]
+    q_words = _fallback_search_words_from_query(user_query, max_words=10)
+    extra: List[str] = []
+    suffixes = ("舆情分析", "事件分析", "分析报告", "舆情事件", "事件舆情", "舆情")
+    for w in base:
+        t = w
+        for suf in suffixes:
+            t = t.replace(suf, "")
+        t = re.sub(r"\s+", "", t).strip("，,。.;；:：")
+        if len(t) >= 4:
+            extra.append(t)
+        # 对“大学生高铁骂熊孩子事件”这类长串做轻量切分
+        if len(t) >= 8:
+            for seg in re.findall(r"[\u4e00-\u9fff]{2,6}", t):
+                if len(seg) >= 3:
+                    extra.append(seg)
+    merged = base + extra + q_words
+    dedup: List[str] = []
+    seen = set()
+    for w in merged:
+        k = w.strip().lower()
+        if not k or k in seen:
+            continue
+        seen.add(k)
+        dedup.append(w.strip())
+        if len(dedup) >= 16:
+            break
+    return dedup or base or q_words
+
+
+def _save_collect_manifest(
+    *,
+    process_dir: Path,
+    user_query: str,
+    save_path: str,
+    rows: int,
+    time_range: str,
+    search_words: List[str],
+) -> None:
+    """
+    将本次采集成功结果写入任务内清单，便于后续检索与复用。
+    """
+    try:
+        payload = {
+            "saved_at": datetime.now().isoformat(sep=" "),
+            "user_query": user_query,
+            "save_path": save_path,
+            "rows": rows,
+            "time_range": time_range,
+            "search_words": search_words[:16],
+        }
+        out = process_dir / "collected_dataset_manifest.json"
+        with open(out, "w", encoding="utf-8", errors="replace") as f:
+            json.dump(payload, f, ensure_ascii=False, indent=2)
+    except Exception:
+        return
 
 
 def _build_default_time_range(days: int = 30) -> str:
@@ -260,6 +418,71 @@ def _build_default_time_range(days: int = 30) -> str:
     end = datetime.now().replace(hour=23, minute=59, second=59, microsecond=0) - timedelta(days=1)
     start = end - timedelta(days=days)
     return f"{start.strftime('%Y-%m-%d %H:%M:%S')};{end.strftime('%Y-%m-%d %H:%M:%S')}"
+
+
+def _infer_default_time_range_days(user_query: str) -> int:
+    """
+    为事件分析推断更合理的默认时间窗天数。
+    - 若 query 显式提及“最近一周/两周/一个月/30天/3天/48小时”等，按其含义转换
+    - 否则使用较短窗口（默认 10 天），减少突发事件的数据污染
+    可用环境变量 SONA_DEFAULT_TIME_RANGE_DAYS 覆盖。
+    """
+    # env override
+    try:
+        env_days_raw = str(os.environ.get("SONA_DEFAULT_TIME_RANGE_DAYS", "")).strip()
+        if env_days_raw:
+            return max(2, min(_safe_int(env_days_raw, 10), 60))
+    except Exception:
+        pass
+
+    q = str(user_query or "")
+    q = re.sub(r"\s+", "", q)
+
+    # common CN hints
+    if any(k in q for k in ("最近一月", "最近1个月", "最近一个月", "近一月", "近1个月", "近一个月", "一个月内", "一个月")):
+        return 30
+    if any(k in q for k in ("最近两周", "最近2周", "近两周", "近2周", "两周内")):
+        return 14
+    if any(k in q for k in ("最近一周", "最近1周", "近一周", "近1周", "一周内", "7天")):
+        return 7
+
+    # explicit days like “3天/10天”
+    m = re.search(r"(\d{1,2})天", q)
+    if m:
+        try:
+            return max(2, min(int(m.group(1)), 60))
+        except Exception:
+            pass
+
+    # explicit hours like “48小时/24小时”
+    mh = re.search(r"(\d{1,3})小时", q)
+    if mh:
+        try:
+            hours = int(mh.group(1))
+            return max(2, min((hours + 23) // 24, 60))
+        except Exception:
+            pass
+
+    # 突发事件：默认 3~5 天更贴近真实起点，减少历史噪声污染
+    burst_keywords = (
+        "突发",
+        "怒斥",
+        "怒吼",
+        "冲突",
+        "打人",
+        "纠纷",
+        "热搜",
+        "曝光",
+        "高铁",
+        "地铁",
+        "校园",
+        "熊孩子",
+    )
+    if any(k in q for k in burst_keywords):
+        return max(3, min(_safe_int(os.environ.get("SONA_BURST_EVENT_DAYS", "5"), 5), 7))
+
+    # 默认 10 天
+    return 10
 
 
 def _fallback_search_words_from_query(user_query: str, max_words: int = 6) -> List[str]:
@@ -468,6 +691,59 @@ def _pretty_print_dict(title: str, payload: Dict[str, Any]) -> None:
         console.print("[yellow]（输出已截断）[/yellow]")
 
 
+def _write_text_file(path: Path, text: str) -> None:
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with open(path, "w", encoding="utf-8", errors="replace") as f:
+            f.write(str(text or ""))
+    except Exception:
+        return
+
+
+def _preview_yqzk_snapshot(snapshot: Dict[str, Any]) -> str:
+    """
+    将 yqzk 快照提炼成可读预览，用于控制台与日志。
+    """
+    if not isinstance(snapshot, dict):
+        return ""
+    lines: List[str] = []
+    q = str(snapshot.get("query", "") or "").strip()
+    if q:
+        lines.append(f"query: {q[:120]}")
+
+    knowledge = snapshot.get("knowledge")
+    knowledge_text = json.dumps(knowledge, ensure_ascii=False) if isinstance(knowledge, (dict, list)) else str(knowledge or "")
+    knowledge_text = re.sub(r"\s+", " ", knowledge_text).strip()
+    if knowledge_text:
+        lines.append("knowledge_preview: " + knowledge_text[:260] + ("..." if len(knowledge_text) > 260 else ""))
+
+    refs = snapshot.get("references") if isinstance(snapshot.get("references"), dict) else {}
+    results = refs.get("results") if isinstance(refs, dict) else []
+    if isinstance(results, list) and results:
+        lines.append(f"reference_hits: {len(results)}")
+        for row in results[:3]:
+            if not isinstance(row, dict):
+                continue
+            title = str(row.get("title", "") or "").strip()
+            snippet = str(row.get("snippet", "") or "").strip()
+            if title or snippet:
+                s = (snippet[:160] + ("..." if len(snippet) > 160 else "")) if snippet else ""
+                lines.append(f"- {title[:60]}：{s}")
+    return "\n".join(lines).strip()
+
+
+def _make_progress() -> Progress:
+    return Progress(
+        SpinnerColumn(),
+        TextColumn("[bold]{task.description}[/bold]"),
+        BarColumn(bar_width=None),
+        TextColumn("{task.completed}/{task.total}"),
+        TimeElapsedColumn(),
+        console=console,
+        transient=False,
+    )
+
+
 def _safe_int(value: Any, default: int) -> int:
     try:
         v = int(value)
@@ -491,9 +767,27 @@ def _allow_history_fallback() -> bool:
 def _auto_reuse_history_data_enabled() -> bool:
     """
     历史经验命中后，是否自动复用历史 CSV（跳过 data_num/data_collect）。
-    默认开启，可通过 SONA_AUTO_REUSE_HISTORY_DATA=false 关闭。
+    默认关闭，可通过 SONA_AUTO_REUSE_HISTORY_DATA=true 开启。
     """
-    v = os.environ.get("SONA_AUTO_REUSE_HISTORY_DATA", "true").strip().lower()
+    v = os.environ.get("SONA_AUTO_REUSE_HISTORY_DATA", "false").strip().lower()
+    return v in ("1", "true", "yes", "y", "on")
+
+
+def _experience_reuse_enabled() -> bool:
+    """
+    是否允许复用历史经验（search_plan/collect_plan）。
+    默认关闭，确保每次事件分析都从当前 query 重新开始。
+    """
+    v = os.environ.get("SONA_REUSE_EXPERIENCE", "false").strip().lower()
+    return v in ("1", "true", "yes", "y", "on")
+
+
+def _force_fresh_start_enabled() -> bool:
+    """
+    是否强制每次任务全新开始（不复用历史经验/CSV/分析结果）。
+    默认开启，避免历史小样本污染当前任务。
+    """
+    v = os.environ.get("SONA_FORCE_FRESH_START", "true").strip().lower()
     return v in ("1", "true", "yes", "y", "on")
 
 
@@ -533,7 +827,7 @@ def _analysis_reuse_enabled(kind: str) -> bool:
     key = env_map.get(kind, "")
     if not key:
         return False
-    v = str(os.environ.get(key, "true")).strip().lower()
+    v = str(os.environ.get(key, "false")).strip().lower()
     return v in ("1", "true", "yes", "y", "on")
 
 
@@ -687,61 +981,6 @@ def _find_reusable_analysis_result(
     return {}
 
 
-def _fetch_weibo_aisearch_reference(topic: str, limit: int = 12) -> Dict[str, Any]:
-    """
-    尝试抓取微博智搜页面中的可见文本片段，作为外部参考（best effort）。
-    """
-    query = str(topic or "").strip() or "舆情事件"
-    url = "https://s.weibo.com/aisearch?q=" + re.sub(r"\s+", "%20", query) + "&Refer=weibo_aisearch"
-
-    try:
-        import requests  # type: ignore
-    except Exception as e:
-        return {"topic": query, "url": url, "count": 0, "results": [], "error": f"requests 不可用: {str(e)}"}
-
-    timeout_sec = max(5, min(_safe_int(os.environ.get("SONA_REFERENCE_FETCH_TIMEOUT_SEC", "12"), 12), 60))
-    headers = {
-        "User-Agent": (
-            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-            "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
-        )
-    }
-
-    try:
-        resp = requests.get(url, headers=headers, timeout=timeout_sec)
-        text = resp.text or ""
-    except Exception as e:
-        return {"topic": query, "url": url, "count": 0, "results": [], "error": f"抓取失败: {str(e)}"}
-
-    # 抓取文本块（微博页面结构经常变化，采用宽松正则兜底）
-    blocks = re.findall(r"<p[^>]*class=\"txt\"[^>]*>([\s\S]*?)</p>", text, flags=re.IGNORECASE)
-    if not blocks:
-        blocks = re.findall(r"<a[^>]*href=\"//weibo\\.com/[^\"#]+\"[^>]*>([\s\S]*?)</a>", text, flags=re.IGNORECASE)
-
-    results: List[Dict[str, Any]] = []
-    seen: set[str] = set()
-    for b in blocks:
-        s = re.sub(r"<[^>]+>", " ", b)
-        s = html.unescape(re.sub(r"\s+", " ", s)).strip()
-        if len(s) < 12:
-            continue
-        key = s[:80]
-        if key in seen:
-            continue
-        seen.add(key)
-        results.append({"snippet": s[:220] + ("..." if len(s) > 220 else "")})
-        if len(results) >= max(1, min(limit, 30)):
-            break
-
-    return {
-        "topic": query,
-        "url": url,
-        "count": len(results),
-        "results": results,
-        "fetched_at": datetime.now().isoformat(sep=" "),
-    }
-
-
 def _graph_valid_result_count(block: Any) -> int:
     if not isinstance(block, dict):
         return 0
@@ -796,6 +1035,174 @@ def _build_uniform_search_matrix(search_words: List[str], target_total: int) -> 
     for i in range(remain):
         matrix[words[i % n]] += 1
     return matrix
+
+
+def _sanitize_search_matrix(raw: Any, target_total: int) -> Dict[str, int]:
+    """
+    将 data_num 返回的 search_matrix 清洗为 data_collect 可接受的格式：
+    - key: 非空字符串
+    - value: int 且 >= 1
+    同时尽量让总量贴近 target_total（当 target_total < 关键词数时，保留前 target_total 个词，每个分配 1）。
+    """
+    if not isinstance(raw, dict):
+        return {}
+
+    items: list[tuple[str, int]] = []
+    for k, v in raw.items():
+        key = str(k or "").strip()
+        if not key:
+            continue
+        try:
+            count = int(v)
+        except Exception:
+            continue
+        if count <= 0:
+            continue
+        items.append((key, count))
+
+    if not items:
+        return {}
+
+    # 合并重复 key（理论上不应出现，但防御性处理）
+    merged: Dict[str, int] = {}
+    for key, count in items:
+        merged[key] = merged.get(key, 0) + count
+
+    target = max(1, int(target_total or 1))
+    keys = list(merged.keys())
+    n = len(keys)
+
+    # target 小于关键词数时，无法做到每个>=1且总量<=target：保留“高权重”前 target 个词
+    if target < n:
+        top_keys = [k for k, _ in sorted(merged.items(), key=lambda kv: kv[1], reverse=True)[:target]]
+        return {k: 1 for k in top_keys}
+
+    current_sum = sum(merged.values())
+    if current_sum == target:
+        return merged
+
+    # sum 过小：用轮询补齐
+    if current_sum < target:
+        out = dict(merged)
+        remain = target - current_sum
+        for i in range(remain):
+            out[keys[i % n]] += 1
+        return out
+
+    # sum 过大：按比例缩放，保证每个>=1，再做微调到 target
+    scaled: Dict[str, int] = {}
+    for k in keys:
+        scaled[k] = max(1, int(round(merged[k] * target / current_sum)))
+
+    # 缩放后的和可能偏离 target，做确定性微调
+    sum_scaled = sum(scaled.values())
+    if sum_scaled > target:
+        # 从计数最大的开始减，直到命中 target（保持 >=1）
+        for k, _ in sorted(scaled.items(), key=lambda kv: kv[1], reverse=True):
+            if sum_scaled <= target:
+                break
+            if scaled[k] > 1:
+                scaled[k] -= 1
+                sum_scaled -= 1
+        # 若仍然大于 target（极端情况下全是 1），则截断保留前 target 个
+        if sum_scaled > target:
+            top_keys = [k for k, _ in sorted(scaled.items(), key=lambda kv: kv[1], reverse=True)[:target]]
+            return {k: 1 for k in top_keys}
+        return scaled
+
+    if sum_scaled < target:
+        remain = target - sum_scaled
+        for i in range(remain):
+            scaled[keys[i % n]] += 1
+    return scaled
+
+
+def _fallback_sentiment_from_csv(data_file_path: str) -> Dict[str, Any]:
+    """
+    当 analysis_sentiment 失败时，从原始 CSV 的“情感/情绪/emotion”列做兜底统计。
+    仅提供统计分布（不生成 LLM 摘要），确保报告至少有可用结果。
+    """
+    import csv
+
+    p = str(data_file_path or "").strip()
+    if not p:
+        return {
+            "error": "sentiment fallback 失败：data_file_path 为空",
+            "statistics": {},
+            "positive_summary": [],
+            "negative_summary": [],
+            "result_file_path": "",
+        }
+
+    counts: Dict[str, int] = {}
+    total = 0
+    try:
+        with open(p, "r", encoding="utf-8", errors="replace", newline="") as f:
+            reader = csv.DictReader(f)
+            if not reader.fieldnames:
+                raise ValueError("CSV 无表头")
+
+            # 常见列名：情感 / 情绪 / emotion
+            candidates = ["情感", "情绪", "emotion", "Emotion", "sentiment", "Sentiment"]
+            col = ""
+            for c in candidates:
+                if c in reader.fieldnames:
+                    col = c
+                    break
+            if not col:
+                raise ValueError(f"未找到情感列，fieldnames={reader.fieldnames[:20]}")
+
+            for row in reader:
+                raw = str((row.get(col) or "")).strip()
+                if not raw:
+                    continue
+                total += 1
+                # 归一化：尽量映射为 正面/负面/中性，其余归入 raw
+                v = raw
+                if any(k in raw for k in ("正", "积极", "支持", "好评")):
+                    v = "正面"
+                elif any(k in raw for k in ("负", "消极", "反对", "差评", "骂", "愤怒")):
+                    v = "负面"
+                elif any(k in raw for k in ("中", "一般", "客观", "无明显")):
+                    v = "中性"
+                counts[v] = counts.get(v, 0) + 1
+    except Exception as e:
+        return {
+            "error": f"sentiment fallback 失败：{str(e)}",
+            "statistics": {},
+            "positive_summary": [],
+            "negative_summary": [],
+            "result_file_path": "",
+        }
+
+    if total <= 0:
+        return {
+            "error": "sentiment fallback 无有效情感数据（列为空）",
+            "statistics": {},
+            "positive_summary": [],
+            "negative_summary": [],
+            "result_file_path": "",
+        }
+
+    def _pct(x: int) -> float:
+        return round(100.0 * float(x) / float(total), 2)
+
+    statistics = {
+        "total": total,
+        "distribution": {k: {"count": v, "pct": _pct(v)} for k, v in sorted(counts.items(), key=lambda kv: kv[1], reverse=True)},
+        "positive": {"count": counts.get("正面", 0), "pct": _pct(counts.get("正面", 0))},
+        "negative": {"count": counts.get("负面", 0), "pct": _pct(counts.get("负面", 0))},
+        "neutral": {"count": counts.get("中性", 0), "pct": _pct(counts.get("中性", 0))},
+        "sentiment_source": "existing_column_fallback",
+    }
+
+    return {
+        "error": "",
+        "statistics": statistics,
+        "positive_summary": [],
+        "negative_summary": [],
+        "result_file_path": "",
+    }
 
 
 def _normalize_opt_str(value: Any) -> Optional[str]:
@@ -1005,6 +1412,7 @@ def run_event_analysis_workflow(
     default_threshold: int = 2000,
     existing_data_path: Optional[str] = None,
     skip_data_collect: bool = False,
+    force_fresh_start: Optional[bool] = None,
 ) -> str:
     """
     在 CLI 中运行"4.1 舆情事件分析工作流"。
@@ -1017,6 +1425,7 @@ def run_event_analysis_workflow(
         default_threshold: 默认数据量阈值
         existing_data_path: 已有数据的文件路径（可选，提供后跳过数据采集）
         skip_data_collect: 是否跳过数据采集阶段（与 existing_data_path 配合使用）
+        force_fresh_start: 是否强制全新开始（None 表示按环境变量 SONA_FORCE_FRESH_START）
     
     Returns:
         report_html 生成的 `file_url`（若为空则返回 html 文件路径）。
@@ -1025,11 +1434,45 @@ def run_event_analysis_workflow(
     # 关键：让 tools/* 能读取 task_id 写入过程目录
     set_task_id(task_id)
     process_dir = ensure_task_dirs(task_id)
+    # 进度条：区分“卡死”vs“在跑”（每个工具调用仍同步，但可见当前步骤与耗时）
+    progress = _make_progress()
+    progress_task_id: Optional[int] = None
+    progress_total_steps = 7
+    progress_started = False
+
+    def _progress_start_if_needed(first_desc: str) -> None:
+        nonlocal progress_task_id, progress_started
+        if progress_started:
+            return
+        progress_started = True
+        progress.start()
+        progress_task_id = progress.add_task(first_desc, total=progress_total_steps)
+
+    def _progress_step(desc: str) -> None:
+        if not debug:
+            return
+        _progress_start_if_needed(desc)
+        if progress_task_id is not None:
+            progress.update(progress_task_id, description=desc)
+
+    def _progress_advance() -> None:
+        if progress_task_id is not None:
+            progress.advance(progress_task_id, 1)
+    # 生成可读别名目录（时间+事件+任务），便于在 sandbox 中人工识别
+    try:
+        ensure_task_readable_alias(task_id, user_query)
+    except Exception:
+        pass
 
     collab_mode = _event_collab_mode()
     interactive_session = _is_interactive_session()
     collab_enabled = collab_mode != "auto" and interactive_session
-    collab_timeout_sec = _collab_timeout(24)
+    fresh_start = _force_fresh_start_enabled() if force_fresh_start is None else bool(force_fresh_start)
+    if fresh_start:
+        existing_data_path = None
+        skip_data_collect = False
+    # 第九步需要更充分的人工输入时间：默认 45s，可用 SONA_EVENT_COLLAB_TIMEOUT_SEC 覆盖
+    collab_timeout_sec = _collab_timeout(45)
 
     if debug:
         console.print(f"[green]🔧 进入 EventAnalysisWorkflow[/green] task_id={task_id}")
@@ -1050,11 +1493,12 @@ def run_event_analysis_workflow(
             "interactive_session": interactive_session,
             "collab_enabled": collab_enabled,
             "collab_timeout_sec": collab_timeout_sec,
+            "force_fresh_start": fresh_start,
         },
     )
 
     # ============ 0) 历史经验复用（可跳过 extract） ============
-    best_exp = _find_best_experience(user_query)
+    best_exp = _find_best_experience(user_query) if (_experience_reuse_enabled() and not fresh_start) else None
     # #region debug_log_H9_experience_lookup
     _append_ndjson_log(
         run_id="event_analysis_experience",
@@ -1062,6 +1506,7 @@ def run_event_analysis_workflow(
         location="cli/event_analysis_workflow.py:experience_lookup",
         message="历史经验检索结果",
         data={
+            "reuse_experience_enabled": _experience_reuse_enabled() and (not fresh_start),
             "found": bool(best_exp),
             "similarity": (best_exp or {}).get("_similarity", 0.0),
             "has_search_plan": bool((best_exp or {}).get("search_plan")),
@@ -1153,6 +1598,7 @@ def run_event_analysis_workflow(
 
     if not used_experience:
         step1_start = time.time()
+        _progress_step("Step1: extract_search_terms")
         plan_json = _invoke_tool_to_json(extract_search_terms, {"query": user_query})
         # #region debug_log_H13_step_timing_extract
         _append_ndjson_log(
@@ -1166,8 +1612,9 @@ def run_event_analysis_workflow(
         search_plan = {
             "eventIntroduction": str(plan_json.get("eventIntroduction", "") or ""),
             "searchWords": _to_clean_str_list(plan_json.get("searchWords"), max_items=12),
-            "timeRange": str(plan_json.get("timeRange", "") or ""),
+            "timeRange": _normalize_time_range_input(str(plan_json.get("timeRange", "") or "")),
         }
+        _progress_advance()
 
         if not search_plan["searchWords"]:
             fallback_words = _fallback_search_words_from_query(user_query)
@@ -1185,7 +1632,8 @@ def run_event_analysis_workflow(
             else:
                 raise ValueError("searchWords 为空，且无法从 query 提取兜底关键词")
         if not _validate_time_range(search_plan["timeRange"]):
-            fallback_time_range = _build_default_time_range(30)
+            fallback_days = _infer_default_time_range_days(user_query)
+            fallback_time_range = _build_default_time_range(fallback_days)
             search_plan["timeRange"] = fallback_time_range
             # #region debug_log_H29_time_range_fallback
             _append_ndjson_log(
@@ -1193,7 +1641,7 @@ def run_event_analysis_workflow(
                 hypothesis_id="H29_time_range_fallback",
                 location="cli/event_analysis_workflow.py:extract_time_range_fallback",
                 message="extract_search_terms 返回非法 timeRange，已回退默认时间范围",
-                data={"fallback_time_range": fallback_time_range},
+                data={"fallback_time_range": fallback_time_range, "fallback_days": fallback_days},
             )
             # #endregion debug_log_H29_time_range_fallback
 
@@ -1210,7 +1658,7 @@ def run_event_analysis_workflow(
             "keywords_join_with": ";",
             "platforms": ["微博"],
             "time_range": search_plan["timeRange"],
-            "return_count": min(_safe_int(os.environ.get("SONA_RETURN_COUNT", ""), 2000), 10000),
+            "return_count": max(200, min(_safe_int(os.environ.get("SONA_RETURN_COUNT", ""), 2000), 10000)),
             "data_num_workers": max(
                 1,
                 min(
@@ -1247,14 +1695,15 @@ def run_event_analysis_workflow(
             else:
                 raise ValueError("复用经验失败：searchWords 为空，且无法从 query 兜底")
         if not _validate_time_range(str(search_plan.get("timeRange", ""))):
-            search_plan["timeRange"] = _build_default_time_range(30)
+            fallback_days = _infer_default_time_range_days(user_query)
+            search_plan["timeRange"] = _build_default_time_range(fallback_days)
         suggested_collect_plan = {
             "keyword_combination_mode": str(suggested_collect_plan.get("keyword_combination_mode") or "逐词检索并合并（当前实现）"),
             "boolean_strategy": str(suggested_collect_plan.get("boolean_strategy") or "OR（当前实现：各词分别检索再合并）"),
             "keywords_join_with": ";",
             "platforms": suggested_collect_plan.get("platforms") or ["微博"],
-            "time_range": str(suggested_collect_plan.get("time_range") or search_plan["timeRange"]),
-            "return_count": max(1, min(_safe_int(suggested_collect_plan.get("return_count"), 2000), 10000)),
+            "time_range": _normalize_time_range_input(str(suggested_collect_plan.get("time_range") or search_plan["timeRange"])) or search_plan["timeRange"],
+            "return_count": max(200, min(_safe_int(suggested_collect_plan.get("return_count"), 2000), 10000)),
             "data_num_workers": max(1, min(_safe_int(suggested_collect_plan.get("data_num_workers"), 4), 8)),
             "data_collect_workers": max(1, min(_safe_int(suggested_collect_plan.get("data_collect_workers"), 3), 8)),
             "analysis_workers": max(1, min(_safe_int(suggested_collect_plan.get("analysis_workers"), 2), 8)),
@@ -1311,13 +1760,14 @@ def run_event_analysis_workflow(
 
         # timeRange
         time_range_in = Prompt.ask(
-            "修改 timeRange（形如 YYYY-MM-DD HH:MM:SS;YYYY-MM-DD HH:MM:SS；不填则默认）",
-            default=str(suggested_collect_plan["time_range"]),
-        ).strip() or str(suggested_collect_plan["time_range"])
-        if not _validate_time_range(time_range_in):
+            "修改 timeRange（形如 YYYY-MM-DD;YYYY-MM-DD；不填则默认）",
+            default=_time_range_to_user_date_range(str(suggested_collect_plan["time_range"])),
+        ).strip() or _time_range_to_user_date_range(str(suggested_collect_plan["time_range"]))
+        normalized_time_range = _normalize_time_range_input(time_range_in)
+        if not _validate_time_range(normalized_time_range):
             console.print("[red]修改后的 timeRange 格式不合法，已忽略本次 timeRange 修改[/red]")
         else:
-            suggested_collect_plan["time_range"] = time_range_in
+            suggested_collect_plan["time_range"] = normalized_time_range
 
         # boolean strategy（目前仅影响我们如何拼接 searchWords 给 data_num）
         boolean_in = Prompt.ask(
@@ -1435,6 +1885,7 @@ def run_event_analysis_workflow(
         # 正常数据采集流程
         if debug:
             console.print("[bold]Step3: data_num[/bold]")
+        _progress_step("Step3: data_num")
 
         platforms = suggested_collect_plan.get("platforms") or ["微博"]
         platform = str(platforms[0]) if platforms else "微博"
@@ -1478,10 +1929,11 @@ def run_event_analysis_workflow(
         # 根据布尔策略组装关键词
         boolean_strategy = str(suggested_collect_plan.get("boolean_strategy") or "")
         boolean_mode = "AND" if boolean_strategy.upper().startswith("AND") else "OR"
+        search_words_for_collect = _normalize_search_words_for_collection(search_plan["searchWords"], user_query)
         if boolean_mode == "AND":
-            tool_search_words: List[str] = [";".join(search_plan["searchWords"])]
+            tool_search_words: List[str] = [";".join(search_words_for_collect)]
         else:
-            tool_search_words = search_plan["searchWords"]
+            tool_search_words = search_words_for_collect
 
         # #region debug_log_H3_tool_args_built
         _append_ndjson_log(
@@ -1521,7 +1973,7 @@ def run_event_analysis_workflow(
         # #endregion debug_log_H16_step_timing_data_num
 
         search_matrix_raw = matrix_json.get("search_matrix")
-        search_matrix = search_matrix_raw if isinstance(search_matrix_raw, dict) else {}
+        search_matrix = _sanitize_search_matrix(search_matrix_raw, return_count)
         time_range_used = matrix_json.get("time_range") or suggested_collect_plan["time_range"]
 
         # data_num 失败时优先降级为“均分采集矩阵”，避免直接回退历史数据
@@ -1587,6 +2039,8 @@ def run_event_analysis_workflow(
         if not skip_data_collect:
             if debug:
                 console.print("[bold]Step5: data_collect[/bold]")
+            _progress_advance()
+            _progress_step("Step4: data_collect")
 
             collect_json, data_collect_elapsed = _invoke_tool_with_timing(
                 data_collect,
@@ -1614,7 +2068,77 @@ def run_event_analysis_workflow(
             except Exception:
                 resolved_collect_path = ""
 
-            if collect_error or not resolved_collect_path or not Path(resolved_collect_path).exists():
+            collected_rows = _count_csv_rows(resolved_collect_path) if resolved_collect_path and Path(resolved_collect_path).exists() else 0
+            if collect_error or not resolved_collect_path or not Path(resolved_collect_path).exists() or collected_rows <= 0:
+                # 先做“当前任务内自动重试”，避免在关闭历史回退时直接失败
+                retry_collect_path = ""
+                retry_collect_rows = 0
+                retry_collect_error = ""
+                try:
+                    retry_days = max(14, _infer_default_time_range_days(user_query) + 7)
+                    retry_time_range = _build_default_time_range(retry_days)
+                    retry_threshold = max(_safe_int(suggested_collect_plan.get("return_count"), 2000), 1200)
+                    retry_words = _normalize_search_words_for_collection(
+                        search_plan.get("searchWords", []),
+                        user_query,
+                    )
+                    retry_matrix = _build_uniform_search_matrix(retry_words, retry_threshold)
+                    if retry_matrix:
+                        retry_json: Dict[str, Any] = {}
+                        retry_elapsed = 0.0
+                        # 两档重试：先用扩窗，再用更大阈值
+                        for multiplier in (1, 2):
+                            matrix_try = _build_uniform_search_matrix(retry_words, retry_threshold * multiplier)
+                            retry_json, retry_elapsed = _invoke_tool_with_timing(
+                                data_collect,
+                                {
+                                    "searchMatrix": json.dumps(matrix_try, ensure_ascii=False),
+                                    "timeRange": retry_time_range,
+                                    "platform": platform,
+                                },
+                            )
+                            retry_collect_error = str(retry_json.get("error") or "").strip()
+                            retry_save_raw = str(retry_json.get("save_path") or "")
+                            retry_collect_path = _resolve_to_csv_path(retry_save_raw) if retry_save_raw else ""
+                            retry_collect_rows = _count_csv_rows(retry_collect_path) if retry_collect_path and Path(retry_collect_path).exists() else 0
+                            if retry_collect_path and retry_collect_rows > 0:
+                                break
+                        _append_ndjson_log(
+                            run_id="event_analysis_data_collect",
+                            hypothesis_id="H45_data_collect_retry_without_history_fallback",
+                            location="cli/event_analysis_workflow.py:data_collect_retry_no_history",
+                            message="data_collect 首次失败后已执行本任务自动重试采集",
+                            data={
+                                "retry_elapsed_sec": retry_elapsed,
+                                "retry_time_range": retry_time_range,
+                                "retry_threshold": retry_threshold,
+                                "retry_words": retry_words[:8],
+                                "retry_rows": retry_collect_rows,
+                                "retry_error": retry_collect_error[:300],
+                            },
+                        )
+                except Exception as e:
+                    _append_ndjson_log(
+                        run_id="event_analysis_data_collect",
+                        hypothesis_id="H45_data_collect_retry_without_history_fallback",
+                        location="cli/event_analysis_workflow.py:data_collect_retry_no_history_exception",
+                        message="data_collect 自动重试异常",
+                        data={"error": str(e)},
+                    )
+
+                if retry_collect_path and retry_collect_rows > 0:
+                    save_path = retry_collect_path
+                    collect_error = ""
+                    resolved_collect_path = retry_collect_path
+                    collected_rows = retry_collect_rows
+                    if debug:
+                        console.print(
+                            f"[green]♻️ data_collect 自动重试成功[/green] rows={retry_collect_rows} save_path={save_path}"
+                        )
+                else:
+                    collect_error = collect_error or retry_collect_error
+
+            if collect_error or not resolved_collect_path or collected_rows <= 0:
                 if not _allow_history_fallback():
                     err_msg = collect_error or f"data_collect 未返回有效 save_path: {save_path_raw}"
                     raise ValueError(
@@ -1654,6 +2178,7 @@ def run_event_analysis_workflow(
                     raise ValueError(f"{err_msg}；且无可复用历史数据")
             else:
                 save_path = resolved_collect_path
+            _progress_advance()
 
             # #region debug_log_H26_data_collect_result_path
             _append_ndjson_log(
@@ -1679,9 +2204,116 @@ def run_event_analysis_workflow(
         if debug:
             console.print(f"[green]✅ 跳过数据采集，使用已有数据[/green] save_path={save_path}")
 
+    # 若样本过小，给出明确告警（避免把低样本直接当结论）
+    min_samples = max(20, min(_safe_int(os.environ.get("SONA_MIN_SAMPLE_WARN", "80"), 80), 1000))
+    sample_rows = _count_csv_rows(save_path) if save_path else 0
+    if sample_rows > 0 and save_path:
+        _save_collect_manifest(
+            process_dir=process_dir,
+            user_query=user_query,
+            save_path=save_path,
+            rows=sample_rows,
+            time_range=str(suggested_collect_plan.get("time_range") or search_plan.get("timeRange") or ""),
+            search_words=search_plan.get("searchWords", []),
+        )
+    if sample_rows and sample_rows < min_samples:
+        console.print(
+            f"[yellow]⚠️ 当前样本量仅 {sample_rows} 条，低于建议阈值 {min_samples}；建议扩大时间范围或提高 return_count 后重跑。[/yellow]"
+        )
+        _append_ndjson_log(
+            run_id="event_analysis_data_quality",
+            hypothesis_id="H42_low_sample_warning",
+            location="cli/event_analysis_workflow.py:low_sample_warning",
+            message="样本量低于建议阈值，已提示用户",
+            data={"sample_rows": sample_rows, "min_samples": min_samples, "save_path": save_path},
+        )
+        # 自动尝试扩窗重采（仅在本轮为新采集场景）
+        if (not skip_data_collect) and (not existing_data_path):
+            try:
+                hard_min_samples = max(20, min(_safe_int(os.environ.get("SONA_MIN_SAMPLE_HARD", "70"), 70), 2000))
+                max_retry_rounds = max(1, min(_safe_int(os.environ.get("SONA_LOW_SAMPLE_RETRY_ROUNDS", "2"), 2), 4))
+                base_days = _infer_default_time_range_days(user_query)
+                retry_threshold_base = max(
+                    _safe_int(suggested_collect_plan.get("return_count"), 2000),
+                    hard_min_samples * 6,
+                )
+                for round_idx in range(1, max_retry_rounds + 1):
+                    if sample_rows >= hard_min_samples:
+                        break
+                    retry_days = max(10, base_days + 7 * round_idx)
+                    retry_time_range = _build_default_time_range(retry_days)
+                    retry_threshold = int(retry_threshold_base * (1 + 0.5 * (round_idx - 1)))
+                    retry_matrix = _build_uniform_search_matrix(search_plan.get("searchWords", []), retry_threshold)
+                    retry_collect = _invoke_tool_to_json(
+                        data_collect,
+                        {
+                            "searchMatrix": json.dumps(retry_matrix, ensure_ascii=False),
+                            "timeRange": retry_time_range,
+                            "platform": "微博",
+                        },
+                    )
+                    retry_path = _resolve_to_csv_path(str(retry_collect.get("save_path") or ""))
+                    retry_rows = _count_csv_rows(retry_path) if retry_path else 0
+                    old_rows = sample_rows
+                    if retry_path and retry_rows > sample_rows:
+                        save_path = retry_path
+                        sample_rows = retry_rows
+                        console.print(
+                            f"[green]♻️ 第 {round_idx} 轮扩窗重采：{retry_rows} 条（原 {old_rows} 条）[/green]"
+                        )
+                    _append_ndjson_log(
+                        run_id="event_analysis_data_quality",
+                        hypothesis_id="H44_low_sample_auto_retry_collect",
+                        location="cli/event_analysis_workflow.py:low_sample_retry_collect",
+                        message="低样本扩窗重采尝试完成",
+                        data={
+                            "round": round_idx,
+                            "retry_time_range": retry_time_range,
+                            "retry_threshold": retry_threshold,
+                            "retry_rows": retry_rows,
+                            "retry_path": retry_path,
+                            "sample_rows_after_round": sample_rows,
+                            "hard_min_samples": hard_min_samples,
+                        },
+                    )
+                if sample_rows < hard_min_samples:
+                    console.print(
+                        f"[yellow]⚠️ 重采后样本仍偏低：{sample_rows}（目标≥{hard_min_samples}）。建议手动扩展检索词后再跑。[/yellow]"
+                    )
+            except Exception as e:
+                _append_ndjson_log(
+                    run_id="event_analysis_data_quality",
+                    hypothesis_id="H44_low_sample_auto_retry_collect",
+                    location="cli/event_analysis_workflow.py:low_sample_retry_collect_exception",
+                    message="低样本扩窗重采失败，已跳过",
+                    data={"error": str(e)},
+                )
+
+    # 低样本硬中止：避免低质量报告落盘
+    min_samples_hard_fail = max(20, min(_safe_int(os.environ.get("SONA_MIN_SAMPLE_HARD_FAIL", "200"), 200), 5000))
+    if sample_rows < min_samples_hard_fail:
+        fail_msg = (
+            f"当前样本量仅 {sample_rows} 条（阈值 {min_samples_hard_fail}），"
+            "请先补采样本。"
+        )
+        console.print(f"[red]⛔ {fail_msg}[/red]")
+        _append_ndjson_log(
+            run_id="event_analysis_data_quality",
+            hypothesis_id="H46_low_sample_hard_fail",
+            location="cli/event_analysis_workflow.py:low_sample_hard_fail",
+            message="样本量低于硬阈值，已中止报告生成",
+            data={
+                "sample_rows": sample_rows,
+                "min_samples_hard_fail": min_samples_hard_fail,
+                "save_path": save_path,
+            },
+        )
+        raise ValueError(fail_msg)
+
     # ============ 6) dataset_summary ============
     if debug:
         console.print("[bold]Step6: dataset_summary[/bold]")
+    _progress_step("Step5: dataset_summary")
 
     ds_json = _invoke_tool_to_json(dataset_summary, {"save_path": save_path})
     dataset_summary_path = str(ds_json.get("result_file_path") or "")
@@ -1697,7 +2329,7 @@ def run_event_analysis_workflow(
             keyword_stats,
             {
                 "dataFilePath": save_path,
-                "top_n": 20,
+                "top_n": 200,
                 "min_len": 2,
             },
         )
@@ -1767,9 +2399,12 @@ def run_event_analysis_workflow(
             data={"error": str(e)},
         )
 
-    # ============ 7) 舆情分析（timeline + sentiment，并发执行） ============
+    # ============ 7) 舆情分析（timeline + sentiment，顺序执行） ============
     if debug:
-        console.print("[bold]Step7/8: analysis_timeline + analysis_sentiment (并发)[/bold]")
+        console.print("[bold]Step7: analysis_timeline[/bold]")
+        console.print("[bold]Step8: analysis_sentiment[/bold]")
+    _progress_advance()
+    _progress_step("Step6: timeline + sentiment")
 
     analysis_start = time.time()
     single_timing: Dict[str, float] = {"timeline_sec": 0.0, "sentiment_sec": 0.0}
@@ -1782,7 +2417,7 @@ def run_event_analysis_workflow(
         preferred_task_id = str(best_exp.get("task_id") or "").strip()
 
     # 先尝试复用历史分析，节省 token 与时延
-    if _analysis_reuse_enabled("timeline"):
+    if (not fresh_start) and _analysis_reuse_enabled("timeline"):
         reused_timeline = _find_reusable_analysis_result(
             kind="timeline",
             save_path=save_path,
@@ -1795,7 +2430,7 @@ def run_event_analysis_workflow(
             if debug:
                 console.print(f"[green]♻️ 复用历史 timeline 分析[/green] from_task={reused_timeline.get('_reused_from_task_id', '')}")
 
-    if _analysis_reuse_enabled("sentiment"):
+    if (not fresh_start) and _analysis_reuse_enabled("sentiment"):
         reused_sentiment = _find_reusable_analysis_result(
             kind="sentiment",
             save_path=save_path,
@@ -1808,160 +2443,78 @@ def run_event_analysis_workflow(
             if debug:
                 console.print(f"[green]♻️ 复用历史 sentiment 分析[/green] from_task={reused_sentiment.get('_reused_from_task_id', '')}")
 
-    def _run_timeline() -> Dict[str, Any]:
+    # 先 timeline
+    timeline_timeout_sec = max(30, min(_safe_int(os.environ.get("SONA_TIMELINE_TIMEOUT_SEC", "240"), 240), 3600))
+    sentiment_timeout_sec = max(30, min(_safe_int(os.environ.get("SONA_SENTIMENT_TIMEOUT_SEC", "300"), 300), 3600))
+
+    if not reused_flags["timeline"]:
         t0 = time.time()
-        res = _invoke_tool_to_json(
+        timeline_json = _invoke_tool_to_json_with_timeout(
             analysis_timeline,
             {"eventIntroduction": search_plan["eventIntroduction"], "dataFilePath": save_path},
+            timeout_sec=timeline_timeout_sec,
+            tool_name="analysis_timeline",
         )
+        if str(timeline_json.get("error", "") or "").strip():
+            timeline_json = {
+                "error": str(timeline_json.get("error", "") or "analysis_timeline 执行失败"),
+                "timeline": [],
+                "summary": "",
+                "result_file_path": "",
+            }
         single_timing["timeline_sec"] = round(time.time() - t0, 3)
-        return res
+    else:
+        if debug:
+            console.print("[green]♻️ timeline 已复用历史结果[/green]")
 
-    def _run_sentiment() -> Dict[str, Any]:
+    # 再 sentiment（失败则用 CSV 情感列兜底）
+    if not reused_flags["sentiment"]:
         t0 = time.time()
-        res = _invoke_tool_to_json(
+        force_sentiment_rerun = _should_force_sentiment_rerun(user_query)
+        sentiment_json = _invoke_tool_to_json_with_timeout(
             analysis_sentiment,
             {
                 "eventIntroduction": search_plan["eventIntroduction"],
                 "dataFilePath": save_path,
-                # 默认全量重判帖文情感，避免直接复用原始情感列导致结果“固定不变”。
-                "preferExistingSentimentColumn": False,
+                # 默认优先复用抓取数据情感列，仅在用户明确要求时全量重判。
+                "preferExistingSentimentColumn": (not force_sentiment_rerun),
             },
+            timeout_sec=sentiment_timeout_sec,
+            tool_name="analysis_sentiment",
         )
+        if str(sentiment_json.get("error", "") or "").strip():
+            sentiment_json = {
+                "error": str(sentiment_json.get("error", "") or "analysis_sentiment 执行失败"),
+                "statistics": {},
+                "positive_summary": [],
+                "negative_summary": [],
+                "result_file_path": "",
+            }
         single_timing["sentiment_sec"] = round(time.time() - t0, 3)
-        return res
 
-    pending_jobs: List[str] = []
-    if not reused_flags["timeline"]:
-        pending_jobs.append("timeline")
-    if not reused_flags["sentiment"]:
-        pending_jobs.append("sentiment")
-
-    max_workers_env = max(1, min(_safe_int(os.environ.get("SONA_ANALYSIS_MAX_WORKERS", "4"), 4), 8))
-    max_workers = max(1, min(max_workers_env, max(1, len(pending_jobs))))
-    per_tool_timeout = max(
-        30,
-        min(_safe_int(os.environ.get("SONA_ANALYSIS_PER_TOOL_TIMEOUT_SEC", "120"), 120), 1800),
-    )
-    explicit_timeout_raw = str(os.environ.get("SONA_ANALYSIS_TIMEOUT_SEC", "")).strip()
-    if explicit_timeout_raw:
-        analysis_timeout_sec = max(30, min(_safe_int(explicit_timeout_raw, 240), 3600))
-    else:
-        analysis_timeout_sec = max(60, min(per_tool_timeout * max(1, len(pending_jobs)) + 60, 3600))
-
-    if debug:
-        console.print(
-            f"[dim]分析阶段超时保护: total={analysis_timeout_sec}s, per_tool={per_tool_timeout}s, pending={len(pending_jobs)}[/dim]"
-        )
-
-    if pending_jobs:
-        pool = ThreadPoolExecutor(max_workers=max_workers)
-        try:
-            futures: Dict[str, Any] = {}
-            if "timeline" in pending_jobs:
-                futures["timeline"] = pool.submit(_run_timeline)
-            if "sentiment" in pending_jobs:
-                futures["sentiment"] = pool.submit(_run_sentiment)
-
-            done, not_done = wait(list(futures.values()), timeout=analysis_timeout_sec)
-
-            if "timeline" in futures:
-                ft = futures["timeline"]
-                if ft in done:
-                    try:
-                        timeline_json = ft.result()
-                    except Exception as e:
-                        timeline_json = {
-                            "error": f"analysis_timeline 并发执行异常: {str(e)}",
-                            "timeline": [],
-                            "summary": "",
-                            "result_file_path": "",
-                        }
-                        _append_ndjson_log(
-                            run_id="event_analysis_parallel_analysis",
-                            hypothesis_id="H23_timeline_future_exception",
-                            location="cli/event_analysis_workflow.py:timeline_future_exception",
-                            message="analysis_timeline 并发 future 异常，进入 fallback",
-                            data={"error": str(e)},
-                        )
-                else:
-                    single_timing["timeline_sec"] = round(time.time() - analysis_start, 3)
-                    timeline_json = {
-                        "error": f"analysis_timeline 超时（>{analysis_timeout_sec}s），已跳过并继续流程",
-                        "timeline": [],
-                        "summary": "",
-                        "result_file_path": "",
-                    }
-                    ft.cancel()
-                    _append_ndjson_log(
-                        run_id="event_analysis_parallel_analysis",
-                        hypothesis_id="H33_analysis_future_timeout",
-                        location="cli/event_analysis_workflow.py:timeline_future_timeout",
-                        message="analysis_timeline 超时，已降级继续流程",
-                        data={
-                            "timeout_sec": analysis_timeout_sec,
-                            "done_count": len(done),
-                            "pending_count": len(not_done),
-                        },
-                    )
-
-            if "sentiment" in futures:
-                fs = futures["sentiment"]
-                if fs in done:
-                    try:
-                        sentiment_json = fs.result()
-                    except Exception as e:
-                        sentiment_json = {
-                            "error": f"analysis_sentiment 并发执行异常: {str(e)}",
-                            "statistics": {},
-                            "positive_summary": [],
-                            "negative_summary": [],
-                            "result_file_path": "",
-                        }
-                        _append_ndjson_log(
-                            run_id="event_analysis_parallel_analysis",
-                            hypothesis_id="H24_sentiment_future_exception",
-                            location="cli/event_analysis_workflow.py:sentiment_future_exception",
-                            message="analysis_sentiment 并发 future 异常，进入 fallback",
-                            data={"error": str(e)},
-                        )
-                else:
-                    single_timing["sentiment_sec"] = round(time.time() - analysis_start, 3)
-                    sentiment_json = {
-                        "error": f"analysis_sentiment 超时（>{analysis_timeout_sec}s），已跳过并继续流程",
-                        "statistics": {},
-                        "positive_summary": [],
-                        "negative_summary": [],
-                        "result_file_path": "",
-                    }
-                    fs.cancel()
-                    _append_ndjson_log(
-                        run_id="event_analysis_parallel_analysis",
-                        hypothesis_id="H33_analysis_future_timeout",
-                        location="cli/event_analysis_workflow.py:sentiment_future_timeout",
-                        message="analysis_sentiment 超时，已降级继续流程",
-                        data={
-                            "timeout_sec": analysis_timeout_sec,
-                            "done_count": len(done),
-                            "pending_count": len(not_done),
-                        },
-                    )
-        finally:
-            # 不等待卡住的子线程，避免主流程在 Step7/8 无期限阻塞。
-            pool.shutdown(wait=False, cancel_futures=True)
+        if str(sentiment_json.get("error", "") or "").strip() and save_path:
+            fallback_json = _fallback_sentiment_from_csv(save_path)
+            if not str(fallback_json.get("error", "") or "").strip():
+                sentiment_json = fallback_json
+                _append_ndjson_log(
+                    run_id="event_analysis_sentiment",
+                    hypothesis_id="H36_sentiment_fallback_from_existing_column",
+                    location="cli/event_analysis_workflow.py:sentiment_fallback_existing_column",
+                    message="analysis_sentiment 失败，已用 CSV 情感列生成兜底统计",
+                    data={"data_file_path": save_path},
+                )
     else:
         if debug:
-            console.print("[green]✅ 分析步骤已全部复用历史结果，无需重跑[/green]")
+            console.print("[green]♻️ sentiment 已复用历史结果[/green]")
+
     # #region debug_log_H15_step_timing_parallel_analysis
     _append_ndjson_log(
         run_id="event_analysis_timing",
         hypothesis_id="H15_step_timing_parallel_analysis",
         location="cli/event_analysis_workflow.py:after_parallel_analysis",
-        message="并发分析耗时",
+        message="分析耗时（顺序执行）",
         data={
             "elapsed_sec": round(time.time() - analysis_start, 3),
-            "max_workers": max_workers,
-            "timeout_sec": analysis_timeout_sec,
             "timeline_sec": single_timing["timeline_sec"],
             "sentiment_sec": single_timing["sentiment_sec"],
         },
@@ -1987,6 +2540,41 @@ def run_event_analysis_workflow(
     )
     # #endregion debug_log_H25_analysis_result_paths
 
+    # ============ 7.4) 舆情智库知识快照（报告/研判/复盘统一参考） ============
+    try:
+        yqzk_query = f"方法论 历史对比 事件复盘 {search_plan.get('eventIntroduction', user_query)}".strip()
+        yqzk_primary = _invoke_tool_to_json(
+            load_sentiment_knowledge,
+            {"keyword": yqzk_query},
+        )
+        yqzk_ref = _invoke_tool_to_json(
+            search_reference_insights,
+            {"query": yqzk_query, "limit": 10},
+        )
+        yqzk_snapshot = {
+            "query": yqzk_query,
+            "knowledge": yqzk_primary,
+            "references": yqzk_ref,
+            "created_at": datetime.now().isoformat(sep=" "),
+        }
+        yqzk_snapshot_path = process_dir / "yqzk_knowledge_snapshot.json"
+        with open(yqzk_snapshot_path, "w", encoding="utf-8", errors="replace") as f:
+            json.dump(yqzk_snapshot, f, ensure_ascii=False, indent=2)
+        preview = _preview_yqzk_snapshot(yqzk_snapshot)
+        if preview:
+            _write_text_file(process_dir / "yqzk_recall_preview.txt", preview)
+            if debug:
+                console.print("[dim]yqzk 召回预览（用于核验报告引用）[/dim]")
+                console.print(f"[dim]{preview}[/dim]")
+    except Exception as e:
+        _append_ndjson_log(
+            run_id="event_analysis_yqzk",
+            hypothesis_id="H43_yqzk_snapshot_optional",
+            location="cli/event_analysis_workflow.py:yqzk_snapshot",
+            message="yqzk 快照构建失败，已跳过",
+            data={"error": str(e)},
+        )
+
     # ============ 8) 初步解读（interpretation.json） ============
     # ============ 7.5) 声量分析（可选，失败可跳过） ============
     if debug:
@@ -2010,6 +2598,31 @@ def run_event_analysis_workflow(
             hypothesis_id="H36_volume_stats_optional_skip_on_error",
             location="cli/event_analysis_workflow.py:volume_stats_optional",
             message="volume_stats 执行失败，已按可选步骤跳过",
+            data={"error": str(e)},
+        )
+
+    # ============ 8.5) 用户画像（可选，失败可跳过） ============
+    if debug:
+        console.print("[bold]Step8.5: user_portrait (optional)[/bold]")
+    try:
+        portrait_json = _invoke_tool_to_json(
+            user_portrait,
+            {
+                "dataFilePath": save_path,
+                "sentimentResultPath": sentiment_path,
+            },
+        )
+        portrait_path = str(portrait_json.get("result_file_path") or "")
+        if debug and portrait_path:
+            console.print(f"[green]✅ 用户画像完成[/green] result_file_path={portrait_path}")
+    except Exception as e:
+        if debug:
+            console.print("[yellow]⚠️ user_portrait 执行失败，已跳过，不影响后续流程[/yellow]")
+        _append_ndjson_log(
+            run_id="event_analysis_user_portrait",
+            hypothesis_id="H41_user_portrait_optional_skip_on_error",
+            location="cli/event_analysis_workflow.py:user_portrait_optional",
+            message="user_portrait 执行失败，已按可选步骤跳过",
             data={"error": str(e)},
         )
 
@@ -2133,7 +2746,10 @@ def run_event_analysis_workflow(
         )
         if enable_weibo_ref:
             weibo_topic = str(search_plan.get("eventIntroduction") or user_query).strip() or user_query
-            weibo_ref_json = _fetch_weibo_aisearch_reference(weibo_topic, limit=12)
+            weibo_ref_json = _invoke_tool_to_json(
+                weibo_aisearch,
+                {"query": weibo_topic, "limit": 12},
+            )
             with open(weibo_ref_path, "w", encoding="utf-8", errors="replace") as f:
                 json.dump(weibo_ref_json, f, ensure_ascii=False, indent=2)
 
@@ -2472,6 +3088,8 @@ def run_event_analysis_workflow(
     # ============ 10) 报告生成（report_html） ============
     if debug:
         console.print("[bold]Step11: report_html[/bold]")
+    _progress_advance()
+    _progress_step("Step7: report_html")
 
     report_json = _invoke_tool_to_json(
         report_html,
@@ -2506,4 +3124,60 @@ def run_event_analysis_workflow(
 
     console.print()
     console.print(f"[green]✅ {final_msg}[/green]")
+    try:
+        if progress_started:
+            _progress_advance()
+            progress.stop()
+    except Exception:
+        pass
     return file_url or html_file_path
+
+
+def run_full_report_mode(
+    *,
+    user_query: str,
+    task_id: str,
+    session_manager: SessionManager,
+    debug: bool = True,
+    existing_data_path: Optional[str] = None,
+    skip_data_collect: bool = False,
+    force_fresh_start: Optional[bool] = None,
+) -> str:
+    """
+    可复用节点：完整报告模式（供 Agent full_report 模式复用）。
+    """
+    return run_event_analysis_workflow(
+        user_query=user_query,
+        task_id=task_id,
+        session_manager=session_manager,
+        debug=debug,
+        existing_data_path=existing_data_path,
+        skip_data_collect=skip_data_collect,
+        force_fresh_start=force_fresh_start,
+    )
+
+
+def run_brief_mode(user_query: str) -> Dict[str, Any]:
+    """
+    可复用节点：轻量概述模式（仅提取事件简介/关键词/时间范围）。
+    """
+    raw = extract_search_terms.invoke({"query": user_query})
+    raw_text = raw if isinstance(raw, str) else str(raw)
+    try:
+        parsed = json.loads(raw_text)
+        if isinstance(parsed, dict):
+            # 简要模式也补一层 yqzk 参考，提升历史对比与方法论一致性
+            try:
+                ref = _invoke_tool_to_json(search_reference_insights, {"query": user_query, "limit": 3})
+                parsed["yqzk_reference"] = ref
+            except Exception:
+                pass
+            return parsed
+    except Exception:
+        pass
+    return {
+        "eventIntroduction": "",
+        "searchWords": [],
+        "timeRange": "",
+        "raw": raw_text,
+    }

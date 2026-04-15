@@ -39,9 +39,10 @@
             border-radius: 0 0 20px 20px;
             box-shadow: 0 10px 30px rgba(74, 111, 165, 0.2);
         }
+        .header-content { text-align: center; }
         .event-title { font-size: 2.6rem; font-weight: 800; margin-bottom: 10px; }
-        .event-subtitle { font-size: 1.25rem; opacity: 0.9; max-width: 1000px; }
-        .badge-group { display: flex; gap: 10px; margin-top: 20px; flex-wrap: wrap; }
+        .event-subtitle { font-size: 1.25rem; opacity: 0.9; max-width: 1000px; margin: 0 auto; }
+        .badge-group { display: flex; gap: 10px; margin-top: 20px; flex-wrap: wrap; justify-content: center; }
         .badge { background: rgba(255, 255, 255, 0.2); padding: 5px 15px; border-radius: 20px; font-size: 0.85rem; font-weight: 600; }
 
         /* --- KPI Grid --- */
@@ -65,6 +66,26 @@
 
         /* --- Specific Content Elements --- */
         .chart-box { height: 420px; width: 100%; margin-top: 15px; }
+        .wordcloud-box { position: relative; height: 420px; width: 100%; margin-top: 15px; overflow: hidden; border-radius: 12px; background: linear-gradient(180deg, rgba(93,138,168,0.07), rgba(255,255,255,0.8)); border: 1px solid var(--border-color); }
+        .wordcloud-box .w {
+            position: absolute;
+            left: 0;
+            top: 0;
+            transform-origin: center center;
+            font-weight: 800;
+            line-height: 1;
+            white-space: nowrap;
+            user-select: none;
+            cursor: default;
+            opacity: 0;
+            transition: transform .35s ease, opacity .35s ease;
+            text-shadow: 0 2px 8px rgba(0,0,0,.06);
+        }
+        .wordcloud-box .w:hover { filter: brightness(0.92); }
+        .wordcloud-box .hint {
+            position: absolute; right: 10px; bottom: 8px; font-size: 12px; color: var(--text-muted);
+            background: rgba(255,255,255,.7); padding: 3px 8px; border-radius: 999px; border: 1px solid var(--border-color);
+        }
         .timeline-list { list-style: none; }
         .timeline-item { padding: 18px 0; border-bottom: 1px dashed var(--border-color); position: relative; padding-left: 25px; }
         .timeline-item::before { content: "•"; color: var(--accent); position: absolute; left: 0; font-size: 1.8rem; top: 12px; }
@@ -86,20 +107,19 @@
             <div class="badge-group">
                 <span class="badge">事件类型：{{EVENT_TYPE}}</span>
                 <span class="badge">核心客体：{{OBJECT_NAME}}</span>
-                <span class="badge">阶段判定：{{PHASE_STATUS}}</span>
             </div>
         </div>
     </header>
 
     <div class="kpi-grid">
         <div class="kpi-card"><div class="kpi-label">总样本量</div><div class="kpi-value">{{KPI_TOTAL}}</div></div>
-        <div class="kpi-card"><div class="kpi-label">有效声量</div><div class="kpi-value">{{KPI_EFFECTIVE}}</div></div>
-        <div class="kpi-card"><div class="kpi-label">正面情绪占比</div><div class="kpi-value" style="color: #4ecdc4;">{{KPI_POS_RATIO}}</div></div>
-        <div class="kpi-card"><div class="kpi-label">负面情绪占比</div><div class="kpi-value" style="color: #ff6b6b;">{{KPI_NEG_RATIO}}</div></div>
+        <div class="kpi-card"><div class="kpi-label">影响指数</div><div class="kpi-value">{{KPI_EFFECTIVE}}</div></div>
+        <div class="kpi-card"><div class="kpi-label">整体态度</div><div class="kpi-value">{{KPI_POS_RATIO}}</div></div>
+        <div class="kpi-card"><div class="kpi-label">目前阶段</div><div class="kpi-value">{{KPI_NEG_RATIO}}</div></div>
     </div>
 
     <section>
-        <h2 class="section-title">事件基础介绍</h2>
+        <h2 class="section-title">事件概览</h2>
         <div class="card">
             <p><strong>事件背景：</strong>{{INTRO_BACKGROUND}}</p>
             <p style="margin-top:15px;"><strong>舆情触发点：</strong>{{INTRO_TRIGGERS}}</p>
@@ -161,8 +181,8 @@
                 </div>
             </div>
             <div class="card">
-                <h3>关键词热度 Top20 分析</h3>
-                <div id="keywordChart" class="chart-box"></div>
+                <h3>关键词热度词云（Top200）</h3>
+                <div id="keywordCloud" class="wordcloud-box"></div>
                 <div class="analysis-summary">
                     <h3>简要分析结论</h3>
                     <ul>{{CHART_KEYWORD_ANALYSIS}}</ul>
@@ -180,7 +200,7 @@
                 </div>
             </div>
             <div class="card">
-                <h3>舆情生命周期阶段研判</h3>
+                <h3>舆情生命周期阶段研判（声量趋势+阶段划分）</h3>
                 <div id="lifecycleChart" class="chart-box"></div>
                 <div class="analysis-summary">
                     <h3>简要分析结论</h3>
@@ -194,16 +214,16 @@
         <h2 class="section-title">理论研判与复盘总结</h2>
         
         <div class="card">
-            <h3>理论规律分析</h3>
+            <h3>理论研判</h3>
             <div class="analysis-summary" style="background:none; border-left-color:var(--primary);">
-                <h4>沉默螺旋规律</h4><p>{{THEORY_SILENCE}}</p><br>
-                <h4>议程设置规律</h4><p>{{THEORY_AGENDA}}</p><br>
-                <h4>蝴蝶效应规律</h4><p>{{THEORY_BUTTERFLY}}</p>
+                <p>{{THEORY_SILENCE}}</p><br>
+                <p>{{THEORY_AGENDA}}</p><br>
+                <p>{{THEORY_BUTTERFLY}}</p>
             </div>
         </div>
 
         <div class="card">
-            <h3>回应观察与分析</h3>
+            <h3>舆论引导与处置建议</h3>
             <div class="analysis-summary">
                 <ul>{{RESPONSE_ANALYSIS_BULLETS}}</ul>
             </div>
@@ -211,12 +231,9 @@
 
         <div class="card">
             <h3>总结复盘</h3>
-            <div class="grid-2">
-                <div><h4>话语分析</h4><p>{{RECAP_DISCOURSE}}</p></div>
-                <div><h4>议题泛化趋势</h4><p>{{RECAP_TRENDS}}</p></div>
-            </div>
-            <div class="analysis-summary" style="margin-top:20px;">
-                <h4>舆情推手分析</h4>
+            <p>{{RECAP_DISCOURSE}}</p>
+            <p style="margin-top:12px;">{{RECAP_TRENDS}}</p>
+            <div class="analysis-summary" style="margin-top:16px;">
                 <ul>{{RECAP_DRIVERS_BULLETS}}</ul>
             </div>
         </div>
@@ -236,16 +253,44 @@
     const REPORT_DATA = __REPORT_JSON_DATA__;
 
     const chartInstances = {};
+    const ECHARTS_THEME = {
+        colors: ['#5470C6', '#91CC75', '#FAC858', '#EE6666', '#73C0DE', '#3BA272', '#9A60B4', '#EA7CCC'],
+        text: '#2b2f36',
+        subText: '#6b7280',
+        split: 'rgba(107,114,128,0.16)',
+    };
+
+    function baseToolbox() {
+        return {
+            show: true,
+            right: 8,
+            top: 2,
+            itemSize: 14,
+            feature: { saveAsImage: { pixelRatio: 2, name: '舆情图表导出' } }
+        };
+    }
+
+    function axisStyle() {
+        return {
+            axisLine: { lineStyle: { color: 'rgba(43,47,54,0.28)' } },
+            axisTick: { show: false },
+            axisLabel: { color: ECHARTS_THEME.subText }
+        };
+    }
 
     function initAll() {
         // 1. 情感饼图
         chartInstances.sentiment = echarts.init(document.getElementById('sentimentChart'));
         chartInstances.sentiment.setOption({
-            tooltip: { trigger: 'item' },
-            legend: { bottom: '5%', left: 'center' },
+            color: ECHARTS_THEME.colors,
+            animationDuration: 900,
+            tooltip: { trigger: 'item', confine: true, formatter: '{b}<br/>数量：{c}<br/>占比：{d}%' },
+            legend: { bottom: '4%', left: 'center', textStyle: { color: ECHARTS_THEME.subText } },
+            toolbox: baseToolbox(),
             series: [{
                 type: 'pie', radius: ['40%', '70%'],
                 itemStyle: { borderRadius: 8, borderColor: '#fff', borderWidth: 2 },
+                emphasis: { scale: true, scaleSize: 8, itemStyle: { shadowBlur: 18, shadowColor: 'rgba(0,0,0,0.18)' } },
                 data: REPORT_DATA.charts.sentiment
             }]
         });
@@ -253,189 +298,224 @@
         // 2. 声量趋势
         chartInstances.volume = echarts.init(document.getElementById('volumeChart'));
         chartInstances.volume.setOption({
-            tooltip: { trigger: 'axis' },
-            legend: { top: '2%', left: 'center', data: ['声量趋势'] },
-            xAxis: { type: 'category', data: REPORT_DATA.charts.volume.dates },
-            yAxis: { type: 'value' },
+            color: ECHARTS_THEME.colors,
+            animationDuration: 1000,
+            tooltip: { trigger: 'axis', axisPointer: { type: 'cross' } },
+            legend: { top: '2%', left: 'center', data: ['声量趋势'], textStyle: { color: ECHARTS_THEME.subText } },
+            toolbox: baseToolbox(),
+            grid: { left: 38, right: 18, top: 52, bottom: 34, containLabel: true },
+            xAxis: { type: 'category', data: REPORT_DATA.charts.volume.dates, ...axisStyle() },
+            yAxis: { type: 'value', splitLine: { lineStyle: { color: ECHARTS_THEME.split } }, ...axisStyle() },
             series: [{
                 name: '声量趋势',
                 data: REPORT_DATA.charts.volume.values, type: 'line', smooth: true,
-                areaStyle: { color: 'rgba(78, 165, 255, 0.2)' }, lineStyle: { color: '#4ea5ff' }
-            }]
+                symbol: 'circle', symbolSize: 6,
+                areaStyle: { color: 'rgba(84,112,198,0.18)' }, lineStyle: { width: 2.5, color: '#5470C6' }
+            }],
+            dataZoom: [{ type: 'inside' }]
         });
 
         // 3. 地域柱状图
         chartInstances.region = echarts.init(document.getElementById('regionChart'));
         chartInstances.region.setOption({
-            tooltip: { trigger: 'axis' },
-            legend: { top: '2%', left: 'center', data: ['地域声量'] },
-            xAxis: { type: 'category', data: REPORT_DATA.charts.region.names },
-            yAxis: { type: 'value' },
-            series: [{ name: '地域声量', type: 'bar', data: REPORT_DATA.charts.region.values, itemStyle: { color: '#5d8aa8' } }]
+            color: ECHARTS_THEME.colors,
+            tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+            legend: { top: '2%', left: 'center', data: ['地域声量'], textStyle: { color: ECHARTS_THEME.subText } },
+            toolbox: baseToolbox(),
+            grid: { left: 32, right: 12, top: 52, bottom: 46, containLabel: true },
+            xAxis: { type: 'category', data: REPORT_DATA.charts.region.names, axisLabel: { rotate: 20, color: ECHARTS_THEME.subText }, ...axisStyle() },
+            yAxis: { type: 'value', splitLine: { lineStyle: { color: ECHARTS_THEME.split } }, ...axisStyle() },
+            series: [{
+                name: '地域声量', type: 'bar', data: REPORT_DATA.charts.region.values, barMaxWidth: 22,
+                itemStyle: {
+                    borderRadius: [6, 6, 0, 0],
+                    color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                        { offset: 0, color: '#73C0DE' }, { offset: 1, color: '#5470C6' }
+                    ])
+                }
+            }]
         });
 
         // 4. 作者柱状图 (横向)
         chartInstances.author = echarts.init(document.getElementById('authorChart'));
         chartInstances.author.setOption({
-            tooltip: { trigger: 'axis' },
-            legend: { top: '2%', left: 'center', data: ['作者发文量'] },
-            grid: { left: '20%' },
-            xAxis: { type: 'value' },
-            yAxis: { type: 'category', data: REPORT_DATA.charts.author.names.reverse() },
-            series: [{ name: '作者发文量', type: 'bar', data: REPORT_DATA.charts.author.values.reverse(), itemStyle: { color: '#4ea5ff' } }]
+            color: ECHARTS_THEME.colors,
+            tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+            legend: { top: '2%', left: 'center', data: ['作者发文量'], textStyle: { color: ECHARTS_THEME.subText } },
+            toolbox: baseToolbox(),
+            grid: { left: '22%', right: 16, top: 52, bottom: 26 },
+            xAxis: { type: 'value', splitLine: { lineStyle: { color: ECHARTS_THEME.split } }, ...axisStyle() },
+            yAxis: { type: 'category', data: REPORT_DATA.charts.author.names.reverse(), ...axisStyle() },
+            series: [{
+                name: '作者发文量', type: 'bar', data: REPORT_DATA.charts.author.values.reverse(), barMaxWidth: 16,
+                itemStyle: { borderRadius: [0, 6, 6, 0], color: '#5470C6' }
+            }]
         });
 
-        // 5. 关键词柱状图
-        chartInstances.keyword = echarts.init(document.getElementById('keywordChart'));
-        chartInstances.keyword.setOption({
-            tooltip: { trigger: 'axis' },
-            legend: { top: '2%', left: 'center', data: ['关键词热度'] },
-            xAxis: { type: 'category', data: REPORT_DATA.charts.keyword.names, axisLabel: { rotate: 45 } },
-            yAxis: { type: 'value' },
-            series: [{ name: '关键词热度', type: 'bar', data: REPORT_DATA.charts.keyword.values, itemStyle: { color: '#5d8aa8' } }]
+        // 5. 关键词词云（70词优先、横竖混排、词性着色、碰撞避免）
+        const wc = document.getElementById('keywordCloud');
+        const posPalette = {
+            '名词': '#4A6FA5',
+            '动词': '#D16D5B',
+            '形容词': '#7D63A6',
+            '人名': '#2F7A4E',
+            '地名': '#2B8E9F',
+            '机构': '#8F6B3F',
+            '其他': '#6B7280',
+        };
+        const words = Array.isArray(REPORT_DATA.charts.keyword) ? REPORT_DATA.charts.keyword : [];
+        const maxV = Math.max(1, ...words.map(x => (x && x.value) ? Number(x.value) : 0));
+        const minV = Math.min(...words.map(x => (x && x.value) ? Number(x.value) : maxV), maxV);
+        wc.innerHTML = '';
+        const W = Math.max(220, wc.clientWidth);
+        const H = Math.max(220, wc.clientHeight);
+        const cx = W / 2;
+        const cy = H / 2;
+        const placed = [];
+        const sortedWords = words
+            .slice(0, 140)
+            .map(w => ({
+                name: (w && w.name) ? String(w.name) : '',
+                value: (w && w.value) ? Number(w.value) : 0,
+                pos: (w && w.pos) ? String(w.pos) : '其他',
+            }))
+            .filter(w => !!w.name)
+            .sort((a, b) => b.value - a.value)
+            .slice(0, 70);
+
+        function intersects(a, b, pad = 2) {
+            return !(
+                a.x + a.w + pad < b.x ||
+                b.x + b.w + pad < a.x ||
+                a.y + a.h + pad < b.y ||
+                b.y + b.h + pad < a.y
+            );
+        }
+
+        function mapSize(value) {
+            if (maxV <= minV) return 22;
+            const r = (value - minV) / (maxV - minV);
+            return Math.round(12 + Math.pow(Math.max(0, Math.min(1, r)), 0.72) * 28); // 12~40
+        }
+
+        sortedWords.forEach((w, idx) => {
+            const el = document.createElement('span');
+            el.className = 'w';
+            el.textContent = w.name;
+            el.title = `${w.name}：${w.value}（${w.pos || '其他'}）`;
+            el.style.fontSize = `${mapSize(w.value)}px`;
+            el.style.color = posPalette[w.pos] || posPalette['其他'];
+            // 大词优先横排，小词部分竖排，保持可读性
+            const rotate = idx < 12 ? 0 : (idx % 5 === 0 ? 90 : 0);
+            el.style.transform = `translate(-9999px, -9999px) rotate(${rotate}deg)`;
+            wc.appendChild(el);
+
+            const rect = el.getBoundingClientRect();
+            const bw = Math.max(8, rect.width);
+            const bh = Math.max(8, rect.height);
+            let ok = false;
+            let chosen = null;
+
+            // Archimedean spiral search
+            for (let t = 0; t < 9000; t++) {
+                const ang = 0.33 * t;
+                const rad = 0.52 * ang;
+                const x = cx + rad * Math.cos(ang) - bw / 2;
+                const y = cy + rad * Math.sin(ang) - bh / 2;
+                if (x < 2 || y < 2 || x + bw > W - 2 || y + bh > H - 2) continue;
+                const box = { x, y, w: bw, h: bh };
+                if (placed.every(p => !intersects(p, box, 2))) {
+                    ok = true;
+                    chosen = box;
+                    break;
+                }
+            }
+
+            // fallback: random sampling
+            if (!ok) {
+                for (let k = 0; k < 160; k++) {
+                    const x = Math.random() * Math.max(4, W - bw - 4) + 2;
+                    const y = Math.random() * Math.max(4, H - bh - 4) + 2;
+                    const box = { x, y, w: bw, h: bh };
+                    if (placed.every(p => !intersects(p, box, 2))) {
+                        ok = true;
+                        chosen = box;
+                        break;
+                    }
+                }
+            }
+
+            if (!ok || !chosen) {
+                el.remove();
+                return;
+            }
+
+            placed.push(chosen);
+            el.style.transform = `translate(${Math.round(chosen.x)}px, ${Math.round(chosen.y)}px) rotate(${rotate}deg)`;
+            el.style.opacity = '1';
         });
+        const hint = document.createElement('div');
+        hint.className = 'hint';
+        hint.textContent = `已渲染 ${placed.length}/${sortedWords.length} 个词（颜色=词性）`;
+        wc.appendChild(hint);
 
         // 6. 五维雷达图
         chartInstances.radar = echarts.init(document.getElementById('radarChart'));
         chartInstances.radar.setOption({
-            legend: { top: '2%', left: 'center', data: ['五维评估'] },
+            color: ECHARTS_THEME.colors,
+            legend: { top: '2%', left: 'center', data: ['五维评估'], textStyle: { color: ECHARTS_THEME.subText } },
+            toolbox: baseToolbox(),
             radar: {
                 indicator: [
                     { name: '量', max: 10 }, { name: '质', max: 10 },
                     { name: '人', max: 10 }, { name: '场', max: 10 }, { name: '效', max: 10 }
-                ]
+                ],
+                splitLine: { lineStyle: { color: ECHARTS_THEME.split } },
+                axisLine: { lineStyle: { color: ECHARTS_THEME.split } },
+                name: { color: ECHARTS_THEME.subText }
             },
-            series: [{ type: 'radar', data: [{ name: '五维评估', value: REPORT_DATA.charts.radarValues, areaStyle: { color: 'rgba(93, 138, 168, 0.4)' } }] }]
-        });
-
-        // 7. 生命周期面积图
-        chartInstances.lifecycle = echarts.init(document.getElementById('lifecycleChart'));
-        const lifecycleSeries = (REPORT_DATA.charts.lifecycle.series || []).filter(function (s) {
-            if (!s || !Array.isArray(s.data)) return false;
-            return s.data.some(function (v) { return Number(v || 0) > 0; });
-        });
-        const lifecycleColors = ['#5b7cde', '#8ccf6b', '#f4b04f', '#d97b7b'];
-        const lifecycleDates = REPORT_DATA.charts.lifecycle.dates || [];
-        const lifecycleCurve = lifecycleDates.map(function (_, idx) {
-            for (let sIdx = 0; sIdx < lifecycleSeries.length; sIdx += 1) {
-                const n = Number((lifecycleSeries[sIdx].data || [])[idx] || 0);
-                if (n > 0) return n;
-            }
-            return 0;
-        });
-        const lifecycleStageIdx = lifecycleDates.map(function (_, idx) {
-            for (let sIdx = 0; sIdx < lifecycleSeries.length; sIdx += 1) {
-                const n = Number((lifecycleSeries[sIdx].data || [])[idx] || 0);
-                if (n > 0) return sIdx;
-            }
-            return -1;
-        });
-        const lifecycleLineData = lifecycleCurve.map(function (value, idx) {
-            return [idx, value, lifecycleStageIdx[idx]];
-        });
-        const lifecyclePieces = [];
-        for (let sIdx = 0; sIdx < lifecycleSeries.length; sIdx += 1) {
-            lifecyclePieces.push({ value: sIdx, color: lifecycleColors[sIdx] || '#5d8aa8', label: lifecycleSeries[sIdx].name });
-        }
-        const lifecycleBoundaryLines = [];
-        for (let i = 1; i < lifecycleStageIdx.length; i += 1) {
-            const prevStage = lifecycleStageIdx[i - 1];
-            const currStage = lifecycleStageIdx[i];
-            if (prevStage !== -1 && currStage !== -1 && currStage !== prevStage) {
-                const stageColor = lifecycleColors[currStage] || '#5d8aa8';
-                lifecycleBoundaryLines.push({
-                    xAxis: lifecycleDates[i],
-                    lineStyle: { color: stageColor }
-                });
-            }
-        }
-
-        // 阶段背景分区（淡色），增强辨识度
-        const lifecycleStageAreas = [];
-        (function buildLifecycleAreas() {
-            let startIdx = -1;
-            let currStage = -1;
-            for (let i = 0; i < lifecycleStageIdx.length; i += 1) {
-                const s = lifecycleStageIdx[i];
-                if (s === -1) continue;
-                if (currStage === -1) {
-                    currStage = s;
-                    startIdx = i;
-                    continue;
-                }
-                if (s !== currStage) {
-                    const color = lifecycleColors[currStage] || '#5d8aa8';
-                    const name = (lifecycleSeries[currStage] && lifecycleSeries[currStage].name) ? lifecycleSeries[currStage].name : '';
-                    lifecycleStageAreas.push([{
-                        xAxis: lifecycleDates[startIdx],
-                        itemStyle: { color: color, opacity: 0.10 },
-                        label: { show: true, color: color, fontWeight: 'bold', position: 'insideTop' },
-                        name: name
-                    }, {
-                        xAxis: lifecycleDates[i]
-                    }]);
-                    currStage = s;
-                    startIdx = i;
-                }
-            }
-            if (currStage !== -1 && startIdx !== -1) {
-                const color = lifecycleColors[currStage] || '#5d8aa8';
-                const name = (lifecycleSeries[currStage] && lifecycleSeries[currStage].name) ? lifecycleSeries[currStage].name : '';
-                lifecycleStageAreas.push([{
-                    xAxis: lifecycleDates[startIdx],
-                    itemStyle: { color: color, opacity: 0.10 },
-                    label: { show: true, color: color, fontWeight: 'bold', position: 'insideTop' },
-                    name: name
-                }, {
-                    xAxis: lifecycleDates[lifecycleDates.length - 1]
-                }]);
-            }
-        })();
-        chartInstances.lifecycle.setOption({
-            tooltip: {
-                trigger: 'axis',
-                formatter: function (params) {
-                    const p = Array.isArray(params) ? params[0] : params;
-                    if (!p || !p.value) return '';
-                    const idx = Number(p.value[0] || 0);
-                    const v = Number(p.value[1] || 0);
-                    const sIdx = Number(p.value[2]);
-                    const stageName = (sIdx >= 0 && lifecycleSeries[sIdx]) ? lifecycleSeries[sIdx].name : '未识别';
-                    const timeLabel = lifecycleDates[idx] || '';
-                    return timeLabel + '<br/>' + stageName + '：' + v.toFixed(4);
-                }
-            },
-            legend: { show: false },
-            visualMap: {
-                type: 'piecewise',
-                show: false,
-                dimension: 2,
-                seriesIndex: 0,
-                pieces: lifecyclePieces
-            },
-            xAxis: { type: 'category', boundaryGap: false, data: lifecycleDates },
-            yAxis: { show: false },
             series: [{
-                name: '生命周期',
+                type: 'radar',
+                data: [{
+                    name: '五维评估',
+                    value: REPORT_DATA.charts.radarValues,
+                    areaStyle: { color: 'rgba(84,112,198,0.28)' },
+                    lineStyle: { width: 2, color: '#5470C6' },
+                    symbolSize: 5
+                }]
+            }]
+        });
+
+        // 7. 生命周期趋势图 + 阶段分割线
+        chartInstances.lifecycle = echarts.init(document.getElementById('lifecycleChart'));
+        const lifecycleDates = REPORT_DATA.charts.lifecycle.dates || [];
+        const lifecycleValues = REPORT_DATA.charts.lifecycle.values || [];
+        const lifecycleBoundaries = REPORT_DATA.charts.lifecycle.boundaries || [];
+        chartInstances.lifecycle.setOption({
+            color: ECHARTS_THEME.colors,
+            animationDuration: 1000,
+            tooltip: { trigger: 'axis', axisPointer: { type: 'line' } },
+            legend: { top: '2%', left: 'center', textStyle: { color: ECHARTS_THEME.subText } },
+            toolbox: baseToolbox(),
+            grid: { left: 28, right: 16, top: 52, bottom: 28, containLabel: true },
+            xAxis: { type: 'category', boundaryGap: false, data: lifecycleDates, ...axisStyle() },
+            yAxis: { type: 'value', splitLine: { lineStyle: { color: ECHARTS_THEME.split } }, ...axisStyle() },
+            dataZoom: [{ type: 'inside' }, { type: 'slider', height: 14, bottom: 4 }],
+            series: [{
+                name: '声量趋势',
                 type: 'line',
                 smooth: true,
-                connectNulls: false,
-                showSymbol: false,
-                lineStyle: { width: 3 },
-                areaStyle: { opacity: 0 },
-                encode: { x: 0, y: 1 },
-                data: lifecycleLineData,
+                symbol: 'circle',
+                symbolSize: 4,
+                lineStyle: { width: 2.2, color: '#5470C6' },
+                areaStyle: { color: 'rgba(84,112,198,0.16)' },
+                data: lifecycleValues,
                 markLine: {
-                    silent: true,
-                    symbol: 'none',
-                    lineStyle: { type: 'dashed', width: 1, color: '#b7c1cc' },
-                    label: { rotate: 0 },
-                    data: lifecycleBoundaryLines
+                    symbol: ['none', 'none'],
+                    label: { show: true, formatter: ({ data }) => data && data.name ? data.name : '', color: '#6b7280' },
+                    lineStyle: { type: 'dashed', color: 'rgba(107,114,128,0.6)', width: 1.2 },
+                    data: lifecycleBoundaries.map(b => ({ xAxis: b.xAxis, name: b.name })),
                 },
-                markArea: {
-                    silent: true,
-                    data: lifecycleStageAreas
-                }
             }]
         });
 

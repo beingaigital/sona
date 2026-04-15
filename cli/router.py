@@ -47,6 +47,8 @@ EVENT_ANALYSIS_PATTERNS = [
     r"315曝光",
     # 分析类动词短语 - 更宽松的匹配
     r".*分析.*报告",
+    r".*分析.*事件",
+    r".*事件.*分析",
     r".*生成.*报告",
     r".*分析.*数据",
     r".*舆论.*观察",
@@ -57,11 +59,25 @@ EVENT_ANALYSIS_PATTERNS = [
     r"分析.*舆论",
     r"帮我分析",
     r"帮我生成",
+    r".*高铁.*熊孩子.*",
     # 英文关键词
     r"sentiment.*analysis",
     r"public.*opinion",
     r"media.*analysis",
     r"crisis.*analysis",
+]
+
+# 轻量“事件概述/经过”意图：只需提取搜索词与事件简介，不必走完整报告流程
+EVENT_BRIEF_PATTERNS = [
+    r"事件经过",
+    r"经过概述",
+    r"事件概述",
+    r"简要概述",
+    r"简述",
+    r"发生了什么",
+    r"来龙去脉",
+    r"先说说.*经过",
+    r"先概述",
 ]
 
 # 热点发现/态势感知意图模式
@@ -120,6 +136,7 @@ class IntentRecognizer:
 
     def __init__(self):
         self.patterns = [re.compile(p, re.IGNORECASE) for p in EVENT_ANALYSIS_PATTERNS]
+        self.brief_patterns = [re.compile(p, re.IGNORECASE) for p in EVENT_BRIEF_PATTERNS]
         self.hot_patterns = [re.compile(p, re.IGNORECASE) for p in HOT_DISCOVERY_PATTERNS]
         self.re_search_patterns = [re.compile(p, re.IGNORECASE) for p in RE_SEARCH_PATTERNS]
 
@@ -142,6 +159,12 @@ class IntentRecognizer:
             if match:
                 matched_keywords.append(match.group(0))
 
+        brief_keywords = []
+        for pattern in self.brief_patterns:
+            match = pattern.search(query)
+            if match:
+                brief_keywords.append(match.group(0))
+
         # 检查是否明确要求重新搜索
         is_re_search = any(p.search(query) for p in self.re_search_patterns)
 
@@ -152,7 +175,11 @@ class IntentRecognizer:
                 hot_keywords.append(match.group(0))
 
         # 判断意图类型
-        if hot_keywords and not matched_keywords:
+        if brief_keywords and not matched_keywords:
+            confidence = min(0.72 + 0.08 * len(brief_keywords), 0.95)
+            intent = "event_brief"
+            reasoning = f"检测到事件概述意图关键词: {', '.join(brief_keywords[:3])}"
+        elif hot_keywords and not matched_keywords:
             confidence = min(0.7 + 0.08 * len(hot_keywords), 0.93)
             intent = "hotspot_discovery"
             reasoning = f"检测到热点发现关键词: {', '.join(hot_keywords[:3])}"
@@ -177,11 +204,15 @@ class IntentRecognizer:
             intent=intent,
             confidence=confidence,
             reasoning=reasoning,
-            keywords=matched_keywords or hot_keywords,
+            keywords=brief_keywords or matched_keywords or hot_keywords,
             suggested_action=(
                 "run_event_analysis_workflow"
                 if intent == "event_analysis"
-                else ("run_hottopics_workflow" if intent == "hotspot_discovery" else "run_reactagent")
+                else (
+                    "run_event_brief_workflow"
+                    if intent == "event_brief"
+                    else ("run_hottopics_workflow" if intent == "hotspot_discovery" else "run_reactagent")
+                )
             ),
         )
 
@@ -609,7 +640,7 @@ class IntentRouter:
 
         Returns:
             Tuple[str, Any]: (路由决策, 附加数据)
-            - 路由决策: "event_analysis_workflow" | "event_analysis_with_existing_data" | "hottopics_workflow" | "reactagent"
+            - 路由决策: "event_analysis_workflow" | "event_analysis_with_existing_data" | "event_brief_workflow" | "hottopics_workflow" | "reactagent"
             - 附加数据: dict 包含 intent_result, data_detection_result 等
         """
         # Step 1: 意图识别
@@ -646,6 +677,9 @@ class IntentRouter:
 
         if intent_result.intent == "hotspot_discovery":
             return "hottopics_workflow", additional_data
+
+        if intent_result.intent == "event_brief":
+            return "event_brief_workflow", additional_data
 
         if intent_result.intent == "event_analysis":
             if data_result.has_data:

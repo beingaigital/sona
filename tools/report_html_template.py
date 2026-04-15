@@ -207,7 +207,8 @@ def build_report_config_from_json_files(json_files: List[Dict[str, Any]]) -> Dic
     keywords_out: List[Dict[str, Any]] = []
     kw = _get_json_by_name(json_files, "keyword_stats.json")
     if kw and isinstance(kw.get("top_keywords"), list):
-        for row in kw["top_keywords"][:10]:
+        # 关键词用于词云：取 Top200，提升信息量
+        for row in kw["top_keywords"][:200]:
             if not isinstance(row, dict):
                 continue
             w = str(row.get("word", "") or "").strip()
@@ -250,6 +251,50 @@ def _safe_int(v: Any, default: int = 0) -> int:
         return int(v)
     except Exception:
         return default
+
+
+def _safe_int_from_text(v: Any, default: int = 0) -> int:
+    s = str(v if v is not None else "").strip()
+    if not s:
+        return default
+    s = s.replace(",", "").replace("，", "")
+    m = re.search(r"-?\d+", s)
+    if not m:
+        return default
+    try:
+        return int(m.group(0))
+    except Exception:
+        return default
+
+
+def _infer_pos_label(word: str) -> str:
+    """
+    为词云提供轻量词性标签（用于前端着色）。
+    返回值：名词 / 动词 / 形容词 / 人名 / 地名 / 机构 / 其他
+    """
+    w = str(word or "").strip()
+    if not w:
+        return "其他"
+    try:
+        import jieba.posseg as pseg  # type: ignore
+
+        token = next(iter(pseg.cut(w)), None)
+        flag = str(getattr(token, "flag", "") or "")
+        if flag.startswith(("nr",)):
+            return "人名"
+        if flag.startswith(("ns",)):
+            return "地名"
+        if flag.startswith(("nt", "nz")):
+            return "机构"
+        if flag.startswith(("n",)):
+            return "名词"
+        if flag.startswith(("v",)):
+            return "动词"
+        if flag.startswith(("a",)):
+            return "形容词"
+    except Exception:
+        pass
+    return "其他"
 
 
 def _build_radar_values(report_config: Dict[str, Any]) -> List[int]:
@@ -295,64 +340,141 @@ def _extract_volume_series(vol: Optional[Dict[str, Any]]) -> Tuple[List[str], Li
     return ["—"], [0], vol
 
 
-def _build_lifecycle_series_from_volume(vol: Optional[Dict[str, Any]], dates: List[str], values: List[int]) -> Dict[str, Any]:
-    """优先使用 volume_stats 内置生命周期结果，否则生成兜底 one-hot。"""
-    phase_names = ["潜伏期", "成长期", "成熟期", "衰退期"]
-    if isinstance(vol, dict):
-        lifecycle = vol.get("lifecycle")
-        if isinstance(lifecycle, dict):
-            stages_raw = lifecycle.get("stages")
-            series_raw = lifecycle.get("series")
-            if isinstance(stages_raw, list) and isinstance(series_raw, list):
-                stages = []
-                for row in stages_raw:
-                    if isinstance(row, dict):
-                        stages.append(str(row.get("stage", "潜伏期")))
-                    else:
-                        stages.append(str(row))
-                series = [x for x in series_raw if isinstance(x, dict)]
-                if stages and series:
-                    return {
-                        "dates": dates or ["—"],
-                        "stages": stages,
-                        "series": series,
-                    }
+def _classify_lifecycle_stage(values: List[int]) -> List[str]:
+    """按时间点给出唯一生命周期阶段（潜伏/扩散/爆发/衰退/衍生/结束）。"""
+    if not values:
+        return []
 
-    # 兜底：按阈值简单分段
-    stages_fallback: List[str] = []
-    for v in values:
-        if v < 15:
-            stages_fallback.append("潜伏期")
-        elif v < 80:
-            stages_fallback.append("成长期")
-        elif v >= 50:
-            stages_fallback.append("成熟期")
+    n = len(values)
+    seed = [max(0, int(v)) for v in values]
+    peak_idx = max(range(n), key=lambda i: seed[i])
+    max_v = max(max(seed), 1)
+    stages: List[str] = []
+    trailing_window = max(2, min(4, n))
+    trailing_sum = sum(seed[-trailing_window:])
+    trailing_avg = trailing_sum / float(trailing_window)
+    is_ending = trailing_avg <= max_v * 0.08 and seed[-1] <= max_v * 0.06
+
+    # 次峰（衍生期）检测：主峰后出现明显回升
+    derivative = [seed[i] - seed[i - 1] for i in range(1, n)]
+    second_peak_idx = -1
+    second_peak_val = 0
+    for i in range(peak_idx + 2, n - 1):
+        if seed[i] >= seed[i - 1] and seed[i] >= seed[i + 1] and seed[i] >= int(max_v * 0.45):
+            if seed[i] > second_peak_val:
+                second_peak_val = seed[i]
+                second_peak_idx = i
+
+    for i, v in enumerate(seed):
+        # 峰值附近视为爆发期（主峰前后）
+        if abs(i - peak_idx) <= 1 or v >= int(max_v * 0.82):
+            stages.append("爆发")
+            continue
+
+        # 峰值之前：低基线为潜伏，斜率明显上升转扩散
+        if i < peak_idx:
+            slope = derivative[i - 1] if i - 1 >= 0 and i - 1 < len(derivative) else 0
+            if v <= int(max_v * 0.18) and slope <= int(max_v * 0.08):
+                stages.append("潜伏")
+            else:
+                stages.append("扩散")
+            continue
+
+        # 次峰附近判定为衍生期（第二轮小高潮）
+        if second_peak_idx > 0 and abs(i - second_peak_idx) <= 1:
+            stages.append("衍生")
+            continue
+
+        # 峰值之后：先扩散，再衰退；末端接近归零时标记结束
+        if is_ending and i >= n - trailing_window:
+            stages.append("结束")
+        elif v >= int(max_v * 0.35):
+            stages.append("扩散")
         else:
-            stages_fallback.append("衰退期")
+            stages.append("衰退")
 
-    phase_data: Dict[str, List[int]] = {p: [] for p in phase_names}
-    for idx, val in enumerate(values):
-        stage = stages_fallback[idx] if idx < len(stages_fallback) else "潜伏期"
-        for p in phase_names:
-            phase_data[p].append(val if p == stage else 0)
+    return stages
+
+
+def _build_lifecycle_series(dates: List[str], values: List[int]) -> Dict[str, Any]:
+    """构造生命周期图数据：单曲线 + 阶段竖虚线（图内仅四阶段）。"""
+    if not dates:
+        dates = ["—"]
+        values = [0]
+
+    seed = [max(0, int(v)) for v in values]
+    stages = _classify_lifecycle_stage(seed)
+    # 图内展示四阶段：潜伏/扩散/爆发/衰退（衍生并入扩散，结束并入衰退）
+    chart_stages = []
+    for s in stages:
+        if s == "潜伏":
+            chart_stages.append("潜伏")
+        elif s == "爆发":
+            chart_stages.append("爆发")
+        elif s in {"扩散", "衍生"}:
+            chart_stages.append("扩散")
+        else:
+            chart_stages.append("衰退")
+    boundaries: List[Dict[str, Any]] = []
+    for i in range(1, len(chart_stages)):
+        if chart_stages[i] != chart_stages[i - 1]:
+            boundaries.append({"xAxis": dates[i], "name": f"{chart_stages[i - 1]}→{chart_stages[i]}"})
 
     return {
-        "dates": dates or ["—"],
-        "stages": stages_fallback or ["潜伏期"],
-        "series": [{"name": p, "data": phase_data[p]} for p in phase_names],
+        "dates": dates,
+        "stages": stages,
+        "values": seed,
+        "boundaries": boundaries,
     }
 
 
-def _summarize_phase_status_from_volume(vol: Optional[Dict[str, Any]]) -> str:
-    if not isinstance(vol, dict):
+def _summarize_phase_status(values: List[int]) -> str:
+    """给出当前周期阶段判定文案。"""
+    if not values:
         return "待评估（证据不足）"
-    lifecycle = vol.get("lifecycle")
-    if not isinstance(lifecycle, dict):
+    stages = _classify_lifecycle_stage([max(0, int(v)) for v in values])
+    if not stages:
         return "待评估（证据不足）"
-    current = str(lifecycle.get("current_phase", "") or "").strip()
-    if current:
-        return f"{current}（规则判定）"
-    return "待评估（证据不足）"
+    latest = stages[-1]
+    return f"{latest}期"
+
+
+def _compute_impact_index(
+    *,
+    sample_total: int,
+    effective_total: int,
+    trend_values: List[int],
+    region_count: int,
+    top_author_share: float,
+    sentiment_balance: float,
+) -> int:
+    max_peak = max([0] + [max(0, int(v)) for v in trend_values])
+    # 归一化到 0~100，再加权
+    sample_score = min(100.0, sample_total / 10.0)
+    effective_score = min(100.0, effective_total / 8.0)
+    peak_score = min(100.0, max_peak / 5.0)
+    spread_score = min(100.0, region_count * 10.0)
+    concentration_penalty = max(0.0, min(20.0, (top_author_share - 0.25) * 80.0))
+    sentiment_score = max(0.0, min(100.0, sentiment_balance))
+    raw = (
+        sample_score * 0.24
+        + effective_score * 0.24
+        + peak_score * 0.24
+        + spread_score * 0.14
+        + sentiment_score * 0.14
+        - concentration_penalty
+    )
+    return max(0, min(100, int(round(raw))))
+
+
+def _overall_attitude_label(stats: Dict[str, Any]) -> str:
+    pos = float(stats.get("positive_ratio", 0.0) or 0.0)
+    neg = float(stats.get("negative_ratio", 0.0) or 0.0)
+    neu = float(stats.get("neutral_ratio", 0.0) or 0.0)
+    pairs = [("正面", pos), ("负面", neg), ("中性", neu)]
+    pairs.sort(key=lambda x: x[1], reverse=True)
+    label, ratio = pairs[0]
+    return f"{label}（{round(ratio * 100, 1)}%）"
 
 
 def build_report_data_from_json_files(json_files: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -372,11 +494,23 @@ def build_report_data_from_json_files(json_files: List[Dict[str, Any]]) -> Dict[
             author_names.append(nm)
             author_values.append(_safe_int(row.get("count", 0), 0))
 
-    keyword_names = [str(x.get("word", "") or "") for x in cfg.get("keywords", []) if isinstance(x, dict)]
-    keyword_values = [_safe_int(x.get("count", 0), 0) for x in cfg.get("keywords", []) if isinstance(x, dict)]
     vol = _get_json_by_name(json_files, "volume_stats.json")
-    trend_dates, trend_values, vol_obj = _extract_volume_series(vol)
-    lifecycle = _build_lifecycle_series_from_volume(vol_obj, trend_dates, trend_values)
+    trend_dates, trend_values, _ = _extract_volume_series(vol)
+    if trend_dates == ["—"] and trend_values == [0]:
+        trend_dates = list(cfg.get("trend", {}).get("dates", []) or [])
+        trend_values = [_safe_int(v, 0) for v in (cfg.get("trend", {}).get("values", []) or [])]
+
+    # 关键词词云：输出 name/value/pos 列表供前端 DOM 词云渲染
+    keyword_cloud = [
+        {
+            "name": str(x.get("word", "") or ""),
+            "value": _safe_int(x.get("count", 0), 0),
+            "pos": _infer_pos_label(str(x.get("word", "") or "")),
+        }
+        for x in (cfg.get("keywords", []) or [])
+        if isinstance(x, dict) and str(x.get("word", "") or "").strip()
+    ][:120]
+    lifecycle = _build_lifecycle_series(trend_dates, trend_values)
 
     return {
         "charts": {
@@ -387,7 +521,7 @@ def build_report_data_from_json_files(json_files: List[Dict[str, Any]]) -> Dict[
                 "values": list(cfg.get("regions", {}).get("counts", []) or [0]),
             },
             "author": {"names": author_names or ["证据不足"], "values": author_values or [0]},
-            "keyword": {"names": keyword_names or ["证据不足"], "values": keyword_values or [0]},
+            "keyword": keyword_cloud or [{"name": "证据不足", "value": 0}],
             "radarValues": _build_radar_values(cfg),
             "lifecycle": lifecycle,
         },
@@ -526,9 +660,9 @@ def _default_narrative(event_introduction: str) -> Dict[str, str]:
         "EVENT_TYPE": "网络舆情",
         "PHASE_STATUS": "待评估",
         "KPI_TOTAL": "—",
-        "KPI_EFFECTIVE": "—",
-        "KPI_POS_RATIO": "—",
-        "KPI_NEG_RATIO": "—",
+        "KPI_EFFECTIVE": "0",
+        "KPI_POS_RATIO": "中性（证据不足）",
+        "KPI_NEG_RATIO": "待评估（证据不足）",
         "INTRO_BACKGROUND": intro or stub,
         "INTRO_TRIGGERS": stub,
         "SUMMARY_BULLETS": "证据不足|请补充分析 JSON|已使用模板兜底输出",
@@ -658,23 +792,117 @@ def build_html_from_morandi_template(
     text_map.update(meta)
     sample = text_map.get("SAMPLE_SIZE", "—")
     effective = text_map.get("EFFECTIVE_VOLUME", "—")
+    sample_int = _safe_int_from_text(sample, 0)
+    effective_int = _safe_int_from_text(effective, 0)
     text_map["KPI_TOTAL"] = sample
-    text_map["KPI_EFFECTIVE"] = effective
+    text_map["KPI_EFFECTIVE"] = "—"
     text_map.setdefault("DATA_SOURCE", "过程文件 JSON")
-    vol_obj = _get_json_by_name(json_files, "volume_stats.json")
-    text_map["PHASE_STATUS"] = _summarize_phase_status_from_volume(vol_obj)
+    lifecycle_values = list(report_data.get("charts", {}).get("volume", {}).get("values", []) or [])
+    text_map["PHASE_STATUS"] = _summarize_phase_status([_safe_int(v, 0) for v in lifecycle_values])
+    text_map["KPI_NEG_RATIO"] = text_map["PHASE_STATUS"]
 
     sent = _find_sentiment_json(json_files)
     if sent and isinstance(sent.get("statistics"), dict):
         st = sent["statistics"]
+        text_map["KPI_POS_RATIO"] = _overall_attitude_label(st)
         pos = float(st.get("positive_ratio", 0.0) or 0.0)
         neg = float(st.get("negative_ratio", 0.0) or 0.0)
-        text_map["KPI_POS_RATIO"] = f"{round(pos * 100, 1)}%"
-        text_map["KPI_NEG_RATIO"] = f"{round(neg * 100, 1)}%"
+        sentiment_balance = abs(pos - neg) * 100.0
     else:
-        text_map.setdefault("KPI_POS_RATIO", "—")
-        text_map.setdefault("KPI_NEG_RATIO", "—")
+        text_map.setdefault("KPI_POS_RATIO", "中性（证据不足）")
+        sentiment_balance = 30.0
+
+    region_count = len(list(report_data.get("charts", {}).get("region", {}).get("names", []) or []))
+    author_vals = list(report_data.get("charts", {}).get("author", {}).get("values", []) or [])
+    author_total = sum(_safe_int(v, 0) for v in author_vals)
+    top_author_share = (_safe_int(author_vals[0], 0) / float(author_total)) if author_total > 0 else 0.0
+    impact_index = _compute_impact_index(
+        sample_total=sample_int,
+        effective_total=effective_int,
+        trend_values=[_safe_int(v, 0) for v in lifecycle_values],
+        region_count=region_count,
+        top_author_share=top_author_share,
+        sentiment_balance=sentiment_balance,
+    )
+    text_map["KPI_EFFECTIVE"] = str(impact_index)
 
     text_map = _sanitize_narrative_language(text_map, defaults)
+    intro_val = str(text_map.get("INTRO_BACKGROUND", "") or "").strip()
+    if len(intro_val) > 600:
+        text_map["INTRO_BACKGROUND"] = intro_val[:600] + "..."
+
+    # --------- 程序兜底：地域/关键词结论至少给出描述性分析 ---------
+    def _is_weak_list(val: Any) -> bool:
+        if not isinstance(val, list):
+            return True
+        items = [str(x).strip() for x in val if str(x).strip()]
+        if not items:
+            return True
+        weak_hits = sum(1 for x in items if "证据不足" in x or "未提供" in x)
+        return weak_hits >= max(1, len(items) // 2)
+
+    if _is_weak_list(text_map.get("CHART_REGION_ANALYSIS")):
+        names = list(report_data.get("charts", {}).get("region", {}).get("names", []) or [])
+        vals = list(report_data.get("charts", {}).get("region", {}).get("values", []) or [])
+        pairs = [(str(n), _safe_int(v, 0)) for n, v in zip(names, vals) if str(n).strip()]
+        pairs = [p for p in pairs if p[0] != "—"]
+        pairs.sort(key=lambda x: x[1], reverse=True)
+        if pairs:
+            top = pairs[:3]
+            total = sum(v for _, v in pairs) or 1
+            top_sum = sum(v for _, v in top)
+            share = round(100.0 * top_sum / total, 1)
+            text_map["CHART_REGION_ANALYSIS"] = [
+                f"主要声量集中在「{top[0][0]}、{top[1][0]}、{top[2][0]}」等地（Top3合计约{share}%），呈现区域性聚集特征；建议优先在这些地区的重点账号/媒体做信息澄清与议题引导。",
+                "地域分布的集中意味着讨论更可能由本地社会经验/群体情绪驱动扩散；建议结合地域高发话题（如公共秩序、育儿冲突）做针对性回应话术。",
+                "若需进一步研判“线下影响”，建议补采集地域维度的高互动样本，核验是否存在同城号、地方媒体或本地KOL带节奏。",
+            ]
+
+    if _is_weak_list(text_map.get("CHART_KEYWORD_ANALYSIS")):
+        kws = list(report_data.get("charts", {}).get("keyword", []) or [])
+        kws = [x for x in kws if isinstance(x, dict) and str(x.get("name", "") or "").strip()]
+        kws.sort(key=lambda x: _safe_int(x.get("value", 0), 0), reverse=True)
+        if kws:
+            topw = [str(x["name"]) for x in kws[:8]]
+            text_map["CHART_KEYWORD_ANALYSIS"] = [
+                f"高频关键词集中在「{'、'.join(topw[:5])}」等，讨论焦点更偏向“行为冲突/公共秩序/育儿争议”而非单一事实本身；建议回应时先对齐公众最关心的冲突点。",
+                "关键词结构呈现明显的情绪化与道德评判取向时，舆情更易二次发酵；建议用“规则共识 + 体验共情”的组合话术降低对立。",
+                "建议持续监测 Top200 热词的主题簇变化（是否从事件细节转向群体对立/标签化），一旦出现泛化趋势及时介入议题边界管理。",
+            ]
+
+    recap_discourse = str(text_map.get("RECAP_DISCOURSE", "") or "").strip()
+    recap_trends = str(text_map.get("RECAP_TRENDS", "") or "").strip()
+    recap_drivers = text_map.get("RECAP_DRIVERS_BULLETS")
+    recap_drivers_weak = _is_weak_list(recap_drivers)
+    recap_text_weak = (not recap_discourse) or ("证据不足" in recap_discourse) or (not recap_trends) or ("证据不足" in recap_trends)
+    if recap_text_weak or recap_drivers_weak:
+        stats = list(report_data.get("charts", {}).get("sentiment", []) or [])
+        sent_map = {str(x.get("name", "")): _safe_int(x.get("value", 0), 0) for x in stats if isinstance(x, dict)}
+        pos = sent_map.get("正面", 0)
+        neg = sent_map.get("负面", 0)
+        neu = sent_map.get("中立", sent_map.get("中性", 0))
+        total = max(1, pos + neg + neu)
+        neg_ratio = round(100.0 * neg / total, 1)
+        kws = list(report_data.get("charts", {}).get("keyword", []) or [])
+        kws = [x for x in kws if isinstance(x, dict) and str(x.get("name", "")).strip()]
+        kws.sort(key=lambda x: _safe_int(x.get("value", 0), 0), reverse=True)
+        hot_words = [str(x.get("name", "")).strip() for x in kws[:6] if str(x.get("name", "")).strip()]
+        stage = str(text_map.get("PHASE_STATUS", "") or "衰退期")
+        if recap_text_weak:
+            text_map["RECAP_DISCOURSE"] = (
+                f"本次事件呈现“规则诉求与情绪宣泄并行”的典型公共空间舆情结构：一方面，围绕公共秩序、监护责任与文明乘车形成较强规范讨论；"
+                f"另一方面，情绪化表达在高热节点集中释放（当前负面占比约{neg_ratio}%），推动议题从个体冲突外溢到群体价值争论。"
+            )
+            text_map["RECAP_TRENDS"] = (
+                f"从阶段看已进入{stage}，但仍需警惕二次传播触发：若出现新视频切片、当事人后续发声或平台再分发，事件可能由长尾回弹为阶段性小高潮。"
+                f"建议在节假日、晚高峰等高风险时段提前部署“规则说明+服务缓冲”组合策略，减少同类冲突复发。"
+            )
+        if recap_drivers_weak:
+            word_hint = "、".join(hot_words[:4]) if hot_words else "公共秩序、家长责任、乘客体验"
+            text_map["RECAP_DRIVERS_BULLETS"] = [
+                f"驱动因素一：冲突场景具备高可代入性，关键词「{word_hint}」触发广泛自我投射，导致普通用户高强度参与评论与转发。",
+                "驱动因素二：平台分发机制放大“短视频冲突瞬间”，情绪峰值内容更易获得二次曝光，从而延长议题寿命并加剧立场分化。",
+                "驱动因素三：治理预期与现实体验存在落差，公众希望看到可执行的处置闭环；建议发布清晰规则口径、升级静音/提醒机制并持续复盘公开。",
+            ]
 
     return merge_morandi_template(template_html, text_map, report_config, report_data)

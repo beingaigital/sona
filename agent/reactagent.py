@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage, BaseMessage, ToolMessage
 from typing import Optional, List, Dict, Any
 import asyncio
@@ -24,8 +25,12 @@ from tools import (
     region_stats,
     author_stats,
     volume_stats,
+    user_portrait,
     report_html,
     graph_rag_query,
+    weibo_aisearch,
+    search_reference_insights,
+    load_sentiment_knowledge,
 )
 from utils.message_utils import messages_from_session_data
 from utils.prompt_loader import get_system_prompt_with_tools
@@ -46,8 +51,21 @@ AGENT_TOOLS = [
     region_stats,
     author_stats,
     volume_stats,
+    user_portrait,
     report_html,
     graph_rag_query,
+    weibo_aisearch,
+    search_reference_insights,
+    load_sentiment_knowledge,
+]
+
+# QA 模式使用轻量工具集，避免在开放问答中触发重型采集/报告链路反复试探
+QA_TOOLS = [
+    extract_search_terms,
+    graph_rag_query,
+    weibo_aisearch,
+    search_reference_insights,
+    load_sentiment_knowledge,
 ]
 
 # Callback 处理器：在工具执行时设置任务ID上下文
@@ -149,6 +167,84 @@ react_agent = create_agent(
     system_prompt=_system_prompt,
 )
 
+_qa_system_prompt = (
+    get_system_prompt_with_tools(QA_TOOLS)
+    + "\n\n【QA 模式约束】\n"
+      "1) 仅在确有必要时调用工具，优先直接回答。\n"
+      "2) 禁止重复调用同一工具且输入语义高度相同（最多 1 次）。\n"
+      "3) 若外部检索连续失败，应明确说明证据不足并停止继续试探。"
+)
+qa_agent = create_agent(
+    model=_llm,
+    tools=QA_TOOLS,
+    system_prompt=_qa_system_prompt,
+)
+
+
+def _build_brief_summary_from_extract(raw_result: str) -> str:
+    try:
+        obj = json.loads(raw_result)
+    except Exception:
+        obj = {}
+    intro = str(obj.get("eventIntroduction", "") or "").strip() if isinstance(obj, dict) else ""
+    words = obj.get("searchWords") if isinstance(obj, dict) else []
+    time_range = str(obj.get("timeRange", "") or "").strip() if isinstance(obj, dict) else ""
+    keys = []
+    if isinstance(words, list):
+        keys = [str(x).strip() for x in words if str(x).strip()]
+
+    lines = [
+        "### 事件经过概述（Agent Brief 模式）",
+        f"- 事件简介：{intro or '证据不足'}",
+        f"- 关键词：{'、'.join(keys[:12]) if keys else '证据不足'}",
+        f"- 建议时间范围：{time_range or '证据不足'}",
+        "",
+        "如需完整报告，请继续输入“做完整舆情分析并生成报告”。",
+    ]
+    return "\n".join(lines)
+
+
+def _stream_mode_flow(user_input: str, task_id: Optional[str], task_mode: str):
+    """在 Agent 层执行模式化流程（brief/full_report）。"""
+    mode = str(task_mode or "qa").strip().lower()
+    if mode == "brief":
+        from cli.event_analysis_workflow import run_brief_mode
+
+        payload = {"query": user_input}
+        yield {"type": "tool_call", "tool_name": "brief_mode_node", "args": payload, "run_id": f"mode_brief_{task_id or 'na'}"}
+        brief_obj = run_brief_mode(user_input)
+        raw_text = json.dumps(brief_obj, ensure_ascii=False)
+        yield {"type": "tool_result", "tool_name": "brief_mode_node", "result": raw_text, "run_id": f"mode_brief_{task_id or 'na'}"}
+        final_text = _build_brief_summary_from_extract(raw_text)
+        yield {"type": "message", "message": AIMessage(content=final_text), "message_id": f"mode_brief_msg_{task_id or 'na'}"}
+        return
+
+    if mode == "full_report":
+        from cli.event_analysis_workflow import run_full_report_mode
+
+        session_manager = get_session_manager()
+        yield {"type": "tool_call", "tool_name": "full_report_mode_node", "args": {"query": user_input}, "run_id": f"mode_full_{task_id or 'na'}"}
+        file_url_or_path = run_full_report_mode(
+            user_query=user_input,
+            task_id=task_id or "",
+            session_manager=session_manager,
+            debug=True,
+            force_fresh_start=True,
+        )
+        yield {
+            "type": "tool_result",
+            "tool_name": "full_report_mode_node",
+            "result": str(file_url_or_path or ""),
+            "run_id": f"mode_full_{task_id or 'na'}",
+        }
+        final_text = (
+            "完整舆情报告流程已完成。\n"
+            f"- 报告地址：{str(file_url_or_path or '未返回')}\n"
+            "- 已复用事件分析工作流节点（采集/分析/报告生成）。"
+        )
+        yield {"type": "message", "message": AIMessage(content=final_text), "message_id": f"mode_full_msg_{task_id or 'na'}"}
+        return
+
 # 创建带消息历史的 Agent
 # 注意：此函数目前未使用，保留作为预留功能，用于未来可能需要直接使用带历史管理的 Agent 的场景
 def _create_agent_with_history():
@@ -171,7 +267,8 @@ def stream(
     task_id: str | None = None,
     previous_messages: Optional[List] = None,
     token_tracker: Optional[TokenUsageTracker] = None,
-    max_context_tokens: int = 20000
+    max_context_tokens: int = 20000,
+    task_mode: str = "qa",
 ):
     """
     流式运行 ReAct Agent（token 级别），支持自动消息压缩
@@ -186,6 +283,16 @@ def stream(
     """
     # 设置任务ID（使用辅助函数，同时设置 ContextVar 和全局存储）
     set_task_id(task_id)
+
+    # 模式化执行：由 Agent 直接编排（复用工作流骨架）
+    mode = str(task_mode or "qa").strip().lower()
+    if mode in {"brief", "full_report"}:
+        for item in _stream_mode_flow(user_input=user_input, task_id=task_id, task_mode=mode):
+            yield item
+        return
+
+    selected_agent = qa_agent if mode == "qa" else react_agent
+    selected_tools = QA_TOOLS if mode == "qa" else AGENT_TOOLS
     
     # 构建消息列表
     messages = []
@@ -296,10 +403,10 @@ def stream(
                 # 追踪当前正在执行的工具 run_id，用于过滤工具内部 LLM 的流式输出
                 active_tool_run_ids: set[str] = set()
                 
-                async for event in react_agent.astream_events(
+                async for event in selected_agent.astream_events(
                     inputs,
                     version="v2",
-                    include_names=["ChatOpenAI", "ChatTongyi", "ChatGoogleGenerativeAI"] + [tool.name for tool in AGENT_TOOLS],
+                    include_names=["ChatOpenAI", "ChatTongyi", "ChatGoogleGenerativeAI"] + [tool.name for tool in selected_tools],
                     config=config
                 ):
                     # 在每个事件处理前都确保任务ID上下文设置（防止上下文丢失）
@@ -468,5 +575,5 @@ def stream(
     if exception_holder[0]:
         # 如果 astream_events 失败，回退到旧的 stream 方法
         warnings.warn(f"Token-level streaming failed, falling back to message-level: {exception_holder[0]}")
-        for chunk in react_agent.stream(inputs, stream_mode="updates", config=config):
+        for chunk in selected_agent.stream(inputs, stream_mode="updates", config=config):
             yield {"type": "state_update", "state": chunk}

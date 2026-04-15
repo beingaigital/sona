@@ -18,6 +18,27 @@
 
 输出一个 JSON 对象（UTF-8），键名必须全部存在且与下列键完全一致（无证据处写「证据不足」）：
 
+## 关键质量要求（强制执行）
+
+1) 你必须优先使用输入材料中出现的理论（如 Graph RAG 摘要、舆情智库参考、专家研判）；避免固定只写“议程设置/蝴蝶效应/沉默螺旋”三件套，需根据事件证据选择最相关理论；若某理论证据不足，明确标注「证据不足」，不得强行套用。
+2) 你写的每个“结论/研判/建议”必须满足链路：**数据证据（来自 analysis_results）→ 机制解释（为何会这样）→ 风险/影响（会造成什么）→ 可操作建议（做什么）**。
+3) 每个图表对应的结论数组（CHART_*_ANALYSIS）必须给出 3 条要点，且每条要点都必须同时包含：主要发现 + 风险/影响 + 一条行动建议。
+4) 语言必须“具体可核验”：不要空泛形容词堆砌（如“引发广泛关注/热议”），必须落到“谁在说、说什么、为何扩散、在哪些人群/地域/话题上集中”。
+5) 若输入材料中包含「用户协同输入与外部参考（结构化提炼）」或出现文件名 user_judgement_input.json / user_expert_notes.json：你必须在以下至少两处**显式引用并回应**（写出“用户判断/专家研判”里的关键观点，并说明你是否同意、数据是否支持、以及建议如何落地）：  
+   - SUMMARY_BULLETS（概览研判结论）  
+   - RESPONSE_ANALYSIS_BULLETS（回应观察与分析）  
+   - RECAP_TRENDS / RECAP_DISCOURSE / RECAP_DRIVERS_BULLETS（复盘总结）  
+   若你未能在输出中体现，将视为不合格。
+6) PHASE_STATUS（若有证据）只能从以下五类中选择并给出简短判定依据：潜伏 / 爆发 / 扩散 / 衰退 / 结束；若证据不足写「待评估（证据不足）」。
+7) INTRO_BACKGROUND 对应“事件概览”：必须优先参考微博智搜与时间线结果，写成 200~600 字的简练综述；禁止冗长背景堆砌。
+8) 生成 SUMMARY_BULLETS、CHART_*_ANALYSIS、RESPONSE_ANALYSIS_BULLETS、RECAP_* 时，必须“数据证据优先、知识库观点辅助”。禁止只复述参考资料而忽略本次数据结论。
+9) 若输入中存在“舆情智库知识快照（高优先级）”或 yqzk_knowledge_snapshot.json：你必须在以下至少三处显式引用其概念/案例，并与本次数据做交叉验证后再给结论：
+   - THEORY_SILENCE / THEORY_AGENDA / THEORY_BUTTERFLY（至少两处）
+   - RESPONSE_ANALYSIS_BULLETS（至少一处）
+   - RECAP_DISCOURSE / RECAP_TRENDS / RECAP_DRIVERS_BULLETS（至少一处）
+   若未引用，视为不合格输出。
+10) RECAP_DISCOURSE 与 RECAP_TRENDS 必须写成“可执行复盘”风格：每段建议 120~260 字，至少包含 1 个数据证据、1 个机制解释与 1 条可落地建议；禁止输出“证据不足：请补充...”这类占位句。
+
 所有 value 必须使用简体中文书写。
 - 禁止输出英文句子、英文短语、英文分析术语。
 - 禁止中英夹杂；如确需引用专有名词，也必须改写为中文表述。
@@ -40,9 +61,9 @@
 - CHART_KEYWORD_ANALYSIS（数组，3条）
 - CHART_RADAR_ANALYSIS（数组，3条）
 - CHART_LIFECYCLE_ANALYSIS（数组，3条）
-- THEORY_SILENCE
-- THEORY_AGENDA
-- THEORY_BUTTERFLY
+- THEORY_SILENCE（注意：这是“理论槽位1”，可写任何最相关理论；若不适用写「证据不足」）
+- THEORY_AGENDA（注意：这是“理论槽位2”，可写任何最相关理论；若不适用写「证据不足」）
+- THEORY_BUTTERFLY（注意：这是“理论槽位3”，可写任何最相关理论；若不适用写「证据不足」）
 - RESPONSE_ANALYSIS_BULLETS（数组，3条）
 - RECAP_DISCOURSE
 - RECAP_TRENDS

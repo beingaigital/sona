@@ -8,6 +8,7 @@ import re
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
+import time
 
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.tools import tool
@@ -38,6 +39,8 @@ def _env_int(name: str, default: int, low: int, high: int) -> int:
 
 _SENTIMENT_BATCH_PARALLEL_WORKERS: int = _env_int("SONA_SENTIMENT_BATCH_PARALLEL_WORKERS", 2, 1, 8)
 _SENTIMENT_BATCH_JITTER_MS: int = _env_int("SONA_SENTIMENT_BATCH_JITTER_MS", 100, 0, 1000)
+_SENTIMENT_DYNAMIC_BATCH_SIZE: int = _env_int("SONA_SENTIMENT_BATCH_SIZE", 40, 4, 64)
+_SENTIMENT_BATCH_RETRIES: int = _env_int("SONA_SENTIMENT_BATCH_RETRIES", 1, 0, 3)
 
 _SCORE_SYSTEM_PROMPT = """你是舆情情感分析助手。结合「事件背景」，对每条文本给出整数情感分 score，范围 0～10：
 - 0 为最负面，10 为最正面
@@ -50,6 +53,48 @@ _SCORE_SYSTEM_PROMPT = """你是舆情情感分析助手。结合「事件背景
 - items 长度与输入条数一致，每个 row 与输入中的 row 一致
 - score 必须为整数，不得输出小数或文字说明
 """
+
+
+class _RequestMetrics:
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self.started = 0
+        self.succeeded = 0
+        self.failed = 0
+        self.active = 0
+        self.max_active = 0
+
+    def on_start(self) -> None:
+        with self._lock:
+            self.started += 1
+            self.active += 1
+            if self.active > self.max_active:
+                self.max_active = self.active
+
+    def on_end(self, success: bool) -> None:
+        with self._lock:
+            self.active = max(0, self.active - 1)
+            if success:
+                self.succeeded += 1
+            else:
+                self.failed += 1
+
+    def summary(self, *, elapsed_sec: float, rows_scored: int) -> Dict[str, Any]:
+        elapsed = max(0.001, elapsed_sec)
+        qps = rows_scored / elapsed
+        qpm = qps * 60.0
+        rpm = self.started / elapsed * 60.0
+        return {
+            "elapsed_sec": round(elapsed_sec, 3),
+            "rows_scored": rows_scored,
+            "requests_started": self.started,
+            "requests_succeeded": self.succeeded,
+            "requests_failed": self.failed,
+            "qps": round(qps, 3),
+            "qpm": round(qpm, 2),
+            "rpm": round(rpm, 2),
+            "max_concurrent_connections": self.max_active,
+        }
 
 
 
@@ -229,6 +274,7 @@ def _score_batch(
     *,
     event_introduction: str,
     batch: List[Tuple[int, str]],
+    metrics: Optional[_RequestMetrics] = None,
 ) -> Dict[int, int]:
     payload = [{"row": idx, "text": txt[:_MAX_CHARS_PER_TEXT]} for idx, txt in batch]
     human = (
@@ -240,9 +286,26 @@ def _score_batch(
         SystemMessage(content=_SCORE_SYSTEM_PROMPT),
         HumanMessage(content=human),
     ]
-    try:
-        response = model.invoke(messages)
-    except Exception:
+    last_error: Optional[Exception] = None
+    response: Any = None
+    for attempt in range(_SENTIMENT_BATCH_RETRIES + 1):
+        if metrics:
+            metrics.on_start()
+        try:
+            response = model.invoke(messages)
+            if metrics:
+                metrics.on_end(True)
+            last_error = None
+            break
+        except Exception as e:
+            last_error = e
+            if metrics:
+                metrics.on_end(False)
+            if attempt < _SENTIMENT_BATCH_RETRIES:
+                # 指数退避，缓解瞬时限流
+                threading.Event().wait(min(1.5, 0.25 * (2**attempt)))
+            continue
+    if response is None and last_error is not None:
         return {idx: 5 for idx, _ in batch}
     result_text = response.content if hasattr(response, "content") else str(response)
     out: Dict[int, int] = {}
@@ -272,7 +335,7 @@ def _score_batch(
 
 
 def _score_batch_worker(
-    *, event_introduction: str, batch: List[Tuple[int, str]]
+    *, event_introduction: str, batch: List[Tuple[int, str]], metrics: Optional[_RequestMetrics] = None
 ) -> Dict[int, int]:
     # 轻微抖动，降低并发瞬时触发限流
     if _SENTIMENT_BATCH_JITTER_MS > 0:
@@ -285,7 +348,7 @@ def _score_batch_worker(
     # 每个线程内独立获取模型实例（model.factory 内部已做线程局部缓存）
     model = get_sentiment_model()
     try:
-        return _score_batch(model, event_introduction=event_introduction, batch=batch)
+        return _score_batch(model, event_introduction=event_introduction, batch=batch, metrics=metrics)
     except Exception:
         # 兜底：该批次统一给 5 分，保证流程不中断
         return {idx: 5 for idx, _ in batch}
@@ -391,7 +454,7 @@ def analysis_sentiment(
     """
     描述：分析情感倾向。自动识别与关键词工具一致的内容列，先做相同规则的文本清洗，再使用通义 qwen-plus
     对每条文本打 0～10 分（0-3 负面，4-6 中立，7-10 正面），统计占比并总结主要观点。
-    说明：默认执行“全量重判”；如需复用数据内已有情感列，可将 preferExistingSentimentColumn 设为 true。
+    说明：默认优先复用数据内已有情感列；如需全量重判，请将 preferExistingSentimentColumn 设为 false。
     """
     import json as json_module
 
@@ -455,10 +518,9 @@ def analysis_sentiment(
         )
 
     n = len(all_data)
-    # 变更：无条件使用 LLM 重判（不再复用现有情感列）
-    sentiment_col = None
-    prefer_existing_sentiment = False
-    use_existing_sentiment = False
+    sentiment_col = _identify_sentiment_column(all_data)
+    prefer_existing_sentiment = _to_bool(preferExistingSentimentColumn, default=True)
+    use_existing_sentiment = prefer_existing_sentiment and _should_use_existing_sentiment(all_data, sentiment_col)
 
     summary_model: Any = None
     scoring_model_name = ""
@@ -466,55 +528,74 @@ def analysis_sentiment(
     scores_by_row: Dict[int, Optional[int]] = {}
     row_meta: List[Dict[str, Any]] = []
     row_scores_brief: List[Dict[str, Any]] = []
-    # LLM 重判（默认路径）
-    try:
-        score_model = get_sentiment_model()
-    except Exception as e:
-        return json_module.dumps(
-            {
-                "error": f"获取情感分析模型失败: {str(e)}",
-                "statistics": {},
-                "positive_summary": [],
-                "negative_summary": [],
-                "result_file_path": "",
-            },
-            ensure_ascii=False,
-        )
-
     to_score: List[Tuple[int, str]] = []
-    for i, row in enumerate(all_data):
-        cleaned = _row_cleaned_content(row, content_columns)
-        if not cleaned:
-            scores_by_row[i] = None
-            continue
-        to_score.append((i, cleaned))
+    metrics = _RequestMetrics()
+    chunks: List[List[Tuple[int, str]]] = []
+    parallel_workers = 1
+    scoring_elapsed = 0.0
+    score_model: Any = None
 
-    # 组批
-    chunks: List[List[Tuple[int, str]]] = [
-        to_score[start : start + _BATCH_SIZE] for start in range(0, len(to_score), _BATCH_SIZE)
-    ]
-
-    # 并发批次打分（按批次级别并发，线程安全且可控），不足时退回串行
-    parallel_workers = min(_SENTIMENT_BATCH_PARALLEL_WORKERS, len(chunks)) if chunks else 1
-    if parallel_workers <= 1:
-        for chunk in chunks:
-            part = _score_batch(score_model, event_introduction=eventIntroduction, batch=chunk)
-            for idx, _txt in chunk:
-                scores_by_row[idx] = part.get(idx, 5)
+    if use_existing_sentiment and sentiment_col:
+        for i, row in enumerate(all_data):
+            cleaned = _row_cleaned_content(row, content_columns)
+            raw_label = row.get(sentiment_col, "")
+            norm_label = _normalize_sentiment_label(raw_label)
+            if norm_label is None:
+                scores_by_row[i] = None if not cleaned else 5
+            else:
+                scores_by_row[i] = _label_to_score(norm_label)
     else:
-        with ThreadPoolExecutor(max_workers=parallel_workers) as executor:
-            futures = {}
+        # LLM 重判路径（仅在用户明确要求重跑，或无可用情感列时执行）
+        try:
+            score_model = get_sentiment_model()
+        except Exception as e:
+            return json_module.dumps(
+                {
+                    "error": f"获取情感分析模型失败: {str(e)}",
+                    "statistics": {},
+                    "positive_summary": [],
+                    "negative_summary": [],
+                    "result_file_path": "",
+                },
+                ensure_ascii=False,
+            )
+
+        for i, row in enumerate(all_data):
+            cleaned = _row_cleaned_content(row, content_columns)
+            if not cleaned:
+                scores_by_row[i] = None
+                continue
+            to_score.append((i, cleaned))
+
+        # 组批
+        scoring_started_at = time.perf_counter()
+        chunks = [
+            to_score[start : start + _SENTIMENT_DYNAMIC_BATCH_SIZE]
+            for start in range(0, len(to_score), _SENTIMENT_DYNAMIC_BATCH_SIZE)
+        ]
+
+        # 并发批次打分（按批次级别并发，线程安全且可控），不足时退回串行
+        parallel_workers = min(_SENTIMENT_BATCH_PARALLEL_WORKERS, len(chunks)) if chunks else 1
+        if parallel_workers <= 1:
             for chunk in chunks:
-                fut = executor.submit(_score_batch_worker, event_introduction=eventIntroduction, batch=chunk)
-                futures[fut] = chunk
-            for fut in as_completed(list(futures.keys())):
-                chunk = futures.get(fut) or []
-                try:
-                    part = fut.result()
-                except Exception:
-                    part = {idx: 5 for idx, _txt in chunk}
+                part = _score_batch(score_model, event_introduction=eventIntroduction, batch=chunk, metrics=metrics)
                 for idx, _txt in chunk:
                     scores_by_row[idx] = part.get(idx, 5)
+        else:
+            with ThreadPoolExecutor(max_workers=parallel_workers) as executor:
+                futures = {}
+                for chunk in chunks:
+                    fut = executor.submit(_score_batch_worker, event_introduction=eventIntroduction, batch=chunk, metrics=metrics)
+                    futures[fut] = chunk
+                for fut in as_completed(list(futures.keys())):
+                    chunk = futures.get(fut) or []
+                    try:
+                        part = fut.result()
+                    except Exception:
+                        part = {idx: 5 for idx, _txt in chunk}
+                    for idx, _txt in chunk:
+                        scores_by_row[idx] = part.get(idx, 5)
+        scoring_elapsed = time.perf_counter() - scoring_started_at
 
     for i, row in enumerate(all_data):
         cleaned = _row_cleaned_content(row, content_columns)
@@ -529,6 +610,31 @@ def analysis_sentiment(
 
     statistics = _build_statistics(n, scores_by_row)
     statistics["content_columns"] = content_columns
+    statistics["batching"] = {
+        "batch_size": _SENTIMENT_DYNAMIC_BATCH_SIZE,
+        "batch_count": len(chunks),
+        "parallel_workers": parallel_workers,
+        "retry_per_batch": _SENTIMENT_BATCH_RETRIES,
+        "max_chars_per_text": _MAX_CHARS_PER_TEXT,
+        "mode": "existing_sentiment_column" if use_existing_sentiment else "llm_scoring",
+        "sentiment_column": sentiment_col or "",
+    }
+    statistics["concurrency_metrics"] = (
+        metrics.summary(elapsed_sec=scoring_elapsed, rows_scored=len(to_score))
+        if not use_existing_sentiment
+        else {
+            "elapsed_sec": 0.0,
+            "rows_scored": 0,
+            "requests_started": 0,
+            "requests_succeeded": 0,
+            "requests_failed": 0,
+            "qps": 0.0,
+            "qpm": 0.0,
+            "rpm": 0.0,
+            "max_concurrent_connections": 0,
+        }
+    )
+    statistics["sentiment_source"] = "existing_column" if use_existing_sentiment else "llm_scoring"
 
     positive_contents = _extract_contents_by_label(row_meta, "正面", limit=10)
     negative_contents = _extract_contents_by_label(row_meta, "负面", limit=10)
@@ -541,89 +647,94 @@ def analysis_sentiment(
         need_positive = positive_ratio > 0.1
         need_negative = negative_ratio > 0.1
 
-    try:
-        prompt_template = get_analysis_sentiment_prompt()
-    except Exception as e:
-        return json_module.dumps(
-            {
-                "error": f"加载情感总结提示词失败: {str(e)}",
-                "statistics": statistics,
-                "positive_summary": [],
-                "negative_summary": [],
-                "content_columns": content_columns,
-                "row_scores": row_scores_brief,
-                "result_file_path": "",
-            },
-            ensure_ascii=False,
+    if use_existing_sentiment:
+        positive_summary = _fallback_summary_from_contents(positive_contents, max_items=3)
+        negative_summary = _fallback_summary_from_contents(negative_contents, max_items=3)
+        parsed = {"positive_summary": positive_summary, "negative_summary": negative_summary}
+    else:
+        try:
+            prompt_template = get_analysis_sentiment_prompt()
+        except Exception as e:
+            return json_module.dumps(
+                {
+                    "error": f"加载情感总结提示词失败: {str(e)}",
+                    "statistics": statistics,
+                    "positive_summary": [],
+                    "negative_summary": [],
+                    "content_columns": content_columns,
+                    "row_scores": row_scores_brief,
+                    "result_file_path": "",
+                },
+                ensure_ascii=False,
+            )
+
+        retry_section = "无（首次分析）" if not previous_result else str(previous_result)
+        suggestions_section = "无" if not suggestions else str(suggestions)
+
+        prompt = prompt_template.format(
+            event_introduction=eventIntroduction,
+            statistics=json_module.dumps(statistics, ensure_ascii=False, indent=2),
+            positive_contents="\n\n".join(positive_contents) if need_positive and positive_contents else "无",
+            negative_contents="\n\n".join(negative_contents) if need_negative and negative_contents else "无",
+            need_positive="是" if need_positive else "否",
+            need_negative="是" if need_negative else "否",
+            previous_result=retry_section,
+            suggestions=suggestions_section,
         )
 
-    retry_section = "无（首次分析）" if not previous_result else str(previous_result)
-    suggestions_section = "无" if not suggestions else str(suggestions)
+        try:
+            summary_messages = [
+                SystemMessage(content="你是一个专业的情感倾向分析专家。"),
+                HumanMessage(content=prompt),
+            ]
+            summary_resp = score_model.invoke(summary_messages)
+            result_text = summary_resp.content if hasattr(summary_resp, "content") else str(summary_resp)
+        except Exception as e:
+            return json_module.dumps(
+                {
+                    "error": f"模型总结失败: {str(e)}",
+                    "statistics": statistics,
+                    "positive_summary": [],
+                    "negative_summary": [],
+                    "content_columns": content_columns,
+                    "row_scores": row_scores_brief,
+                    "result_file_path": "",
+                },
+                ensure_ascii=False,
+            )
 
-    prompt = prompt_template.format(
-        event_introduction=eventIntroduction,
-        statistics=json_module.dumps(statistics, ensure_ascii=False, indent=2),
-        positive_contents="\n\n".join(positive_contents) if need_positive and positive_contents else "无",
-        negative_contents="\n\n".join(negative_contents) if need_negative and negative_contents else "无",
-        need_positive="是" if need_positive else "否",
-        need_negative="是" if need_negative else "否",
-        previous_result=retry_section,
-        suggestions=suggestions_section,
-    )
+        try:
+            json_match = re.search(r"\{[\s\S]*\}", result_text)
+            parsed = json_module.loads(json_match.group() if json_match else result_text)
+        except Exception:
+            return json_module.dumps(
+                {
+                    "error": "模型返回总结格式不正确",
+                    "raw_result": result_text,
+                    "statistics": statistics,
+                    "positive_summary": [],
+                    "negative_summary": [],
+                    "content_columns": content_columns,
+                    "row_scores": row_scores_brief,
+                    "result_file_path": "",
+                },
+                ensure_ascii=False,
+            )
 
-    try:
-        summary_messages = [
-            SystemMessage(content="你是一个专业的情感倾向分析专家。"),
-            HumanMessage(content=prompt),
-        ]
-        summary_resp = score_model.invoke(summary_messages)
-        result_text = summary_resp.content if hasattr(summary_resp, "content") else str(summary_resp)
-    except Exception as e:
-        return json_module.dumps(
-            {
-                "error": f"模型总结失败: {str(e)}",
-                "statistics": statistics,
-                "positive_summary": [],
-                "negative_summary": [],
-                "content_columns": content_columns,
-                "row_scores": row_scores_brief,
-                "result_file_path": "",
-            },
-            ensure_ascii=False,
-        )
-
-    try:
-        json_match = re.search(r"\{[\s\S]*\}", result_text)
-        parsed = json_module.loads(json_match.group() if json_match else result_text)
-    except Exception:
-        return json_module.dumps(
-            {
-                "error": "模型返回总结格式不正确",
-                "raw_result": result_text,
-                "statistics": statistics,
-                "positive_summary": [],
-                "negative_summary": [],
-                "content_columns": content_columns,
-                "row_scores": row_scores_brief,
-                "result_file_path": "",
-            },
-            ensure_ascii=False,
-        )
-
-    if not isinstance(parsed, dict):
-        return json_module.dumps(
-            {
-                "error": "模型返回总结格式不正确",
-                "raw_result": result_text,
-                "statistics": statistics,
-                "positive_summary": [],
-                "negative_summary": [],
-                "content_columns": content_columns,
-                "row_scores": row_scores_brief,
-                "result_file_path": "",
-            },
-            ensure_ascii=False,
-        )
+        if not isinstance(parsed, dict):
+            return json_module.dumps(
+                {
+                    "error": "模型返回总结格式不正确",
+                    "raw_result": result_text,
+                    "statistics": statistics,
+                    "positive_summary": [],
+                    "negative_summary": [],
+                    "content_columns": content_columns,
+                    "row_scores": row_scores_brief,
+                    "result_file_path": "",
+                },
+                ensure_ascii=False,
+            )
 
     full_result: Dict[str, Any] = {
         "statistics": statistics,
@@ -631,8 +742,8 @@ def analysis_sentiment(
         "negative_summary": parsed.get("negative_summary", []),
         "content_columns": content_columns,
         "row_scores": row_scores_brief,
-        "scoring_model": "qwen-plus",
-        "scoring_profile": "sentiment",
+        "scoring_model": "existing_sentiment_column" if use_existing_sentiment else "qwen-plus",
+        "scoring_profile": "existing_column" if use_existing_sentiment else "sentiment",
         "raw_summary": None,
     }
 
@@ -656,7 +767,9 @@ def analysis_sentiment(
     result_file_path = str(full_result.get("result_file_path") or "")
     summary_message = (
         f"情感打分完成：共 {n} 行，命中 {len(content_columns)} 个内容列；"
-        f"按 0-10 分（0-3负/4-6中/7-10正）统计已生成并写入过程文件。"
+        f"QPS={statistics.get('concurrency_metrics', {}).get('qps', 0)}，"
+        f"RPM={statistics.get('concurrency_metrics', {}).get('rpm', 0)}，"
+        f"最大并发连接={statistics.get('concurrency_metrics', {}).get('max_concurrent_connections', 0)}。"
     )
     summary_payload: Dict[str, Any] = {
         "message": summary_message,
