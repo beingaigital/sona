@@ -310,15 +310,133 @@
 
         // 7. 生命周期面积图
         chartInstances.lifecycle = echarts.init(document.getElementById('lifecycleChart'));
+        const lifecycleSeries = (REPORT_DATA.charts.lifecycle.series || []).filter(function (s) {
+            if (!s || !Array.isArray(s.data)) return false;
+            return s.data.some(function (v) { return Number(v || 0) > 0; });
+        });
+        const lifecycleColors = ['#5b7cde', '#8ccf6b', '#f4b04f', '#d97b7b'];
+        const lifecycleDates = REPORT_DATA.charts.lifecycle.dates || [];
+        const lifecycleCurve = lifecycleDates.map(function (_, idx) {
+            for (let sIdx = 0; sIdx < lifecycleSeries.length; sIdx += 1) {
+                const n = Number((lifecycleSeries[sIdx].data || [])[idx] || 0);
+                if (n > 0) return n;
+            }
+            return 0;
+        });
+        const lifecycleStageIdx = lifecycleDates.map(function (_, idx) {
+            for (let sIdx = 0; sIdx < lifecycleSeries.length; sIdx += 1) {
+                const n = Number((lifecycleSeries[sIdx].data || [])[idx] || 0);
+                if (n > 0) return sIdx;
+            }
+            return -1;
+        });
+        const lifecycleLineData = lifecycleCurve.map(function (value, idx) {
+            return [idx, value, lifecycleStageIdx[idx]];
+        });
+        const lifecyclePieces = [];
+        for (let sIdx = 0; sIdx < lifecycleSeries.length; sIdx += 1) {
+            lifecyclePieces.push({ value: sIdx, color: lifecycleColors[sIdx] || '#5d8aa8', label: lifecycleSeries[sIdx].name });
+        }
+        const lifecycleBoundaryLines = [];
+        for (let i = 1; i < lifecycleStageIdx.length; i += 1) {
+            const prevStage = lifecycleStageIdx[i - 1];
+            const currStage = lifecycleStageIdx[i];
+            if (prevStage !== -1 && currStage !== -1 && currStage !== prevStage) {
+                const stageColor = lifecycleColors[currStage] || '#5d8aa8';
+                lifecycleBoundaryLines.push({
+                    xAxis: lifecycleDates[i],
+                    lineStyle: { color: stageColor }
+                });
+            }
+        }
+
+        // 阶段背景分区（淡色），增强辨识度
+        const lifecycleStageAreas = [];
+        (function buildLifecycleAreas() {
+            let startIdx = -1;
+            let currStage = -1;
+            for (let i = 0; i < lifecycleStageIdx.length; i += 1) {
+                const s = lifecycleStageIdx[i];
+                if (s === -1) continue;
+                if (currStage === -1) {
+                    currStage = s;
+                    startIdx = i;
+                    continue;
+                }
+                if (s !== currStage) {
+                    const color = lifecycleColors[currStage] || '#5d8aa8';
+                    const name = (lifecycleSeries[currStage] && lifecycleSeries[currStage].name) ? lifecycleSeries[currStage].name : '';
+                    lifecycleStageAreas.push([{
+                        xAxis: lifecycleDates[startIdx],
+                        itemStyle: { color: color, opacity: 0.10 },
+                        label: { show: true, color: color, fontWeight: 'bold', position: 'insideTop' },
+                        name: name
+                    }, {
+                        xAxis: lifecycleDates[i]
+                    }]);
+                    currStage = s;
+                    startIdx = i;
+                }
+            }
+            if (currStage !== -1 && startIdx !== -1) {
+                const color = lifecycleColors[currStage] || '#5d8aa8';
+                const name = (lifecycleSeries[currStage] && lifecycleSeries[currStage].name) ? lifecycleSeries[currStage].name : '';
+                lifecycleStageAreas.push([{
+                    xAxis: lifecycleDates[startIdx],
+                    itemStyle: { color: color, opacity: 0.10 },
+                    label: { show: true, color: color, fontWeight: 'bold', position: 'insideTop' },
+                    name: name
+                }, {
+                    xAxis: lifecycleDates[lifecycleDates.length - 1]
+                }]);
+            }
+        })();
         chartInstances.lifecycle.setOption({
-            tooltip: { trigger: 'axis' },
-            legend: { top: '2%', left: 'center' },
-            xAxis: { type: 'category', boundaryGap: false, data: REPORT_DATA.charts.lifecycle.dates },
+            tooltip: {
+                trigger: 'axis',
+                formatter: function (params) {
+                    const p = Array.isArray(params) ? params[0] : params;
+                    if (!p || !p.value) return '';
+                    const idx = Number(p.value[0] || 0);
+                    const v = Number(p.value[1] || 0);
+                    const sIdx = Number(p.value[2]);
+                    const stageName = (sIdx >= 0 && lifecycleSeries[sIdx]) ? lifecycleSeries[sIdx].name : '未识别';
+                    const timeLabel = lifecycleDates[idx] || '';
+                    return timeLabel + '<br/>' + stageName + '：' + v.toFixed(4);
+                }
+            },
+            legend: { show: false },
+            visualMap: {
+                type: 'piecewise',
+                show: false,
+                dimension: 2,
+                seriesIndex: 0,
+                pieces: lifecyclePieces
+            },
+            xAxis: { type: 'category', boundaryGap: false, data: lifecycleDates },
             yAxis: { show: false },
-            series: REPORT_DATA.charts.lifecycle.series.map(s => ({
-                name: s.name, type: 'line', stack: 'Total', smooth: true,
-                areaStyle: { opacity: 0.5 }, data: s.data
-            }))
+            series: [{
+                name: '生命周期',
+                type: 'line',
+                smooth: true,
+                connectNulls: false,
+                showSymbol: false,
+                lineStyle: { width: 3 },
+                areaStyle: { opacity: 0 },
+                encode: { x: 0, y: 1 },
+                data: lifecycleLineData,
+                markLine: {
+                    silent: true,
+                    symbol: 'none',
+                    lineStyle: { type: 'dashed', width: 1, color: '#b7c1cc' },
+                    label: { rotate: 0 },
+                    data: lifecycleBoundaryLines
+                },
+                markArea: {
+                    silent: true,
+                    data: lifecycleStageAreas
+                }
+            }]
         });
 
         // 渲染时间线
