@@ -18,6 +18,45 @@ from utils.env_loader import get_env_config
 COUNT_API_URL = "https://pro.netinsight.com.cn/netInsight/general/advancedSearch/infoCount"
 LOGIN_URL = "https://pro.netinsight.com.cn/login"
 
+SUPPORTED_PLATFORMS: List[str] = [
+    "新闻网站",
+    "新闻app",
+    "视频",
+    "微博",
+    "微信",
+    "自媒体号",
+    "论坛",
+    "电子报",
+    "境外新闻",
+    "Twitter",
+    "Facebook",
+]
+
+PLATFORM_ALIASES: Dict[str, str] = {
+    "新闻网站": "新闻网站",
+    "新闻站点": "新闻网站",
+    "新闻网": "新闻网站",
+    "新闻app": "新闻app",
+    "新闻APP": "新闻app",
+    "新闻客户端": "新闻app",
+    "视频": "视频",
+    "微博": "微博",
+    "微信": "微信",
+    "自媒体号": "自媒体号",
+    "自媒体": "自媒体号",
+    "论坛": "论坛",
+    "电子报": "电子报",
+    "境外新闻": "境外新闻",
+    "twitter": "Twitter",
+    "Twitter": "Twitter",
+    "x": "Twitter",
+    "X": "Twitter",
+    "facebook": "Facebook",
+    "Facebook": "Facebook",
+    "all": "ALL",
+    "ALL": "ALL",
+}
+
 # 基础参数（用于数量查询）
 BASE_COUNT_PARAMS = {
     # 关键词匹配范围：ALL=全文匹配（标题+正文+评论等）
@@ -104,6 +143,14 @@ BASE_COUNT_PARAMS = {
 def _should_bypass_netinsight_proxy() -> bool:
     v = os.environ.get("SONA_NETINSIGHT_NO_PROXY", "false").strip().lower()
     return v in ("1", "true", "yes", "y", "on")
+
+
+def _normalize_platform_name(platform: str) -> Optional[str]:
+    """将平台参数归一化为标准平台名；支持 ALL。"""
+    platform_text = (platform or "").strip()
+    if not platform_text:
+        return None
+    return PLATFORM_ALIASES.get(platform_text)
 
 
 async def _login_and_capture(
@@ -409,13 +456,13 @@ def data_num(
     platform: str = "微博",
 ) -> str:
     """
-    描述：查询不同搜索词在微博渠道的数据数量。根据提供的搜索词列表和时间范围，查询每个搜索词在微博平台的数据总量，并智能分配数量（如果总和超过阈值，则按比例分配使总和接近阈值）。
-    使用时机：当需要了解不同搜索词在微博平台的数据量分布，或需要为数据采集任务分配合理的数量时调用本工具。
+    描述：查询不同搜索词在指定平台的数据数量。根据提供的搜索词列表和时间范围，查询每个搜索词在目标平台的数据总量，并智能分配数量（如果总和超过阈值，则按比例分配使总和接近阈值）。
+    使用时机：当需要了解不同搜索词在某个平台的数据量分布，或需要为数据采集任务分配合理的数量时调用本工具。
     输入：
     - searchWords（必填）：搜索词列表，JSON字符串格式，例如 '["关键词1", "关键词2", "关键词3"]'。
     - timeRange（必填）：搜索时间范围，格式为 "2026-01-01 00:00:00;2026-01-31 23:59:59"。
     - threshold（可选，默认2000）：数量阈值，如果所有搜索词的总数量超过此值，则按比例分配使总和接近此值。
-    - platform（可选，默认"微博"）：指定平台名称，用于从返回结果中提取对应平台的数量。
+    - platform（可选，默认"微博"）：指定平台名称。支持：新闻网站、新闻app、视频、微博、微信、自媒体号、论坛、电子报、境外新闻、Twitter、Facebook、ALL。
     输出：JSON字符串，格式为 {
         "search_matrix": {
             "关键词1": 数量1,
@@ -465,6 +512,19 @@ def data_num(
             "threshold": threshold
         }, ensure_ascii=False)
     
+    normalized_platform = _normalize_platform_name(platform or "微博")
+    if not normalized_platform:
+        return json_module.dumps({
+            "error": (
+                f"不支持的平台: {platform}。"
+                f"当前支持: {', '.join(SUPPORTED_PLATFORMS)}，以及 ALL"
+            ),
+            "search_matrix": {},
+            "total_count": 0,
+            "time_range": timeRange,
+            "threshold": threshold
+        }, ensure_ascii=False)
+
     # 登录并获取凭证
     try:
         headers, cookies = _load_request_context()
@@ -498,7 +558,7 @@ def data_num(
                 timeRange,
                 headers,
                 cookies,
-                platform_name=platform,
+                platform_name=normalized_platform,
             )
             return keyword, int(count_val), None
         except Exception as e:
@@ -536,6 +596,7 @@ def data_num(
     result = {
         "search_matrix": final_counts,
         "total_count": total_count,
+        "platform": normalized_platform,
         "time_range": timeRange,
         "threshold": threshold,
     }

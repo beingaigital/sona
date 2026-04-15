@@ -517,6 +517,8 @@ for chunk in stream("分析最近一周小米汽车的舆情", task_id="task-001
 - 默认使用固定模板 `prompt/report_html_morandi_template.html`，版式与交互结构稳定
 - 程序确定性抽取图表数据并注入模板（`__REPORT_JSON_DATA__`）
 - 模型仅填充叙事占位符 JSON（`prompt/report_html_template_fill.txt`）
+- 生命周期研判采用热度指数规则：2 小时切片、互动加权（发文+点赞+3*评论+5*转发）、峰值归一化、移动平均平滑
+- 生命周期阶段固定为：`潜伏期 / 成长期 / 成熟期 / 衰退期`，并由规则自动给出 `PHASE_STATUS`
 - 报告文本默认约束为中文，包含英文时会触发兜底清洗
 - 模板不可用时自动回退旧逻辑（整页 HTML 生成）与 fallback 兜底
 - 使用 ECharts 进行数据可视化，响应式适配不同屏幕尺寸

@@ -183,7 +183,7 @@ def build_report_config_from_json_files(json_files: List[Dict[str, Any]]) -> Dic
             if not isinstance(pt, dict):
                 continue
             nm = str(pt.get("name", "") or "").strip()
-            trend_dates.append(nm[-5:] if len(nm) >= 10 else nm)
+            trend_dates.append(nm)
             try:
                 trend_values.append(int(pt.get("value", 0)))
             except Exception:
@@ -273,72 +273,86 @@ def _build_radar_values(report_config: Dict[str, Any]) -> List[int]:
     ]
 
 
-def _classify_lifecycle_stage(values: List[int]) -> List[str]:
-    """按时间点给出唯一生命周期阶段（同一时点只属于一个阶段）。"""
-    if not values:
-        return []
+def _extract_volume_series(vol: Optional[Dict[str, Any]]) -> Tuple[List[str], List[int], Dict[str, Any]]:
+    """从 volume_stats.json 中抽取优先级明确的趋势序列。"""
+    if not isinstance(vol, dict):
+        return ["—"], [0], {}
 
-    n = len(values)
-    peak_idx = max(range(n), key=lambda i: values[i])
-    max_v = max(max(values), 1)
-    stages: List[str] = []
+    heat_smoothed = vol.get("heat_percentage_smoothed")
+    if isinstance(heat_smoothed, list) and heat_smoothed:
+        dates = [str(x.get("name", "—")) for x in heat_smoothed if isinstance(x, dict)]
+        values = [_safe_int(x.get("value", 0), 0) for x in heat_smoothed if isinstance(x, dict)]
+        if dates and values:
+            return dates, values, vol
 
-    for i, v in enumerate(values):
-        # 峰值附近视为爆发期
-        if v >= int(max_v * 0.85) or i == peak_idx:
-            stages.append("爆发")
-            continue
+    data = vol.get("data")
+    if isinstance(data, list) and data:
+        dates = [str(x.get("name", "—")) for x in data if isinstance(x, dict)]
+        values = [_safe_int(x.get("value", 0), 0) for x in data if isinstance(x, dict)]
+        if dates and values:
+            return dates, values, vol
 
-        # 峰值之前为发酵期
-        if i < peak_idx:
-            stages.append("发酵")
-            continue
+    return ["—"], [0], vol
 
-        # 峰值之后按强度划分扩散/长尾
-        if v >= int(max_v * 0.35) and i < n - 1:
-            stages.append("扩散")
+
+def _build_lifecycle_series_from_volume(vol: Optional[Dict[str, Any]], dates: List[str], values: List[int]) -> Dict[str, Any]:
+    """优先使用 volume_stats 内置生命周期结果，否则生成兜底 one-hot。"""
+    phase_names = ["潜伏期", "成长期", "成熟期", "衰退期"]
+    if isinstance(vol, dict):
+        lifecycle = vol.get("lifecycle")
+        if isinstance(lifecycle, dict):
+            stages_raw = lifecycle.get("stages")
+            series_raw = lifecycle.get("series")
+            if isinstance(stages_raw, list) and isinstance(series_raw, list):
+                stages = []
+                for row in stages_raw:
+                    if isinstance(row, dict):
+                        stages.append(str(row.get("stage", "潜伏期")))
+                    else:
+                        stages.append(str(row))
+                series = [x for x in series_raw if isinstance(x, dict)]
+                if stages and series:
+                    return {
+                        "dates": dates or ["—"],
+                        "stages": stages,
+                        "series": series,
+                    }
+
+    # 兜底：按阈值简单分段
+    stages_fallback: List[str] = []
+    for v in values:
+        if v < 15:
+            stages_fallback.append("潜伏期")
+        elif v < 80:
+            stages_fallback.append("成长期")
+        elif v >= 50:
+            stages_fallback.append("成熟期")
         else:
-            stages.append("长尾")
+            stages_fallback.append("衰退期")
 
-    return stages
-
-
-def _build_lifecycle_series(dates: List[str], values: List[int]) -> Dict[str, Any]:
-    """构造生命周期图数据：每个时点仅一个阶段有值（one-hot）。"""
-    if not dates:
-        dates = ["—"]
-        values = [0]
-
-    seed = [max(0, int(v)) for v in values]
-    max_v = max(max(seed), 1)
-    stages = _classify_lifecycle_stage(seed)
-
-    phase_names = ["发酵", "爆发", "扩散", "长尾"]
     phase_data: Dict[str, List[int]] = {p: [] for p in phase_names}
-    for idx, v in enumerate(seed):
-        # 归一到 0-100，避免量级过大影响图形阅读
-        score = int(round((v / max_v) * 100)) if max_v else 0
-        score = max(score, 8) if v > 0 else 0
-        stage = stages[idx] if idx < len(stages) else "发酵"
+    for idx, val in enumerate(values):
+        stage = stages_fallback[idx] if idx < len(stages_fallback) else "潜伏期"
         for p in phase_names:
-            phase_data[p].append(score if p == stage else 0)
+            phase_data[p].append(val if p == stage else 0)
 
     return {
-        "dates": dates,
-        "stages": stages,
+        "dates": dates or ["—"],
+        "stages": stages_fallback or ["潜伏期"],
         "series": [{"name": p, "data": phase_data[p]} for p in phase_names],
     }
 
 
-def _summarize_phase_status(values: List[int]) -> str:
-    """给出当前周期阶段判定文案。"""
-    if not values:
+def _summarize_phase_status_from_volume(vol: Optional[Dict[str, Any]]) -> str:
+    if not isinstance(vol, dict):
         return "待评估（证据不足）"
-    stages = _classify_lifecycle_stage([max(0, int(v)) for v in values])
-    if not stages:
+    lifecycle = vol.get("lifecycle")
+    if not isinstance(lifecycle, dict):
         return "待评估（证据不足）"
-    latest = stages[-1]
-    return f"{latest}期（规则判定）"
+    current = str(lifecycle.get("current_phase", "") or "").strip()
+    if current:
+        return f"{current}（规则判定）"
+    return "待评估（证据不足）"
 
 
 def build_report_data_from_json_files(json_files: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -360,8 +374,9 @@ def build_report_data_from_json_files(json_files: List[Dict[str, Any]]) -> Dict[
 
     keyword_names = [str(x.get("word", "") or "") for x in cfg.get("keywords", []) if isinstance(x, dict)]
     keyword_values = [_safe_int(x.get("count", 0), 0) for x in cfg.get("keywords", []) if isinstance(x, dict)]
-    trend_dates = list(cfg.get("trend", {}).get("dates", []) or [])
-    trend_values = [_safe_int(v, 0) for v in (cfg.get("trend", {}).get("values", []) or [])]
+    vol = _get_json_by_name(json_files, "volume_stats.json")
+    trend_dates, trend_values, vol_obj = _extract_volume_series(vol)
+    lifecycle = _build_lifecycle_series_from_volume(vol_obj, trend_dates, trend_values)
 
     return {
         "charts": {
@@ -374,7 +389,7 @@ def build_report_data_from_json_files(json_files: List[Dict[str, Any]]) -> Dict[
             "author": {"names": author_names or ["证据不足"], "values": author_values or [0]},
             "keyword": {"names": keyword_names or ["证据不足"], "values": keyword_values or [0]},
             "radarValues": _build_radar_values(cfg),
-            "lifecycle": _build_lifecycle_series(trend_dates, trend_values),
+            "lifecycle": lifecycle,
         },
         "timeline": list(cfg.get("timeline", []) or [{"time": "—", "event": "证据不足"}]),
     }
@@ -646,8 +661,8 @@ def build_html_from_morandi_template(
     text_map["KPI_TOTAL"] = sample
     text_map["KPI_EFFECTIVE"] = effective
     text_map.setdefault("DATA_SOURCE", "过程文件 JSON")
-    lifecycle_values = list(report_data.get("charts", {}).get("volume", {}).get("values", []) or [])
-    text_map["PHASE_STATUS"] = _summarize_phase_status([_safe_int(v, 0) for v in lifecycle_values])
+    vol_obj = _get_json_by_name(json_files, "volume_stats.json")
+    text_map["PHASE_STATUS"] = _summarize_phase_status_from_volume(vol_obj)
 
     sent = _find_sentiment_json(json_files)
     if sent and isinstance(sent.get("statistics"), dict):
