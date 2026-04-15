@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import json
 import sys
 from pathlib import Path
@@ -17,10 +18,21 @@ from utils.task_context import set_task_id
 
 def main() -> None:
     """主函数：执行数据抓取测试。"""
+    parser = argparse.ArgumentParser(description="运行 data_collect 工具测试")
+    parser.add_argument(
+        "--platform",
+        default="微博",
+        help=(
+            "采集平台，默认微博。"
+            "可传：新闻网站、新闻app、视频、微博、微信、自媒体号、论坛、电子报、境外新闻、Twitter、Facebook"
+        ),
+    )
+    args = parser.parse_args()
+
     # 测试配置示例
     test_configs = [
         {
-            "searchMatrix": '{"元宝": 344, "小米": 41}',
+            "searchMatrix": '{"张雪峰": 344, "洛克王国": 41}',
             "timeRange": "2026-02-20 00:00:00;2026-03-01 23:59:59"
         },
     ]
@@ -34,7 +46,7 @@ def main() -> None:
         print(f"\n[测试 {i}/{len(test_configs)}]")
         print(f"搜索矩阵: {config['searchMatrix']}")
         print(f"时间范围: {config['timeRange']}")
-        print(f"平台: 微博（固定）")
+        print(f"平台: {args.platform}")
         print("-" * 80)
         
         # 统一测试输出目录：sandbox/测试/过程文件
@@ -49,7 +61,8 @@ def main() -> None:
             # 调用工具
             result = data_collect.invoke({
                 "searchMatrix": config["searchMatrix"],
-                "timeRange": config["timeRange"]
+                "timeRange": config["timeRange"],
+                "platform": args.platform,
             })
             
             # 解析并打印结果

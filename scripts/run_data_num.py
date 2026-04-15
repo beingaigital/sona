@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import json
 import sys
 from pathlib import Path
@@ -15,6 +16,17 @@ from tools.data_num import data_num
 
 def main() -> None:
     """主函数：执行数据数量查询测试。"""
+    parser = argparse.ArgumentParser(description="运行 data_num 工具测试")
+    parser.add_argument(
+        "--platform",
+        default="微博",
+        help=(
+            "统计平台，默认微博。"
+            "可传：新闻网站、新闻app、视频、微博、微信、自媒体号、论坛、电子报、境外新闻、Twitter、Facebook、ALL"
+        ),
+    )
+    args = parser.parse_args()
+
     # 测试配置示例
     test_configs = [
         {
@@ -33,6 +45,7 @@ def main() -> None:
         print(f"搜索词: {config['searchWords']}")
         print(f"时间范围: {config['timeRange']}")
         print(f"数量阈值: {config.get('threshold', 2000)}")
+        print(f"平台: {args.platform}")
         print("-" * 80)
         
         try:
@@ -40,7 +53,8 @@ def main() -> None:
             result = data_num.invoke({
                 "searchWords": config["searchWords"],
                 "timeRange": config["timeRange"],
-                "threshold": config.get("threshold", 2000)
+                "threshold": config.get("threshold", 2000),
+                "platform": args.platform,
             })
             
             # 解析并打印结果
@@ -73,6 +87,7 @@ def main() -> None:
                     
                     threshold = parsed.get("threshold", 2000)
                     print(f"  - 数量阈值: {threshold} 条")
+                    print(f"  - 平台: {parsed.get('platform', args.platform)}")
                     
                     # 验证比例分配逻辑
                     if total_count > 0:

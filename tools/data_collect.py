@@ -132,6 +132,60 @@ BASE_PARAMS = {
 API_URL = "https://pro.netinsight.com.cn/netInsight/general/advancedSearch/infoList"
 LOGIN_URL = "https://pro.netinsight.com.cn/login"
 
+SUPPORTED_PLATFORMS: List[str] = [
+    "新闻网站",
+    "新闻app",
+    "视频",
+    "微博",
+    "微信",
+    "自媒体号",
+    "论坛",
+    "电子报",
+    "境外新闻",
+    "Twitter",
+    "Facebook",
+]
+
+PLATFORM_ALIASES: Dict[str, str] = {
+    "新闻网站": "新闻网站",
+    "新闻站点": "新闻网站",
+    "新闻网": "新闻网站",
+    "新闻app": "新闻app",
+    "新闻APP": "新闻app",
+    "新闻客户端": "新闻app",
+    "视频": "视频",
+    "微博": "微博",
+    "微信": "微信",
+    "自媒体号": "自媒体号",
+    "自媒体": "自媒体号",
+    "论坛": "论坛",
+    "电子报": "电子报",
+    "境外新闻": "境外新闻",
+    "twitter": "Twitter",
+    "Twitter": "Twitter",
+    "x": "Twitter",
+    "X": "Twitter",
+    "facebook": "Facebook",
+    "Facebook": "Facebook",
+}
+
+
+def _normalize_platform_name(platform: str) -> Optional[str]:
+    """将平台参数归一化为 NetInsight 支持的标准平台名。"""
+    platform_text = (platform or "").strip()
+    if not platform_text:
+        return None
+    return PLATFORM_ALIASES.get(platform_text)
+
+
+def _pick_first(item: Dict[str, Any], candidates: List[str], default: Any = "") -> Any:
+    """按候选字段顺序取第一个有效值。"""
+    for key in candidates:
+        value = item.get(key)
+        if value is not None and value != "":
+            return value
+    return default
+
 
 def _should_bypass_netinsight_proxy() -> bool:
     v = os.environ.get("SONA_NETINSIGHT_NO_PROXY", "false").strip().lower()
@@ -414,22 +468,27 @@ def _extract_main_fields(item: Dict) -> Dict[str, Any]:
     """从原始数据中提取主要字段"""
     # 定义主要字段映射
     main_fields = {
-        "id": item.get("id", ""),
-        "标题": item.get("title") or item.get("copyTitle", ""),
-        "内容": item.get("content") or item.get("copyAbstracts", "") or item.get("abstracts", ""),
-        "作者": item.get("author") or item.get("screenName", ""),
-        "平台": item.get("channel") or item.get("groupName", ""),
-        "发布时间": item.get("timeBak") or item.get("time", ""),
-        "发布时间戳": item.get("time", ""),
-        "URL": item.get("urlName", ""),
-        "情感": item.get("emotion") or item.get("appraiseNew", ""),
-        "评论数": item.get("commentNum", 0),
-        "转发数": item.get("shareNum", 0),
-        "点赞数": item.get("prNum", 0),
-        "来源": item.get("siteName") or item.get("siteNameBak", ""),
-        "IP属地": item.get("ipLocation", ""),
-        "命中关键词": ";".join(item.get("keyWordes", [])) if isinstance(item.get("keyWordes"), list) else item.get("hitWord", ""),
-        "行业类型": item.get("industryType", ""),
+        "id": _pick_first(item, ["id", "_id", "docId"], ""),
+        "标题": _pick_first(item, ["title", "copyTitle", "subject", "name"], ""),
+        "内容": _pick_first(item, ["content", "copyAbstracts", "abstracts", "summary", "desc"], ""),
+        "作者": _pick_first(item, ["author", "screenName", "nickname", "userName", "mediaName"], ""),
+        # 平台优先使用分组字段，避免被 channel（如“推荐”）误覆盖。
+        "平台": _pick_first(item, ["groupName", "source", "platform", "channel"], ""),
+        "发布时间": _pick_first(item, ["timeBak", "publishTime", "pubTime", "createTime", "time"], ""),
+        "发布时间戳": _pick_first(item, ["time", "publishTimestamp", "pubTimestamp", "timestamp"], ""),
+        "URL": _pick_first(item, ["urlName", "url", "shareUrl", "newsUrl"], ""),
+        "情感": _pick_first(item, ["emotion", "appraiseNew", "sentiment", "emotionType"], ""),
+        "评论数": _pick_first(item, ["commentNum", "commentCount", "comments", "replyCount"], 0),
+        "转发数": _pick_first(item, ["shareNum", "repostCount", "forwardCount", "retweetCount"], 0),
+        "点赞数": _pick_first(item, ["prNum", "likeCount", "diggCount", "favoriteCount"], 0),
+        "来源": _pick_first(item, ["siteName", "siteNameBak", "mediaName", "site"], ""),
+        "IP属地": _pick_first(item, ["ipLocation", "ipRegion", "location"], ""),
+        "命中关键词": (
+            ";".join(item.get("keyWordes", []))
+            if isinstance(item.get("keyWordes"), list)
+            else _pick_first(item, ["hitWord", "keywords", "keyword"], "")
+        ),
+        "行业类型": _pick_first(item, ["industryType", "industry", "industryName"], ""),
     }
     
     # 清理 HTML 标签（简单处理）
@@ -568,15 +627,16 @@ def data_collect(
     platform: str = "微博",
 ) -> str:
     """
-    描述：根据搜索矩阵和时间范围循环抓取微博渠道的舆情数据。根据提供的搜索矩阵（包含多个搜索词及其对应的数量），循环爬取每个搜索词的数据，最终汇总到一个CSV文件并按照内容列进行去重。
-    使用时机：当需要根据搜索矩阵批量抓取微博舆情数据时调用本工具。搜索矩阵通常由 data_num 工具生成。
+    描述：根据搜索矩阵和时间范围循环抓取指定平台的舆情数据。根据提供的搜索矩阵（包含多个搜索词及其对应的数量），循环爬取每个搜索词的数据，最终汇总到一个CSV文件并按照内容列进行去重。
+    使用时机：当需要根据搜索矩阵批量抓取舆情数据时调用本工具。搜索矩阵通常由 data_num 工具生成。
     输入：
     - searchMatrix（必填）：搜索矩阵，JSON字符串格式，例如 '{"关键词1": 数量1, "关键词2": 数量2, "关键词3": 数量3}'。每个关键词对应需要爬取的数量。
     - timeRange（必填）：搜索时间范围，格式如 "2026-01-01 00:00:00;2026-01-31 23:59:59"。
+    - platform（选填）：采集平台，默认“微博”。支持：新闻网站、新闻app、视频、微博、微信、自媒体号、论坛、电子报、境外新闻、Twitter、Facebook。
     输出：JSON字符串，包含以下字段：
     - save_path：CSV文件保存路径（汇总后的最终文件）
     - meta：元数据信息
-      - platform：爬取的平台名称（固定为"微博"）
+      - platform：爬取的平台名称（标准化后）
       - count：实际爬取的数量（去重后）
       - fields：包含的字段列表
       - field_types：字段类型说明
@@ -660,8 +720,17 @@ def data_collect(
             "meta": {}
         }, ensure_ascii=False)
     
-    # 平台由入参决定（默认微博）
-    group_name = platform or "微博"
+    group_name = _normalize_platform_name(platform or "微博")
+    if not group_name:
+        return json_module.dumps({
+            "error": (
+                f"不支持的平台: {platform}。"
+                f"当前支持: {', '.join(SUPPORTED_PLATFORMS)}"
+            ),
+            "save_path": "",
+            "meta": {}
+        }, ensure_ascii=False)
+
     # 并发爬取每个搜索词的数据（每个关键词内部分页仍顺序执行，降低风控风险）
     all_items = []
     search_summary = {}
@@ -743,7 +812,7 @@ def data_collect(
         deduplicated_main_fields = []
         
         for item, main_fields in zip(all_items, main_fields_list):
-            content = main_fields.get("内容", "").strip()
+            content = (main_fields.get("内容") or "").strip()
             # 如果内容为空，也保留（可能是标题等）
             if not content or content not in seen_contents:
                 seen_contents.add(content)

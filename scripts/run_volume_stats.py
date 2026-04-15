@@ -21,9 +21,12 @@ DEFAULT_DATA_PATH = r"D:\sona\sandbox\测试\过程文件\测试.csv"
 
 
 def _parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="运行 volume_stats 工具，统计每日声量趋势。")
+    parser = argparse.ArgumentParser(description="运行 volume_stats 工具，统计窗口热度与生命周期阶段。")
     parser.add_argument("--data", default=DEFAULT_DATA_PATH, help="采集后的 CSV 文件路径。")
     parser.add_argument("--task-id", default="测试", help="任务 ID（默认：测试）。")
+    parser.add_argument("--window-hours", type=int, default=2, help="时间窗口小时数（默认 2）。")
+    parser.add_argument("--metric", default="post_count", choices=["post_count", "heat_index"], help="data 序列口径。")
+    parser.add_argument("--smooth-window", type=int, default=3, help="移动平均窗口（默认 3）。")
     return parser.parse_args(argv)
 
 
@@ -64,6 +67,9 @@ def main(argv: Optional[list[str]] = None) -> None:
         print("=" * 80)
         print(f"任务ID: {task_id}")
         print(f"数据文件: {data_path}")
+        print(f"window_hours: {int(args.window_hours)}")
+        print(f"metric: {str(args.metric)}")
+        print(f"smooth_window: {int(args.smooth_window)}")
         print("-" * 80)
 
         headers = _read_headers(data_path)
@@ -80,7 +86,12 @@ def main(argv: Optional[list[str]] = None) -> None:
         elif "发布时间戳" in normalized_headers:
             time_forced = "发布时间戳"
 
-        invoke_params: Dict[str, Any] = {"dataFilePath": str(data_path)}
+        invoke_params: Dict[str, Any] = {
+            "dataFilePath": str(data_path),
+            "windowHours": int(args.window_hours),
+            "metric": str(args.metric),
+            "smoothWindow": int(args.smooth_window),
+        }
         if time_forced:
             print(f"[时间列] 使用指定列: {time_forced}")
             invoke_params["timeColumn"] = time_forced
