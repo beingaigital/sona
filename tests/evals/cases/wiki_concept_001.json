@@ -1,0 +1,30 @@
+{
+  "id": "wiki_concept_001",
+  "target": "wiki",
+  "stage": null,
+  "input": {
+    "query": "什么是舆情反转？",
+    "options": {
+      "topk": 6,
+      "style": "teach"
+    }
+  },
+  "fixtures": {
+    "mode": "replay",
+    "recorded_tools": "tests/fixtures/wiki_concept_001/tools.json"
+  },
+  "expectations": {
+    "required_fields": [
+      "answer",
+      "sources"
+    ],
+    "min_sources": 2,
+    "max_latency_ms": 15000,
+    "thresholds": {
+      "traceability_score": 0.7,
+      "relevance_score": 0.75,
+      "structure_completeness": 1.0
+    }
+  }
+}
+
