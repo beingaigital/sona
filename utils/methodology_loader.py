@@ -1,5 +1,5 @@
 """
-舆情智库方法论加载器：融合本地方法论文档与 tools/舆情智库.py 输出。
+舆情智库方法论加载器：融合本地方法论文档与 tools/oprag.py 输出。
 """
 
 from __future__ import annotations
@@ -10,28 +10,36 @@ import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from utils.path import get_project_root
+from utils.path import get_opinion_analysis_kb_root, get_project_root
 
 
 PROJECT_ROOT = get_project_root()
-METHODOLOGY_DIR = PROJECT_ROOT / "舆情深度分析"
-SKILL_FILE = PROJECT_ROOT / "tools" / "舆情智库.py"
+METHODOLOGY_DIR = get_opinion_analysis_kb_root(PROJECT_ROOT)
+SKILL_FILE = PROJECT_ROOT / "tools" / "oprag.py"
 SKILL_REFERENCE_DIR = Path.home() / ".openclaw" / "skills" / "舆情智库" / "references"
 PROJECT_REFERENCE_DIR = PROJECT_ROOT / "references"
 LOCAL_REFERENCE_DIR = METHODOLOGY_DIR / "references"
 EXPERT_NOTES_DIR = LOCAL_REFERENCE_DIR / "expert_notes"
+WIKI_DIR = LOCAL_REFERENCE_DIR / "wiki"
+WIKI_OUTPUT_DIR = WIKI_DIR / "output"
 
 # 方法论文档候选（兼容旧目录结构）
 THEORY_CANDIDATES = [
     METHODOLOGY_DIR / "references" / "舆情分析方法论.md",
+    EXPERT_NOTES_DIR / "舆情分析方法论.md",
+    WIKI_OUTPUT_DIR / "舆情分析方法论.md",
     METHODOLOGY_DIR / "舆情分析方法论.md",
 ]
 OPINIONS_CANDIDATES = [
     METHODOLOGY_DIR / "references" / "舆情深度观点.md",
+    EXPERT_NOTES_DIR / "舆情深度观点.md",
+    WIKI_OUTPUT_DIR / "舆情深度观点.md",
     METHODOLOGY_DIR / "舆情分析可参考的一些深度观点.md",
 ]
 YOUTH_CANDIDATES = [
     METHODOLOGY_DIR / "references" / "青年网民心态.md",
+    EXPERT_NOTES_DIR / "青年网民心态.md",
+    WIKI_OUTPUT_DIR / "青年网民心态.md",
     METHODOLOGY_DIR / "中国青年网民社会心态调查报告（2024）.md",
 ]
 
@@ -251,7 +259,7 @@ def _load_skill_module() -> Any:
 
 def _invoke_skill_tool(module: Any, tool_name: str, payload: Dict[str, Any]) -> str:
     """
-    调用 tools/舆情智库.py 中的 LangChain tool 对象（StructuredTool.invoke）。
+    调用 tools/oprag.py 中的 LangChain tool 对象（StructuredTool.invoke）。
     """
     try:
         tool_obj = getattr(module, tool_name, None)
@@ -346,7 +354,7 @@ def _load_methodology_from_skill(topic: Optional[str] = None) -> str:
 
     if not sections:
         return ""
-    return "## 舆情智库方法论（skills: 舆情智库.py）\n\n" + "\n\n".join(sections)
+    return "## 舆情智库方法论（skills: oprag.py）\n\n" + "\n\n".join(sections)
 
 
 def _get_fallback_methodology() -> str:
@@ -381,7 +389,7 @@ def _get_fallback_methodology() -> str:
 def get_methodology_content(topic: Optional[str] = None) -> str:
     """
     获取舆情智库方法论内容，用于报告生成。
-    优先融合本地文档、事件定向参考与 tools/舆情智库.py。
+    优先融合本地文档、事件定向参考与 tools/oprag.py。
     """
     content_parts: List[str] = []
 
