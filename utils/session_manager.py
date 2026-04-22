@@ -36,6 +36,13 @@ class SessionManager:
             "description": f"初始对话：{initial_query}",
             "initial_query": initial_query,
             "messages": [],
+            # harness 级可进化记忆（与 messages 分离，便于审计/回滚/灰度）
+            # - session_prefs: 会话记忆（临时偏好，例如 wiki style/topk/weibo 开关等）
+            # - notes: 可选的结构化标注（例如用户偏好、约束、审阅结论）
+            "harness_memory": {
+                "session_prefs": {},
+                "notes": {},
+            },
             "token_usage": {
                 "total_tokens": 0,
                 "prompt_tokens": 0,

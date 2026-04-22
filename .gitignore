@@ -60,6 +60,13 @@ secrets/
 *.sublime-project
 *.sublime-workspace
 
+# Cursor / local editor artifacts
+.cursor/plans/
+.cursor/debug*.log
+
+# Local sync snapshots / backups
+.sync_backup/
+
 # Jupyter Notebook
 .ipynb_checkpoints
 *.ipynb
