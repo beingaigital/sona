@@ -16,7 +16,7 @@ from tools.report_html import report_html
 from tools.graph_rag_query import graph_rag_query
 from tools.weibo_aisearch import weibo_aisearch
 from tools.hottopics import run as hottopics_run
-from tools.yqzk import (
+from tools.oprag import (
     get_sentiment_analysis_framework,
     get_sentiment_theories,
     get_sentiment_case_template,
@@ -45,7 +45,7 @@ __all__ = [
     "graph_rag_query",
     "weibo_aisearch",
     "hottopics_run",
-    # 舆情智库
+    # OPRAG / 舆情知识库
     "get_sentiment_analysis_framework",
     "get_sentiment_theories",
     "get_sentiment_case_template",

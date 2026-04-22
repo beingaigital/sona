@@ -154,6 +154,14 @@
 
         <div class="grid-2">
             <div class="card">
+                <h3>渠道占比（各平台声量分布）</h3>
+                <div id="channelChart" class="chart-box"></div>
+                <div class="analysis-summary">
+                    <h3>简要分析结论</h3>
+                    <ul>{{CHART_CHANNEL_ANALYSIS}}</ul>
+                </div>
+            </div>
+            <div class="card">
                 <h3>每日声量趋势分析</h3>
                 <div id="volumeChart" class="chart-box"></div>
                 <div class="analysis-summary">
@@ -161,6 +169,9 @@
                     <ul>{{CHART_VOLUME_ANALYSIS}}</ul>
                 </div>
             </div>
+        </div>
+
+        <div class="grid-2">
             <div class="card">
                 <h3>发布地域 Top10 分析 (省级)</h3>
                 <div id="regionChart" class="chart-box"></div>
@@ -169,9 +180,6 @@
                     <ul>{{CHART_REGION_ANALYSIS}}</ul>
                 </div>
             </div>
-        </div>
-
-        <div class="grid-2">
             <div class="card">
                 <h3>核心发布者 Top10 分析</h3>
                 <div id="authorChart" class="chart-box"></div>
@@ -180,6 +188,9 @@
                     <ul>{{CHART_AUTHOR_ANALYSIS}}</ul>
                 </div>
             </div>
+        </div>
+
+        <div class="grid-2">
             <div class="card">
                 <h3>关键词热度词云（Top200）</h3>
                 <div id="keywordCloud" class="wordcloud-box"></div>
@@ -188,9 +199,6 @@
                     <ul>{{CHART_KEYWORD_ANALYSIS}}</ul>
                 </div>
             </div>
-        </div>
-
-        <div class="grid-2">
             <div class="card">
                 <h3>舆情核心五维分析 (雷达图)</h3>
                 <div id="radarChart" class="chart-box"></div>
@@ -199,13 +207,14 @@
                     <ul>{{CHART_RADAR_ANALYSIS}}</ul>
                 </div>
             </div>
-            <div class="card">
-                <h3>舆情生命周期阶段研判（声量趋势+阶段划分）</h3>
-                <div id="lifecycleChart" class="chart-box"></div>
-                <div class="analysis-summary">
-                    <h3>简要分析结论</h3>
-                    <ul>{{CHART_LIFECYCLE_ANALYSIS}}</ul>
-                </div>
+        </div>
+
+        <div class="card">
+            <h3>舆情生命周期阶段研判（声量趋势+阶段划分）</h3>
+            <div id="lifecycleChart" class="chart-box"></div>
+            <div class="analysis-summary">
+                <h3>简要分析结论</h3>
+                <ul>{{CHART_LIFECYCLE_ANALYSIS}}</ul>
             </div>
         </div>
     </section>
@@ -295,7 +304,33 @@
             }]
         });
 
-        // 2. 声量趋势
+        // 2. 渠道占比饼图（若数据缺失则隐藏）
+        const channelEl = document.getElementById('channelChart');
+        const channelData = (REPORT_DATA && REPORT_DATA.charts && Array.isArray(REPORT_DATA.charts.channel)) ? REPORT_DATA.charts.channel : [];
+        if (channelEl && channelData && channelData.length) {
+            chartInstances.channel = echarts.init(channelEl);
+            chartInstances.channel.setOption({
+                color: ECHARTS_THEME.colors,
+                animationDuration: 900,
+                tooltip: { trigger: 'item', confine: true, formatter: '{b}<br/>数量：{c}<br/>占比：{d}%' },
+                legend: { bottom: '2%', left: 'center', textStyle: { color: ECHARTS_THEME.subText } },
+                toolbox: baseToolbox(),
+                series: [{
+                    type: 'pie',
+                    radius: ['38%', '70%'],
+                    center: ['50%', '48%'],
+                    itemStyle: { borderRadius: 8, borderColor: '#fff', borderWidth: 2 },
+                    label: { color: ECHARTS_THEME.subText, formatter: '{b} {d}%' },
+                    emphasis: { scale: true, scaleSize: 8, itemStyle: { shadowBlur: 18, shadowColor: 'rgba(0,0,0,0.18)' } },
+                    data: channelData
+                }]
+            });
+        } else if (channelEl) {
+            // 无数据时不占空间，避免出现空白图框
+            channelEl.style.display = 'none';
+        }
+
+        // 3. 声量趋势
         chartInstances.volume = echarts.init(document.getElementById('volumeChart'));
         chartInstances.volume.setOption({
             color: ECHARTS_THEME.colors,
@@ -315,7 +350,7 @@
             dataZoom: [{ type: 'inside' }]
         });
 
-        // 3. 地域柱状图
+        // 4. 地域柱状图
         chartInstances.region = echarts.init(document.getElementById('regionChart'));
         chartInstances.region.setOption({
             color: ECHARTS_THEME.colors,
@@ -336,7 +371,7 @@
             }]
         });
 
-        // 4. 作者柱状图 (横向)
+        // 5. 作者柱状图 (横向)
         chartInstances.author = echarts.init(document.getElementById('authorChart'));
         chartInstances.author.setOption({
             color: ECHARTS_THEME.colors,
@@ -352,7 +387,7 @@
             }]
         });
 
-        // 5. 关键词词云（70词优先、横竖混排、词性着色、碰撞避免）
+        // 6. 关键词词云（70词优先、横竖混排、词性着色、碰撞避免）
         const wc = document.getElementById('keywordCloud');
         const posPalette = {
             '名词': '#4A6FA5',
@@ -459,7 +494,7 @@
         hint.textContent = `已渲染 ${placed.length}/${sortedWords.length} 个词（颜色=词性）`;
         wc.appendChild(hint);
 
-        // 6. 五维雷达图
+        // 7. 五维雷达图
         chartInstances.radar = echarts.init(document.getElementById('radarChart'));
         chartInstances.radar.setOption({
             color: ECHARTS_THEME.colors,
@@ -486,7 +521,7 @@
             }]
         });
 
-        // 7. 生命周期趋势图 + 阶段分割线
+        // 8. 生命周期趋势图 + 阶段分割线
         chartInstances.lifecycle = echarts.init(document.getElementById('lifecycleChart'));
         const lifecycleDates = REPORT_DATA.charts.lifecycle.dates || [];
         const lifecycleValues = REPORT_DATA.charts.lifecycle.values || [];

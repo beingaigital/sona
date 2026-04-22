@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import csv
 import json as json_module
 import re
 from collections import Counter
@@ -10,6 +9,8 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from langchain_core.tools import tool
+
+from tools._csv_io import read_csv_rows_all
 
 from tools.analysis_sentiment import analysis_sentiment
 from tools.keyword_stats import _identify_content_columns
@@ -37,21 +38,33 @@ _GROUP_RULES: Tuple[Tuple[str, Tuple[str, ...]], ...] = (
 )
 
 
-def _read_csv_rows(file_path: str) -> List[Dict[str, Any]]:
-    path = Path(file_path)
-    if not path.exists():
-        raise FileNotFoundError(f"数据文件不存在: {file_path}")
-    rows: List[Dict[str, Any]] = []
-    for enc in ("utf-8-sig", "utf-8", "gb18030", "gbk"):
+def _coerce_sentiment_count(value: Any) -> int:
+    """
+    Normalize sentiment count value from various schema versions.
+
+    Supported shapes:
+    - int/float/str numbers
+    - {"count": <number>, ...}
+    - {"value": <number>, ...}
+    """
+    if value is None:
+        return 0
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, (int, float)):
+        return int(value)
+    if isinstance(value, str):
         try:
-            with open(path, "r", encoding=enc, errors="strict") as f:
-                rows = list(csv.DictReader(f))
-            if rows:
-                return rows
+            return int(float(value.strip()))
         except Exception:
-            rows = []
-    with open(path, "r", encoding="utf-8-sig", errors="replace") as f:
-        return list(csv.DictReader(f))
+            return 0
+    if isinstance(value, dict):
+        if "count" in value:
+            return _coerce_sentiment_count(value.get("count"))
+        if "value" in value:
+            return _coerce_sentiment_count(value.get("value"))
+        return 0
+    return 0
 
 
 def _read_json_file(path: str) -> Dict[str, Any]:
@@ -61,6 +74,100 @@ def _read_json_file(path: str) -> Dict[str, Any]:
     with open(p, "r", encoding="utf-8", errors="replace") as f:
         data = json_module.load(f)
     return data if isinstance(data, dict) else {}
+
+
+def _identify_sentiment_column(fieldnames: Sequence[str]) -> Optional[str]:
+    candidates = (
+        "情感",
+        "情感倾向",
+        "情感分析",
+        "情感分类",
+        "情感标签",
+        "情绪",
+        "倾向",
+    )
+    for name in fieldnames:
+        raw = str(name or "").strip()
+        if not raw:
+            continue
+        if raw in candidates:
+            return raw
+    for name in fieldnames:
+        raw = str(name or "").strip()
+        if not raw:
+            continue
+        if any(key in raw for key in ("情感", "倾向", "情绪")):
+            return raw
+    return None
+
+
+def _normalize_sentiment_label_loose(value: Any) -> Optional[str]:
+    s = str(value or "").strip()
+    if not s or s in _UNKNOWN:
+        return None
+    s = s.replace(" ", "")
+    if any(x in s for x in ("负", "消极", "反对", "不满", "愤怒")):
+        return "负面"
+    if any(x in s for x in ("正", "积极", "支持", "赞同", "认可")):
+        return "正面"
+    if any(x in s for x in ("中", "中立", "客观", "一般", "无明显")):
+        return "中性"
+    # 兜底：常见数字标签
+    if s in {"0", "-1"}:
+        return "负面"
+    if s in {"1"}:
+        return "正面"
+    return None
+
+
+def _build_light_sentiment_stats_from_rows(rows: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
+    """从原始 CSV 中的“情感/倾向”列做轻量统计（不依赖大模型）。"""
+    if not rows:
+        return {}
+    fieldnames = list(rows[0].keys())
+    col = _identify_sentiment_column(fieldnames)
+    if not col:
+        return {}
+    counts = {"负面": 0, "中性": 0, "正面": 0}
+    for row in rows:
+        norm = _normalize_sentiment_label_loose(row.get(col))
+        if norm in counts:
+            counts[norm] += 1
+    total = sum(counts.values())
+    if total <= 0:
+        return {}
+    def _pct(x: int) -> float:
+        return round((x / total) * 100.0, 2)
+    return {
+        "statistics": {
+            "total": int(total),
+            "distribution": {
+                "负面": {"count": int(counts["负面"]), "pct": _pct(counts["负面"])},
+                "中性": {"count": int(counts["中性"]), "pct": _pct(counts["中性"])},
+                "正面": {"count": int(counts["正面"]), "pct": _pct(counts["正面"])},
+            },
+            "negative": {"count": int(counts["负面"]), "pct": _pct(counts["负面"])},
+            "neutral": {"count": int(counts["中性"]), "pct": _pct(counts["中性"])},
+            "positive": {"count": int(counts["正面"]), "pct": _pct(counts["正面"])},
+            "sentiment_source": "existing_column_light",
+            "sentiment_column": col,
+        }
+    }
+
+
+def _infer_author_type(author_name: str) -> str:
+    """对作者名称做粗分类：媒体/机构/个人/未知（用于画像统计，不做强结论）。"""
+    s = str(author_name or "").strip()
+    if not s or s in _UNKNOWN:
+        return "未知"
+    low = s.lower()
+    media_tokens = ("报", "日报", "晚报", "新闻", "融媒", "电视", "电台", "记者", "传媒", "观察", "发布", "频道")
+    org_tokens = ("官方", "政务", "公安", "交警", "法院", "检察", "卫健", "应急", "消防", "共青团", "政府", "委员会", "中心", "局", "厅", "办", "协会", "公司", "集团", "银行", "大学", "学院", "医院")
+    if any(t in s for t in media_tokens):
+        return "媒体"
+    if any(t in s for t in org_tokens) or "gov" in low or "official" in low:
+        return "机构"
+    return "个人"
 
 
 def _identify_author_column(fieldnames: Sequence[str]) -> Optional[str]:
@@ -166,9 +273,9 @@ def _build_core_groups(text: str, has_top_authors: bool) -> List[str]:
 
 def _build_emotion_features(sentiment_json: Dict[str, Any]) -> List[str]:
     stats = sentiment_json.get("statistics") if isinstance(sentiment_json.get("statistics"), dict) else {}
-    negative = int(stats.get("negative_count") or stats.get("negative") or 0)
-    neutral = int(stats.get("neutral_count") or stats.get("neutral") or 0)
-    positive = int(stats.get("positive_count") or stats.get("positive") or 0)
+    negative = _coerce_sentiment_count(stats.get("negative_count") or stats.get("negative"))
+    neutral = _coerce_sentiment_count(stats.get("neutral_count") or stats.get("neutral"))
+    positive = _coerce_sentiment_count(stats.get("positive_count") or stats.get("positive"))
     total = max(negative + neutral + positive, 1)
     labels: List[str] = []
     if negative / total >= 0.4:
@@ -223,9 +330,9 @@ def _compute_portrait_confidence(
     sentiment_json: Dict[str, Any],
 ) -> Dict[str, Any]:
     stats = sentiment_json.get("statistics") if isinstance(sentiment_json.get("statistics"), dict) else {}
-    neg = int(stats.get("negative_count") or stats.get("negative") or 0)
-    neu = int(stats.get("neutral_count") or stats.get("neutral") or 0)
-    pos = int(stats.get("positive_count") or stats.get("positive") or 0)
+    neg = _coerce_sentiment_count(stats.get("negative_count") or stats.get("negative"))
+    neu = _coerce_sentiment_count(stats.get("neutral_count") or stats.get("neutral"))
+    pos = _coerce_sentiment_count(stats.get("positive_count") or stats.get("positive"))
     sentiment_total = neg + neu + pos
 
     top_author_share = 0.0
@@ -294,13 +401,14 @@ def user_portrait(dataFilePath: str, sentimentResultPath: str = "") -> str:
         return json_module.dumps({"error": "未找到任务ID", "user_portrait": {}, "result_file_path": ""}, ensure_ascii=False)
 
     try:
-        rows = _read_csv_rows(dataFilePath)
+        rows = read_csv_rows_all(dataFilePath)
     except Exception as exc:
         return json_module.dumps({"error": f"读取数据文件失败: {str(exc)}", "user_portrait": {}, "result_file_path": ""}, ensure_ascii=False)
 
+    # 情绪结果对“用户画像”不是强依赖：优先读外部结果；读不到则仅做轻量统计；不再强制触发大模型情绪分析。
     sentiment_json = _read_json_file(sentimentResultPath) if sentimentResultPath else {}
     if not sentiment_json:
-        sentiment_json = _build_sentiment_result_if_missing(task_id, dataFilePath)
+        sentiment_json = _build_light_sentiment_stats_from_rows(rows)
     if not rows:
         payload = {"total_rows": 0, "content_columns": [], "top_authors": [], "top_regions": [], "user_portrait": {}}
         payload["result_file_path"] = _save_result_json(task_id, payload)
@@ -313,10 +421,12 @@ def user_portrait(dataFilePath: str, sentimentResultPath: str = "") -> str:
 
     author_counter: Counter[str] = Counter()
     region_counter: Counter[str] = Counter()
+    author_type_counter: Counter[str] = Counter()
     for row in rows:
         if author_col:
             for author in _iter_authors(str(row.get(author_col, "") or "")):
                 author_counter[author] += 1
+                author_type_counter[_infer_author_type(author)] += 1
         if ip_col:
             region = _normalize_region(str(row.get(ip_col, "") or ""))
             if region:
@@ -337,12 +447,25 @@ def user_portrait(dataFilePath: str, sentimentResultPath: str = "") -> str:
         region_counter=region_counter,
         sentiment_json=sentiment_json,
     )
+
+    unique_authors = int(len(author_counter))
+    total_author_mentions = int(sum(author_counter.values()))
+    top_author_share = (
+        round((author_counter.most_common(1)[0][1] / max(total_author_mentions, 1)), 4)
+        if author_counter
+        else 0.0
+    )
     portrait = {
         "core_groups": _build_core_groups(joined_text, bool(author_counter)),
         "concerns": (keywords[:5] or ["事实真相", "责任划分", "后续处置"]),
-        "emotion_features": _build_emotion_features(sentiment_json),
+        "emotion_features": _build_emotion_features(sentiment_json) if sentiment_json else [],
         "behavior_features": behavior_features,
         "confidence_level": confidence["level"],
+        "user_features": {
+            "unique_authors": unique_authors,
+            "top_author_share": top_author_share,
+            "author_type_distribution": [{"type": t, "count": int(c)} for t, c in author_type_counter.most_common(6)],
+        },
     }
 
     payload = {
@@ -356,6 +479,9 @@ def user_portrait(dataFilePath: str, sentimentResultPath: str = "") -> str:
         "core_group_scores": group_ranked[:8],
         "portrait_confidence": confidence,
         "seed_keywords": keywords,
+        "sentiment_hint": (
+            sentiment_json.get("statistics", {}) if isinstance(sentiment_json.get("statistics"), dict) else {}
+        ),
         "user_portrait": portrait,
     }
     payload["result_file_path"] = _save_result_json(task_id, payload)

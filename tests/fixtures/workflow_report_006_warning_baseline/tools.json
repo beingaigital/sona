@@ -1,0 +1,14 @@
+{
+  "status": "success",
+  "stage": "report",
+  "artifacts": {
+    "report_html_file": "sandbox/45c6b9fa-b1d0-41de-9e28-22f6bd64a487/结果文件/report_20260421_093344.html",
+    "report_json_file": "sandbox/45c6b9fa-b1d0-41de-9e28-22f6bd64a487/结果文件/report_meta_20260421_093344.json"
+  },
+  "metrics": {
+    "section_coverage": 1.0,
+    "html_parse_success": true
+  },
+  "report_meta_file_path": "tests/fixtures/workflow_report_006_warning_baseline/report_meta.json"
+}
+

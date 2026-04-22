@@ -405,47 +405,82 @@ def _query_weibo_count(
 
 def _calculate_proportional_counts(
     keyword_counts: Dict[str, int],
-    target_total: int = 2000
+    target_total: int = 2000,
+    *,
+    min_per_key: int = 1,
 ) -> Dict[str, int]:
-    """按比例计算每个关键词的数量，使总和接近目标值"""
+    """按比例分配 target_total；关键词场景 min_per_key=1；平台场景可对 0 计数使用 min_per_key=0。"""
     total_count = sum(keyword_counts.values())
-    
-    # 如果总和不超过目标值，直接返回原始数量
+
+    if total_count <= 0:
+        keys = list(keyword_counts.keys())
+        if not keys or target_total <= 0:
+            return {}
+        base, rem = divmod(target_total, len(keys))
+        return {k: base + (1 if i < rem else 0) for i, k in enumerate(keys)}
+
     if total_count <= target_total:
-        return keyword_counts
-    
-    # 如果超过目标值，按比例分配
-    result = {}
-    
-    # 先按比例计算每个关键词的分配数量（保留小数精度）
-    proportions = {}
+        return dict(keyword_counts)
+
+    result: Dict[str, int] = {}
+    proportions: Dict[str, float] = {}
     for keyword, count in keyword_counts.items():
         proportions[keyword] = (count / total_count) * target_total
-    
-    # 向下取整，确保总和不超过目标值
+
     allocated_total = 0
     for keyword, proportion in proportions.items():
         allocated = int(proportion)
-        result[keyword] = max(1, allocated)  # 至少分配1条
+        if min_per_key > 0:
+            result[keyword] = max(min_per_key, allocated)
+        else:
+            result[keyword] = max(0, allocated)
         allocated_total += result[keyword]
-    
-    # 将剩余的数量按比例分配给各个关键词
+
     remaining = target_total - allocated_total
     if remaining > 0:
-        # 按小数部分排序，优先分配给小数部分较大的
         fractional_parts = [
             (keyword, proportion - int(proportion))
             for keyword, proportion in proportions.items()
         ]
         fractional_parts.sort(key=lambda x: x[1], reverse=True)
-        
-        # 分配剩余数量
-        for i, (keyword, _) in enumerate(fractional_parts):
+        for keyword, _ in fractional_parts:
             if remaining > 0:
                 result[keyword] += 1
                 remaining -= 1
-    
+
     return result
+
+
+def _allocate_across_platforms(platform_raw_counts: Dict[str, int], target_total: int) -> Dict[str, int]:
+    """按各平台可见条数比例分配 target_total；计数为 0 的平台分得 0；全 0 时均分。"""
+    if not platform_raw_counts:
+        return {}
+    positive = {k: v for k, v in platform_raw_counts.items() if v > 0}
+    if not positive:
+        return _calculate_proportional_counts(platform_raw_counts, target_total, min_per_key=0)
+    allocated_pos = _calculate_proportional_counts(positive, target_total, min_per_key=0)
+    out: Dict[str, int] = {k: 0 for k in platform_raw_counts}
+    out.update(allocated_pos)
+    return out
+
+
+def _normalize_keyword_mode(mode: str) -> str:
+    m = str(mode or "").strip().lower()
+    if m in ("advanced", "adv", "expr", "expression"):
+        return "advanced"
+    return "normal"
+
+
+def _build_single_query_string(keywords: List[str], *, keyword_mode: str) -> str:
+    """高级模式：单表达式；普通模式：多词用分号连接（或关系）。"""
+    parts = [str(x).strip() for x in keywords if str(x).strip()]
+    if not parts:
+        return ""
+    if _normalize_keyword_mode(keyword_mode) == "advanced":
+        return parts[0]
+    if len(parts) == 1:
+        return parts[0]
+    return ";".join(parts)
 
 
 @tool
@@ -454,29 +489,25 @@ def data_num(
     timeRange: str,
     threshold: int = 2000,
     platform: str = "微博",
+    keywordMode: str = "normal",
+    platforms: str = "",
+    allocateByPlatform: bool = False,
 ) -> str:
     """
-    描述：查询不同搜索词在指定平台的数据数量。根据提供的搜索词列表和时间范围，查询每个搜索词在目标平台的数据总量，并智能分配数量（如果总和超过阈值，则按比例分配使总和接近阈值）。
-    使用时机：当需要了解不同搜索词在某个平台的数据量分布，或需要为数据采集任务分配合理的数量时调用本工具。
-    输入：
-    - searchWords（必填）：搜索词列表，JSON字符串格式，例如 '["关键词1", "关键词2", "关键词3"]'。
-    - timeRange（必填）：搜索时间范围，格式为 "2026-01-01 00:00:00;2026-01-31 23:59:59"。
-    - threshold（可选，默认2000）：数量阈值，如果所有搜索词的总数量超过此值，则按比例分配使总和接近此值。
-    - platform（可选，默认"微博"）：指定平台名称。支持：新闻网站、新闻app、视频、微博、微信、自媒体号、论坛、电子报、境外新闻、Twitter、Facebook、ALL。
-    输出：JSON字符串，格式为 {
-        "search_matrix": {
-            "关键词1": 数量1,
-            "关键词2": 数量2,
-            ...
-        },
-        "total_count": 总数量,
-        "time_range": 使用的时间范围,
-        "threshold": 使用的数量阈值
-    }。
-    注意：如果所有搜索词的总数量超过阈值，工具会自动按比例分配，使总和接近阈值。
+    描述：查询 NetInsight 检索式在指定条件下的条数，并生成 data_collect 可用的 search_matrix。
+    - 普通模式（keywordMode=normal）：多个词将用分号合并为「或」检索（与 NetInsight 普通模式一致）。
+    - 高级模式（keywordMode=advanced）：searchWords 应为单条表达式，支持 +（且）、|（或）、-（排除）与括号，例如：华为+(手机|(数据线+充电器))-小米
+    - allocateByPlatform=true：对 platforms 列表中每个平台分别计数，再按条数比例把 threshold 分配到各平台（platform_allocation），避免总配额被单一渠道占满。
+    输入补充：platforms 为 JSON 数组字符串，如 '["微博","微信"]'；allocateByPlatform 为 true 时忽略单平台 platform 字段，改为多平台分配。
     """
     import json as json_module
-    
+
+    def _truthy(v: object) -> bool:
+        if isinstance(v, bool):
+            return v
+        s = str(v or "").strip().lower()
+        return s in ("1", "true", "yes", "y", "on")
+
     # 解析搜索词列表
     try:
         if isinstance(searchWords, str):
@@ -492,117 +523,224 @@ def data_num(
             keywords = [str(searchWords)]
     except Exception:
         keywords = [str(searchWords)]
-    
+
     if not keywords:
-        return json_module.dumps({
-            "error": "搜索词列表不能为空",
-            "search_matrix": {},
-            "total_count": 0,
-            "time_range": timeRange,
-            "threshold": threshold
-        }, ensure_ascii=False)
+        return json_module.dumps(
+            {
+                "error": "搜索词列表不能为空",
+                "search_matrix": {},
+                "total_count": 0,
+                "time_range": timeRange,
+                "threshold": threshold,
+            },
+            ensure_ascii=False,
+        )
 
-    # 验证阈值参数
     if threshold <= 0:
-        return json_module.dumps({
-            "error": "数量阈值必须大于0",
-            "search_matrix": {},
-            "total_count": 0,
-            "time_range": timeRange,
-            "threshold": threshold
-        }, ensure_ascii=False)
-    
-    normalized_platform = _normalize_platform_name(platform or "微博")
-    if not normalized_platform:
-        return json_module.dumps({
-            "error": (
-                f"不支持的平台: {platform}。"
-                f"当前支持: {', '.join(SUPPORTED_PLATFORMS)}，以及 ALL"
-            ),
-            "search_matrix": {},
-            "total_count": 0,
-            "time_range": timeRange,
-            "threshold": threshold
-        }, ensure_ascii=False)
+        return json_module.dumps(
+            {
+                "error": "数量阈值必须大于0",
+                "search_matrix": {},
+                "total_count": 0,
+                "time_range": timeRange,
+                "threshold": threshold,
+            },
+            ensure_ascii=False,
+        )
 
-    # 登录并获取凭证
+    km = _normalize_keyword_mode(keywordMode)
+    query_string = _build_single_query_string(keywords, keyword_mode=km)
+    if not query_string.strip():
+        return json_module.dumps(
+            {
+                "error": "检索式为空",
+                "search_matrix": {},
+                "total_count": 0,
+                "time_range": timeRange,
+                "threshold": threshold,
+            },
+            ensure_ascii=False,
+        )
+
+    allocate_by_platform = _truthy(allocateByPlatform) or _truthy(
+        os.environ.get("SONA_DATA_NUM_ALLOCATE_BY_PLATFORM", "")
+    )
+
+    platform_list: List[str] = []
+    if platforms and str(platforms).strip():
+        try:
+            loaded = json_module.loads(platforms)
+            if isinstance(loaded, list):
+                platform_list = [str(x).strip() for x in loaded if str(x).strip()]
+        except json_module.JSONDecodeError:
+            platform_list = []
+
+    # 登录
     try:
         headers, cookies = _load_request_context()
     except ValueError as e:
-        return json_module.dumps({
-            "error": str(e),
-            "search_matrix": {},
-            "total_count": 0,
-            "time_range": timeRange,
-            "threshold": threshold
-        }, ensure_ascii=False)
+        return json_module.dumps(
+            {
+                "error": str(e),
+                "search_matrix": {},
+                "total_count": 0,
+                "time_range": timeRange,
+                "threshold": threshold,
+            },
+            ensure_ascii=False,
+        )
     except Exception as e:
-        return json_module.dumps({
-            "error": f"登录失败: {str(e)}",
-            "search_matrix": {},
-            "total_count": 0,
-            "time_range": timeRange,
-            "threshold": threshold
-        }, ensure_ascii=False)
-    
-    # 查询每个关键词的平台数量（支持并发）
-    keyword_counts = {}
-    errors = []
+        return json_module.dumps(
+            {
+                "error": f"登录失败: {str(e)}",
+                "search_matrix": {},
+                "total_count": 0,
+                "time_range": timeRange,
+                "threshold": threshold,
+            },
+            ensure_ascii=False,
+        )
 
     max_workers = max(1, min(int(os.getenv("SONA_DATA_NUM_MAX_WORKERS", "4")), 8))
 
-    def _query_one(keyword: str) -> tuple[str, int, Optional[str]]:
-        try:
-            count_val = _query_weibo_count(
-                keyword,
-                timeRange,
-                headers,
-                cookies,
-                platform_name=normalized_platform,
+    # ---------- 多平台：按平台分配 threshold ----------
+    if allocate_by_platform and platform_list:
+        normalized_list: List[str] = []
+        for p in platform_list:
+            np = _normalize_platform_name(p)
+            if np and np != "ALL":
+                normalized_list.append(np)
+        if not normalized_list:
+            return json_module.dumps(
+                {
+                    "error": "platforms 中无有效平台名称",
+                    "search_matrix": {},
+                    "total_count": 0,
+                    "time_range": timeRange,
+                    "threshold": threshold,
+                },
+                ensure_ascii=False,
             )
-            return keyword, int(count_val), None
-        except Exception as e:
-            return keyword, 0, str(e)
 
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        futures = {executor.submit(_query_one, kw): kw for kw in keywords}
-        for future in as_completed(futures):
-            kw = futures[future]
+        platform_raw: Dict[str, int] = {}
+        errors: List[str] = []
+
+        def _query_plat(pl_name: str) -> tuple[str, int, Optional[str]]:
             try:
-                keyword, count, err = future.result()
+                c = _query_weibo_count(query_string, timeRange, headers, cookies, platform_name=pl_name)
+                return pl_name, int(c), None
             except Exception as e:
-                keyword, count, err = kw, 0, str(e)
-            keyword_counts[keyword] = count
-            if err:
-                errors.append(f"查询关键词 '{keyword}' 失败: {err}")
-    
-    # 如果有错误，记录但继续处理
-    if errors:
-        # 如果所有查询都失败，返回错误
-        if all(count == 0 for count in keyword_counts.values()):
-            return json_module.dumps({
+                return pl_name, 0, str(e)
+
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = {executor.submit(_query_plat, pl): pl for pl in normalized_list}
+            for future in as_completed(futures):
+                pl = futures[future]
+                try:
+                    name, cnt, err = future.result()
+                except Exception as e:
+                    name, cnt, err = pl, 0, str(e)
+                platform_raw[name] = cnt
+                if err:
+                    errors.append(f"{name}: {err}")
+
+        if errors and all(v == 0 for v in platform_raw.values()):
+            return json_module.dumps(
+                {
+                    "error": "; ".join(errors),
+                    "search_matrix": {},
+                    "total_count": 0,
+                    "time_range": timeRange,
+                    "threshold": threshold,
+                },
+                ensure_ascii=False,
+            )
+
+        platform_allocation = _allocate_across_platforms(platform_raw, threshold)
+        # data_collect 用的矩阵：单键为完整检索式，值为「总配额」（各平台分别采集时用 platform_allocation）
+        final_counts = {query_string: threshold}
+        total_alloc = sum(platform_allocation.values())
+
+        result: Dict[str, object] = {
+            "search_matrix": final_counts,
+            "total_count": total_alloc,
+            "platform": normalized_list[0] if len(normalized_list) == 1 else "MULTI",
+            "time_range": timeRange,
+            "threshold": threshold,
+            "keyword_mode": km,
+            "query_string": query_string,
+            "allocate_by_platform": True,
+            "platform_counts": platform_raw,
+            "platform_allocation": platform_allocation,
+        }
+        if errors:
+            result["warnings"] = errors
+        return json_module.dumps(result, ensure_ascii=False)
+
+    # ---------- 单平台：单条检索式计数 + 按比例压到 threshold ----------
+    normalized_platform = _normalize_platform_name(platform or "微博")
+    if not normalized_platform:
+        return json_module.dumps(
+            {
+                "error": (
+                    f"不支持的平台: {platform}。"
+                    f"当前支持: {', '.join(SUPPORTED_PLATFORMS)}，以及 ALL"
+                ),
+                "search_matrix": {},
+                "total_count": 0,
+                "time_range": timeRange,
+                "threshold": threshold,
+            },
+            ensure_ascii=False,
+        )
+
+    errors = []
+
+    try:
+        cnt = _query_weibo_count(
+            query_string,
+            timeRange,
+            headers,
+            cookies,
+            platform_name=normalized_platform,
+        )
+        raw_cnt = int(cnt)
+    except Exception as e:
+        errors.append(str(e))
+        raw_cnt = 0
+
+    if raw_cnt <= 0 and errors:
+        return json_module.dumps(
+            {
                 "error": "; ".join(errors),
                 "search_matrix": {},
                 "total_count": 0,
                 "time_range": timeRange,
-                "threshold": threshold
-            }, ensure_ascii=False)
-    
-    # 按比例分配数量（如果总和超过阈值）
-    final_counts = _calculate_proportional_counts(keyword_counts, target_total=threshold)
+                "threshold": threshold,
+            },
+            ensure_ascii=False,
+        )
+
+    if raw_cnt <= 0:
+        final_counts = {query_string: 0}
+    else:
+        final_counts = _calculate_proportional_counts(
+            {query_string: raw_cnt},
+            target_total=threshold,
+            min_per_key=0,
+        )
+
     total_count = sum(final_counts.values())
-    
-    # 构建返回结果
     result = {
         "search_matrix": final_counts,
         "total_count": total_count,
         "platform": normalized_platform,
         "time_range": timeRange,
         "threshold": threshold,
+        "keyword_mode": km,
+        "query_string": query_string,
+        "allocate_by_platform": False,
     }
-    
-    # 如果有部分错误，在结果中记录警告
     if errors:
         result["warnings"] = errors
-    
     return json_module.dumps(result, ensure_ascii=False)

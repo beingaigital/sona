@@ -2,17 +2,16 @@
 
 from __future__ import annotations
 
-import csv
 import json as json_module
 import re
 from collections import Counter, defaultdict
 from dataclasses import dataclass
 from datetime import datetime
-from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from langchain_core.tools import tool
 
+from tools._csv_io import read_csv_rows_all
 from utils.path import get_task_process_dir
 from utils.task_context import get_task_id
 
@@ -24,34 +23,6 @@ _LIFECYCLE_STAGES: Tuple[str, ...] = ("潜伏期", "成长期", "成熟期", "�
 _LIKE_COLUMN_CANDIDATES: Tuple[str, ...] = ("点赞数", "like_count", "likes")
 _COMMENT_COLUMN_CANDIDATES: Tuple[str, ...] = ("评论数", "comment_count", "comments")
 _REPOST_COLUMN_CANDIDATES: Tuple[str, ...] = ("转发数", "repost_count", "reposts", "share_count", "shares")
-
-
-def _read_csv_rows(file_path: str) -> List[Dict[str, Any]]:
-    """读取 CSV 文件为 DictReader 行列表（自适应编码）。"""
-    file = Path(file_path)
-    if not file.exists():
-        raise FileNotFoundError(f"数据文件不存在: {file_path}")
-
-    rows: List[Dict[str, Any]] = []
-    encodings_to_try: List[str] = ["utf-8-sig", "utf-8", "gb18030", "gbk"]
-    last_error: Optional[Exception] = None
-    for enc in encodings_to_try:
-        try:
-            with open(file, "r", encoding=enc, errors="strict") as f:
-                reader = csv.DictReader(f)
-                for row in reader:
-                    rows.append(row)
-            break
-        except Exception as e:
-            rows = []
-            last_error = e
-            continue
-    if not rows and last_error is not None:
-        with open(file, "r", encoding="utf-8-sig", errors="replace") as f:
-            reader = csv.DictReader(f)
-            for row in reader:
-                rows.append(row)
-    return rows
 
 
 def _identify_time_column(fieldnames: Sequence[str]) -> Optional[str]:
@@ -275,7 +246,7 @@ def volume_stats(
         return json_module.dumps({"error": "未找到任务ID，请确保在Agent上下文中调用", "data": [], "result_file_path": ""}, ensure_ascii=False)
 
     try:
-        rows = _read_csv_rows(dataFilePath)
+        rows = read_csv_rows_all(dataFilePath)
     except Exception as e:
         return json_module.dumps({"error": f"读取数据文件失败: {str(e)}", "data": [], "result_file_path": ""}, ensure_ascii=False)
 

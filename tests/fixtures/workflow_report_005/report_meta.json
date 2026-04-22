@@ -1,0 +1,24 @@
+{
+  "version": "v1",
+  "generated_at": "2000-01-01T00:00:00+00:00",
+  "sections": [
+    "summary",
+    "timeline",
+    "analysis",
+    "recommendations"
+  ],
+  "references_count": 3,
+  "has_summary": true,
+  "has_timeline": true,
+  "has_recommendations": true,
+  "has_analogous_cases": true,
+  "analogous_cases_count": 2,
+  "has_public_opinion_patterns": true,
+  "pattern_points_count": 2,
+  "has_theory_analysis": true,
+  "theory_frameworks": [
+    "议程设置",
+    "沉默的螺旋"
+  ]
+}
+

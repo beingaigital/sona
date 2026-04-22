@@ -1,0 +1,18 @@
+{
+  "answer": "舆情反转和舆情发酵有什么区别？舆情发酵是同一叙事持续扩散并放大影响，核心是传播扩张；舆情反转是主导判断发生方向性变化，核心是认知修正。前者关注热度演化，后者关注结论改变。",
+  "sources": [
+    {
+      "title": "舆情发酵",
+      "path": "tests/fixtures/wiki_compare_003/fermentation.md",
+      "snippet": "舆情发酵强调传播扩散、情绪聚集和影响放大。",
+      "score": 0.91
+    },
+    {
+      "title": "舆情反转",
+      "path": "tests/fixtures/wiki_compare_003/reversal.md",
+      "snippet": "舆情反转强调新增证据导致公众立场发生逆转。",
+      "score": 0.92
+    }
+  ]
+}
+

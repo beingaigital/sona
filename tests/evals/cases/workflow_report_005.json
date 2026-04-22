@@ -1,0 +1,62 @@
+{
+  "id": "workflow_report_005",
+  "suite": "workflow-smoke",
+  "suites": [
+    "ci-gate"
+  ],
+  "target": "workflow",
+  "stage": "report",
+  "input": {
+    "query": "评估报告阶段结构化输出和工件路径",
+    "options": {
+      "mode": "replay"
+    }
+  },
+  "fixtures": {
+    "mode": "replay",
+    "recorded_tools": "tests/fixtures/workflow_report_005/tools.json"
+  },
+  "expectations": {
+    "required_fields": [
+      "status",
+      "stage",
+      "artifacts",
+      "metrics"
+    ],
+    "required_artifact_fields": [
+      "report_html_file",
+      "report_json_file"
+    ],
+    "report": {
+      "min_references_count": 3,
+      "required_sections": [
+        "summary",
+        "timeline",
+        "analysis",
+        "recommendations"
+      ],
+      "required_flags": [
+        "has_summary",
+        "has_timeline",
+        "has_recommendations"
+      ]
+    },
+    "report_depth": {
+      "required_flags": [
+        "has_analogous_cases",
+        "has_public_opinion_patterns",
+        "has_theory_analysis"
+      ],
+      "min_analogous_cases_count": 2,
+      "min_pattern_points_count": 2,
+      "min_theory_frameworks_count": 1
+    },
+    "max_latency_ms": 20000,
+    "thresholds": {
+      "structure_completeness": 1.0,
+      "section_coverage": 1.0,
+      "html_parse_success": 1.0
+    }
+  }
+}
+

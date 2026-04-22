@@ -1,0 +1,39 @@
+{
+  "id": "workflow_sentiment_004",
+  "suite": "workflow-smoke",
+  "suites": [
+    "ci-gate"
+  ],
+  "target": "workflow",
+  "stage": "sentiment",
+  "input": {
+    "query": "评估情感分析阶段输出结构是否完整",
+    "options": {
+      "mode": "replay"
+    }
+  },
+  "fixtures": {
+    "mode": "replay",
+    "recorded_tools": "tests/fixtures/workflow_sentiment_004/tools.json"
+  },
+  "expectations": {
+    "required_fields": [
+      "status",
+      "stage",
+      "metrics"
+    ],
+    "sentiment": {
+      "min_parse_success_rate": 0.95,
+      "min_llm_coverage": 0.8,
+      "agreement_warning": {
+        "min": 0.4,
+        "max": 0.95
+      }
+    },
+    "max_latency_ms": 20000,
+    "thresholds": {
+      "structure_completeness": 1.0
+    }
+  }
+}
+

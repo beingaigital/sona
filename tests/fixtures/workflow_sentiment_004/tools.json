@@ -1,0 +1,20 @@
+{
+  "status": "success",
+  "stage": "sentiment",
+  "metrics": {
+    "rows_total": 1200,
+    "rows_scored": 1200,
+    "parse_success_rate": 1.0,
+    "llm_coverage": 1.0,
+    "agreement_with_existing": {
+      "available": true,
+      "compared_rows": 800,
+      "agreement_rows": 640,
+      "agreement_rate": 0.8
+    }
+  },
+  "artifacts": {
+    "sentiment_result_file": "sandbox/测试/结果文件/sentiment_result.json"
+  }
+}
+

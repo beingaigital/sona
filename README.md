@@ -6,6 +6,7 @@
 
 - [功能特性](#功能特性)
 - [核心架构](#核心架构)
+- [目录职能与协作关系](#目录职能与协作关系)
 - [安装指南](#安装指南)
 - [配置说明](#配置说明)
 - [使用指南](#使用指南)
@@ -55,7 +56,7 @@
     ↓
 解释与研判 (generate_interpretation，可选但推荐)
     ↓
-Graph RAG / 智库增强 (graph_rag_query / yqzk，可选)
+Graph RAG / 智库增强 (graph_rag_query / oprag，可选)
     ↓
 报告生成 (report_html)
     ↓
@@ -63,6 +64,15 @@ HTML 报告输出
 ```
 
 （并行能力）热点态势感知：`/hot`（见 `tools/hottopics.py`，独立于上述舆情分析报告链路）
+
+**两条主路径如何配合**
+
+| 路径 | 入口 | 职责 |
+|------|------|------|
+| **ReAct Agent** | `agent/reactagent.py`，经 `cli` 路由 | 模型按轮次**自主选工具**；适合开放对话、多轮探索。Token 主要花在 **Agent 推理 + 每次选中的工具**（工具内部再调模型）。 |
+| **固定流水线** | `cli/event_analysis_workflow.py` → `workflow/runner.py` → `workflow/event_analysis_pipeline.py` | **按约定顺序**串联搜索方案、采集、`data_num`、分析、智库/解读、可选 Graph RAG、报告等；不经过「Agent 再决策下一步」。Token 仍花在 **各工具内部的 LLM 调用**，与「拆成几个 `.py`」无关。 |
+
+二者都复用 **`tools/`** 里的同一批工具；差别在于**谁决定调用顺序与是否跳过某步**（Agent vs 编排代码）。
 
 ### 多模型架构
 
@@ -159,6 +169,14 @@ python scripts/run_data_collect.py
 ### 环境变量配置
 
 创建 `.env` 文件（在项目根目录），配置必要的 API Key 和账号信息：
+
+**推荐**：先复制仓库内的模板再编辑，避免漏项：
+
+```bash
+cp .env.example .env
+```
+
+下面为文档示例片段；更全的可选变量见根目录 **`.env.example`**。
 
 ```env
 # =============================================================================
@@ -323,6 +341,7 @@ sona --help
 - `/models` - 查看所有模型配置
 - `/tools` - 查看所有可用工具
 - `/hot` - 运行独立的热点抓取与态势感知流程（可选参数：配置路径）
+- `/wiki` - 基于本地知识库（`opinion_analysis_kb/references/wiki/`）的问答，输出摘要与引用来源
 - `/clear` - 清除 memory 和 sandbox
 - `/exit` - 退出程序
 
@@ -495,7 +514,7 @@ for chunk in stream("分析最近一周小米汽车的舆情", task_id="task-001
 
 **功能**：查询 Neo4j 知识库，提供相似案例/理论规律/分析指标/案例详情，辅助“对照研判”与“方法论落地”。
 
-### 13. yqzk（舆情智库工具集）
+### 13. oprag（OPRAG 舆情知识库工具集）
 
 **功能**：提供方法论框架、理论片段、本地参考资料检索与外部复核入口生成等能力（例如 `search_reference_insights`、`append_expert_judgement`、`build_event_reference_links`）。
 
@@ -524,70 +543,118 @@ for chunk in stream("分析最近一周小米汽车的舆情", task_id="task-001
 - 使用 ECharts 进行数据可视化，响应式适配不同屏幕尺寸
 - 所有样式和脚本内嵌在 HTML 中，可直接在浏览器中打开
 
+## 目录职能与协作关系
+
+下面按**职责**说明主要目录（不是完整文件列表）。**Python 源码本身几乎不占模型 Token**；Token 消耗来自 **`tools/`、`model/` 触发的 LLM 调用** 以及各工具拼装的上下文规模。
+
+| 目录 | 职能 | 与谁配合 |
+|------|------|----------|
+| **`cli/`** | 终端入口、交互循环、意图路由（走 Agent 还是走舆情流水线）、`/wiki` 等命令的 UI 薄层 | 调用 `workflow/runner.py`、`agent/reactagent.py` |
+| **`workflow/`** | **固定舆情分析编排**：`event_analysis_pipeline.py`（主流程）、`runner.py`（对外调度入口 + 情感阶段预算逻辑）、`telemetry.py`、`budget.py`、`wiki_cli.py`、NetInsight 辅助、评测/契约相关模块等 | 调用 `tools/*`、`utils/path`、`utils/task_context`；情感阶段由 `runner.run_sentiment_stage` 统一封装 |
+| **`agent/`** | ReAct Agent：在对话中**动态**选择并调用工具 | 使用 `tools/` 注册表、`model/factory.py` |
+| **`tools/`** | 原子能力（LangChain Tool）：抽词、采集、`data_num`、统计、时间线、情感、解读、Graph RAG、报告等 | 被 **Agent** 或 **`workflow/event_analysis_pipeline`** 调用；实现里再按 `config/model.yaml` 选用模型 |
+| **`model/`** | 多模型工厂（main / tools / report 等 profile） | `tools/*`、`agent/*` 间接依赖 |
+| **`config/`** | `model.yaml`、`prompt.yaml` 等运行时配置 | `model/`、`prompt/`、部分工具 |
+| **`prompt/`** | 提示词与报告 HTML 模板等静态资产 | 工具与 Agent 加载 |
+| **`utils/`** | 会话、路径、任务目录、Token 追踪、消息压缩等横切逻辑 | `cli/`、`workflow/`、`tools/` |
+| **`memory/`** | 会话持久化（JSON 等） | `cli/interactive.py`、`SessionManager` |
+| **`sandbox/`** | 按 `task_id` 隔离的过程文件与结果（CSV、中间 JSON、HTML 报告） | `tools/*` 写入；流水线读取 `analysisResultsDir` |
+| **`tests/`** | `pytest` 契约与评测；`tests/evals` 为 Harness（case / fixture / scorer） | CI 与本地回归；详见 `docs/guides/harness_eval_playbook.md` |
+| **`docs/`** | 规格与实操文档（如 harness、验收标准） | 给人读；不参与运行时 |
+| **`scripts/`** | 单次工具试验、评测入口、看板等运维脚本 | 开发/CI 辅助 |
+| **`opinion_analysis_kb/references/wiki/`** | 本地 Wiki 知识库（概念/实体/来源），供 `/wiki` 与 `workflow/wiki_cli.py` 检索 | 只读资源；可独立扩充 |
+| **`eval_results/`** | 评测运行产物目录（若存在；通常可 gitignore） | `scripts/eval_runner.py` 等写入 |
+
+**协作示意（固定流水线）**
+
+```
+用户输入 ─► cli（路由）─► workflow/runner.run_event_analysis_workflow
+                              │
+                              ▼
+                    workflow/event_analysis_pipeline.py
+                    （按阶段调用 tools/*，写 sandbox/<task_id>/…）
+                              │
+                              ▼
+                    最终 report_html 等产出 HTML / 路径回显
+```
+
+**协作示意（Agent）**
+
+```
+用户输入 ─► cli ─► agent/reactagent.stream
+                    （多轮：模型思考 → 选工具 → tools/* → 再思考 …）
+```
+
+### `tools/`、`workflow/`、`scripts/` 怎么区分
+
+| 维度 | **`tools/`** | **`workflow/`** | **`scripts/`** |
+|------|----------------|------------------|----------------|
+| **是什么** | 给 Agent / 流水线 **`.invoke()` 的原子能力**（多为 LangChain `StructuredTool`） | **编排与工程化**：谁先谁后、任务目录、预算、遥测、Wiki、评测契约等 | **命令行入口**：给人或 CI **一次性执行** `python scripts/xxx.py` |
+| **谁调用** | `agent/reactagent`、`workflow/event_analysis_pipeline` | `cli` 转调 `workflow/runner`，再由 pipeline 调 `tools/*` | 开发者、本地脚本、GitHub Actions |
+| **是否进 Agent 工具箱** | 会注册进 Agent 可选工具列表（或等价能力） | 否，是普通 Python 模块 | 否 |
+| **和 Token 的关系** | **工具内部的 LLM 调用**占 Token 大头 | 编排代码本身几乎不占 Token；但决定**多调还是少调**工具 | 同左，取决于脚本里调了什么 |
+
+记忆口诀：**`tools/` 是乐手，`workflow/` 是指挥，`scripts/` 是排练/录音棚外的试麦条。**
+
+---
+
 ## 📁 项目结构
 
 ```
-sona/
-├── agent/                    # ReAct Agent 实现
-│   └── reactagent.py        # Agent 核心逻辑，支持流式输出和会话管理
-├── tools/                    # 工具定义
-│   ├── extract_search_terms.py  # 搜索词提取
-│   ├── data_collect.py          # 数据采集（NetInsight）
-│   ├── data_num.py              # 数据数量查询
-│   ├── analysis_timeline.py     # 时间线分析
-│   ├── analysis_sentiment.py    # 情感倾向分析
-│   ├── keyword_stats.py         # 关键词热度统计
-│   ├── region_stats.py          # 地域分布统计
-│   ├── author_stats.py          # 发布者分布统计
-│   ├── volume_stats.py          # 声量趋势统计
-│   ├── dataset_summary.py       # 数据集摘要
-│   ├── generate_interpretation.py # 解释与研判（interpretation.json）
-│   ├── graph_rag_query.py       # Graph RAG（Neo4j 知识库查询）
-│   ├── yqzk.py                  # 舆情智库（本地参考检索/专家研判/外部入口）
-│   ├── hottopics.py             # 全网热点态势感知（LangGraph 流程）
-│   ├── report_html.py           # HTML 报告生成（模板分支 + 回退分支）
-│   └── report_html_template.py  # 模板注入与数据抽取
-├── model/                   # 模型管理
-│   └── factory.py           # 模型工厂，支持多模型配置
-├── config/                  # 配置文件
-│   ├── model.yaml           # 模型配置（main/tools/report）
-│   └── prompt.yaml          # 提示词配置
-├── prompt/                  # 提示词模板
-│   ├── system_prompt.txt    # Agent 系统提示词
-│   ├── extract_search_terms.txt
-│   ├── analysis_timeline.txt
-│   ├── analysis_sentiment.txt
-│   ├── report_html_enhanced.txt
-│   ├── report_html_morandi_template.html
-│   ├── report_html_template_fill.txt
-│   └── interpretation.txt
-├── cli/                     # 命令行界面
-│   ├── main.py              # CLI 主入口
-│   ├── interactive.py       # 交互式会话管理
-│   ├── display.py           # 显示辅助函数（Rich）
-│   ├── session_ui.py        # 会话选择 UI
-│   ├── models_ui.py         # 模型配置 UI
-│   └── tools_ui.py          # 工具列表 UI
-├── utils/                   # 工具函数
-│   ├── session_manager.py   # 会话管理
-│   ├── token_tracker.py     # Token 追踪
-│   ├── message_utils.py     # 消息工具（格式转换、会话恢复、消息压缩）
-│   ├── prompt_loader.py    # 提示词加载
-│   ├── path.py              # 路径管理
-│   └── env_loader.py        # 环境变量加载
-├── mcps/                    # MCP 集成
-│   └── web_search.py        # 网页搜索 MCP
-├── scripts/                 # 脚本工具
-│   ├── list_tools.py        # 列出所有工具
-│   ├── run_extract_search_terms.py
-│   ├── run_data_collect.py
-│   ├── run_report_html.py
-│   └── run_hottopics.py
-├── memory/                  # 会话存储目录（自动创建）
-├── sandbox/                 # 任务工作目录（自动创建）
-├── pyproject.toml           # 项目配置
-├── requirements.txt         # 依赖列表
-└── README.md               # 本文档
+sona-master/
+├── agent/                    # ReAct Agent（动态选工具）
+│   └── reactagent.py
+├── workflow/                 # 固定舆情流水线编排 + 调度 + 周边能力
+│   ├── event_analysis_pipeline.py  # 主流程（原 CLI 大段编排迁入）
+│   ├── runner.py                   # 对外入口 run_event_analysis_workflow；情感阶段 run_sentiment_stage
+│   ├── wiki_cli.py                 # /wiki 检索与回答拼装
+│   ├── telemetry.py                # NDJSON 遥测
+│   ├── budget.py                   # 情感等阶段预算（近似 token / 时延 / 重试）
+│   ├── contracts.py                # WorkflowContext 等契约
+│   ├── tool_schemas.py             # 工具输出 schema 校验（评测/契约用）
+│   ├── netinsight_*.py             # NetInsight 检索词/合并等辅助
+│   └── regression_dashboard.py     # 评测历史聚合（供看板脚本使用）
+├── tools/                    # 工具定义（Agent 与流水线共用）
+│   ├── extract_search_terms.py
+│   ├── data_collect.py
+│   ├── data_num.py
+│   ├── analysis_timeline.py
+│   ├── analysis_sentiment.py
+│   ├── keyword_stats.py / region_stats.py / author_stats.py / volume_stats.py
+│   ├── dataset_summary.py
+│   ├── generate_interpretation.py
+│   ├── graph_rag_query.py
+│   ├── oprag.py
+│   ├── weibo_aisearch.py
+│   ├── hottopics.py              # /hot 热点流程（相对独立）
+│   ├── report_html.py
+│   └── report_html_template.py
+├── model/
+│   └── factory.py
+├── config/
+│   ├── model.yaml
+│   └── prompt.yaml
+├── prompt/                   # 提示词与报告模板
+├── cli/                      # 终端入口与交互
+│   ├── main.py
+│   ├── interactive.py
+│   ├── router.py             # 意图与流水线路由
+│   ├── event_analysis_workflow.py  # 薄封装：转调 workflow.runner
+│   ├── wiki_ui.py            # /wiki 命令
+│   ├── display.py / session_ui.py / models_ui.py / tools_ui.py
+│   └── ...
+├── utils/
+├── tests/                    # pytest；tests/evals 为 Harness
+├── docs/
+│   ├── guides/               # 如实操 playbook
+│   └── specs/                # 契约与验收说明
+├── scripts/                  # list_tools、eval_runner、eval_dashboard 等
+├── memory/                   # 会话存储（运行期）
+├── sandbox/                  # 任务工件（运行期）
+├── opinion_analysis_kb/references/wiki/   # 本地 Wiki 知识库（概念/实体/来源）
+├── pyproject.toml
+├── requirements.txt
+└── README.md
 ```
 
 ## ❓ 常见问题
@@ -652,6 +719,17 @@ pytest tests/
 2. 使用 `@tool` 装饰器定义工具函数
 3. 在 `tools/__init__.py` 中导入并导出工具
 4. 在 `agent/reactagent.py` 中注册工具到 `AGENT_TOOLS`
+
+### `tools/` 层演进建议（摘要）
+
+以下为方向性清单，便于分阶段落地；**不**要求一次做完。
+
+- **统一契约**：成功/失败时字段一致（如 `error` / `result_file_path` / `save_path`），并与 `workflow/tool_schemas.py`、Harness replay 对齐，减少调用方分支判断。已增加轻量辅助 `tools/_contracts.py`（`dumps_result` / `error_dict`），可按需逐步替换各工具内的手写 `json.dumps`。
+- **抽公共逻辑**：CSV 多编码读取、采样行数等已抽到 **`tools/_csv_io.py`**（`read_csv_rows_all`、`read_csv_fieldnames_sample_and_total`），`keyword_stats` / `author_stats` / `region_stats` / `volume_stats` / `analysis_timeline` / `analysis_sentiment` / `user_portrait` / `dataset_summary` 已接入共用实现。
+- **配置外置**：外部 API 根地址、超时、并发上限等尽量走环境变量或 `config/`，避免写死在多个文件里。抽词工具已支持 **`SONA_BOCHA_SEARCH_COUNT`**（Bocha 条数，默认 20）、**`SONA_EXTRACT_DEFAULT_RANGE_DAYS`**（默认时间窗天数，默认 30，上限 365）。
+- **体量与边界**：超大文件（如 `data_num`、`data_collect`、`report_html`、`oprag`）可按「纯网络 / 纯规则 / 纯模型」拆子模块，单文件只保留 `@tool` 入口与参数说明。
+- **可观测**：已增加 **`tools/_observe.py`** 的 `tool_span`（标准库 `logging`，logger 名为 **`sona.tools`**）。在业务代码中包一层即可记录单次调用耗时；需在应用入口将 `logging` 级别设为 `INFO` 或配置 handler 方可在默认 stderr 看到输出。后续可与 `workflow/telemetry` 字段对齐。
+- **测试**：对无网络依赖的纯函数写 `pytest`；对有外部依赖的路径用 fixture + 契约测试（与 `tests/evals` 一致）。
 
 ### 添加新模型提供商
 

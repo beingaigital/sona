@@ -51,3 +51,10 @@ def get_env_config() -> EnvConfig:
     if _env_config is None:
         _env_config = EnvConfig()
     return _env_config
+
+
+def reload_env_config() -> EnvConfig:
+    """丢弃缓存并重新从当前 ``os.environ`` 构建配置（供在 ``load_dotenv(override=True)`` 之后使用）。"""
+    global _env_config
+    _env_config = None
+    return get_env_config()

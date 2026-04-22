@@ -1,0 +1,26 @@
+{
+  "id": "tool_data_num_platform_001",
+  "suite": "netinsight-smoke",
+  "target": "tool",
+  "stage": "data_num",
+  "input": {
+    "query": "data_num 多平台分配与高级检索式契约"
+  },
+  "fixtures": {
+    "mode": "replay",
+    "recorded_tools": "tests/fixtures/tool_data_num_platform_001/tools.json"
+  },
+  "expectations": {
+    "required_fields": [
+      "search_matrix",
+      "platform_allocation",
+      "query_string",
+      "allocate_by_platform",
+      "platform_counts"
+    ],
+    "thresholds": {
+      "structure_completeness": 1.0
+    },
+    "max_latency_ms": 60000
+  }
+}

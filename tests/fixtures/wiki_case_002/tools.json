@@ -1,0 +1,18 @@
+{
+  "answer": "请用案例解释舆情反转通常如何发生？一个典型案例是：事件初期因片段信息形成单边叙事，随后关键证据与权威通报发布，公众判断从情绪化指责转向事实讨论，这就是舆情反转的常见路径。",
+  "sources": [
+    {
+      "title": "舆情反转",
+      "path": "tests/fixtures/wiki_case_002/reversal.md",
+      "snippet": "新增事实和权威通报往往触发舆论主导判断改变。",
+      "score": 0.93
+    },
+    {
+      "title": "舆情事件",
+      "path": "tests/fixtures/wiki_case_002/cases.md",
+      "snippet": "信息不完整时容易形成单边叙事，证据补齐后舆论会修正。",
+      "score": 0.86
+    }
+  ]
+}
+

@@ -8,6 +8,7 @@ from typing import Any, Dict, List
 import yaml
 
 from utils.path import get_config_path, get_prompt_dir
+from utils.policy_docs import format_harness_policy_for_prompt
 
 
 def _load_prompt_yaml() -> Dict[str, Any]:
@@ -109,9 +110,13 @@ def format_tool_registry_for_prompt(tools: List[Any]) -> str:
 
 
 def get_system_prompt_with_tools(tools: List[Any]) -> str:
-    """获取 system_prompt 正文，并追加当前工具注册表信息。"""
+    """获取 system_prompt 正文，并追加系统策略与当前工具注册表信息。"""
     base = get_system_prompt()
+    policy = format_harness_policy_for_prompt()
     section = format_tool_registry_for_prompt(tools)
-    if not section:
-        return base
-    return (base.rstrip() + "\n\n" + section).strip()
+    parts = [base.strip()]
+    if policy:
+        parts.append(policy.strip())
+    if section:
+        parts.append(section.strip())
+    return "\n\n".join([p for p in parts if p]).strip()

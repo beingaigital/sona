@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import csv
 import json as json_module
 import contextlib
 import io
@@ -13,6 +12,7 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence, Set, Tuple
 
 from langchain_core.tools import tool
 
+from tools._csv_io import read_csv_rows_all
 from utils.content_text import clean_text_like_keyword_stats
 from utils.path import get_config_path, get_project_root, get_task_process_dir
 from utils.task_context import get_task_id
@@ -60,33 +60,6 @@ def _load_stopwords() -> Set[str]:
             return {line.strip() for line in f if line.strip()}
     except Exception:
         return set()
-
-
-def _read_csv_rows(file_path: str) -> List[Dict[str, Any]]:
-    file = Path(file_path)
-    if not file.exists():
-        raise FileNotFoundError(f"数据文件不存在: {file_path}")
-
-    rows: List[Dict[str, Any]] = []
-    encodings_to_try: List[str] = ["utf-8-sig", "utf-8", "gb18030", "gbk"]
-    last_error: Optional[Exception] = None
-    for enc in encodings_to_try:
-        try:
-            with open(file, "r", encoding=enc, errors="strict") as f:
-                reader = csv.DictReader(f)
-                for row in reader:
-                    rows.append(row)
-            break
-        except Exception as e:
-            rows = []
-            last_error = e
-            continue
-    if not rows and last_error is not None:
-        with open(file, "r", encoding="utf-8-sig", errors="replace") as f:
-            reader = csv.DictReader(f)
-            for row in reader:
-                rows.append(row)
-    return rows
 
 
 def _identify_content_columns(fieldnames: Sequence[str]) -> List[str]:
@@ -212,7 +185,7 @@ def keyword_stats(
         )
 
     try:
-        rows = _read_csv_rows(dataFilePath)
+        rows = read_csv_rows_all(dataFilePath)
     except Exception as e:
         return json_module.dumps(
             {

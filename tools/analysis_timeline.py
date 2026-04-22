@@ -2,16 +2,16 @@
 
 from __future__ import annotations
 
-import csv
 import re
 import json as json_module
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Dict, List, Optional
 
 from datetime import datetime
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.tools import tool
 
+from tools._csv_io import read_csv_rows_all
 from model.factory import get_tools_model
 from utils.path import ensure_task_dirs
 from utils.prompt_loader import get_analysis_timeline_prompt
@@ -59,34 +59,6 @@ TIME_PATTERNS = [
     # 时间描述：X日上午、X日下午、X日晚上
     r'\d{1,2}日(上午|下午|晚上|凌晨|中午)',
 ]
-
-
-def _read_csv_data(file_path: str) -> List[Dict[str, Any]]:
-    """读取CSV文件数据（自适应常见编码，避免表头乱码）。"""
-    file = Path(file_path)
-    if not file.exists():
-        raise FileNotFoundError(f"数据文件不存在: {file_path}")
-
-    rows: List[Dict[str, Any]] = []
-    encodings_to_try: Sequence[str] = ("utf-8-sig", "utf-8", "gb18030", "gbk")
-    last_error: Optional[Exception] = None
-    for enc in encodings_to_try:
-        try:
-            with open(file, "r", encoding=enc, errors="strict") as f:
-                reader = csv.DictReader(f)
-                for row in reader:
-                    rows.append(row)
-            break
-        except Exception as e:
-            rows = []
-            last_error = e
-            continue
-    if not rows and last_error is not None:
-        with open(file, "r", encoding="utf-8-sig", errors="replace") as f:
-            reader = csv.DictReader(f)
-            for row in reader:
-                rows.append(row)
-    return rows
 
 
 def _identify_columns(data: List[Dict[str, Any]]) -> tuple[Optional[str], Optional[str]]:
@@ -251,7 +223,7 @@ def analysis_timeline(
     
     # 读取数据文件
     try:
-        all_data = _read_csv_data(dataFilePath)
+        all_data = read_csv_rows_all(dataFilePath)
     except Exception as e:
         return json_module.dumps({
             "error": f"读取数据文件失败: {str(e)}",

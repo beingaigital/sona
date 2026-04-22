@@ -1,0 +1,26 @@
+---
+title: 卡斯·R·桑斯坦
+updated_at: 2026-04-22 07:07:15
+wiki_section: concepts
+source_type: mixed
+confidence: medium
+tags: [自动生成, 增量更新]
+---
+
+## 定义
+证据不足
+
+## 关联来源
+- [AI与人工在舆情管理中的角色与融合.md](sources/expert_59845ea9d7_AI与人工在舆情管理中的角色与融合.md) | /Users/biaowenhuang/Documents/sona-master/opinion_analysis_kb/references/expert_notes/舆情分析的相关理论/AI与人工在舆情管理中的角色与融合.md
+
+## 近期增量
+- --- title: 偏颇吸收 source_file: /Users/biaowenhuang/Documents/sona-master/opinion_analysis_kb/references/expert_notes/舆情分析的相关理论/AI 与人工在舆情管理中的角色与融合.md updated_at: 2
+
+## 关联概念
+- [谣言治理](../concepts/谣言治理.md)、[公众认知](../concepts/公众认知.md)、[信息监管](../concepts/信息监管.md)
+
+## 关联实体
+- [舆论课代表](../entities/舆论课代表.md)、[中信出版社](../entities/中信出版社.md)、[公众认知](../entities/公众认知.md)、[信息监管](../entities/信息监管.md)
+
+## 待补充
+- 可补充关键事实、机制解释与风险建议。

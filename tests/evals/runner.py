@@ -3,21 +3,23 @@
 from __future__ import annotations
 
 import json
-import re
+import os
+import random
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Optional
 
 from workflow.contracts import StageResult, ToolError, WorkflowContext, new_context
-
-
-HARD_METRICS: Tuple[str, ...] = (
-    "structure_completeness",
-    "traceability_score",
-    "latency_ms",
+from workflow.wiki_cli import answer_wiki_query
+from workflow.tool_schemas import (
+    SchemaError,
+    validate_data_collect_output,
+    validate_data_num_output,
+    validate_weibo_aisearch_output,
 )
+from tests.evals.scorers import evaluate_case
 
 
 @dataclass(frozen=True)
@@ -31,14 +33,44 @@ class EvalCase:
     fixture_mode: str
     fixture_recorded_tools: Optional[str]
     expectations: Dict[str, Any]
+    suite: str
+    suite_tags: frozenset[str]
 
 
 def _utc_now_iso() -> str:
+    if _deterministic_enabled():
+        return "2000-01-01T00:00:00+00:00"
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
 
 
 def _run_id() -> str:
     return datetime.now().strftime("%Y%m%d-%H%M%S")
+
+def _deterministic_enabled() -> bool:
+    return os.getenv("EVAL_DETERMINISTIC", "").strip() in {"1", "true", "True", "YES", "yes"}
+
+
+def _maybe_seed_random() -> None:
+    if not _deterministic_enabled():
+        return
+    random.seed(0)
+
+
+def _suite_tags_from_raw(raw: dict) -> tuple[str, frozenset[str]]:
+    """Primary suite label plus all tags (primary + optional `suites` array)."""
+    tags: List[str] = []
+    primary = str(raw.get("suite") or "basic").strip()
+    if primary:
+        tags.append(primary)
+    extra = raw.get("suites")
+    if isinstance(extra, list):
+        for item in extra:
+            t = str(item).strip()
+            if t and t not in tags:
+                tags.append(t)
+    if not tags:
+        tags = ["basic"]
+    return tags[0], frozenset(tags)
 
 
 def _load_case(path: Path) -> EvalCase:
@@ -55,6 +87,8 @@ def _load_case(path: Path) -> EvalCase:
     if fixture_mode not in {"live", "replay"}:
         fixture_mode = "live"
 
+    suite, suite_tags = _suite_tags_from_raw(raw)
+
     return EvalCase(
         case_id=case_id,
         target=target,
@@ -65,6 +99,8 @@ def _load_case(path: Path) -> EvalCase:
         expectations=raw.get("expectations")
         if isinstance(raw.get("expectations"), dict)
         else {},
+        suite=suite,
+        suite_tags=suite_tags,
     )
 
 
@@ -88,89 +124,60 @@ def _safe_div(numerator: float, denominator: float) -> float:
     return numerator / denominator
 
 
-def _contains_any_evidence(answer: str, snippets: List[str]) -> float:
-    if not answer.strip():
-        return 0.0
-    statements = [s.strip() for s in answer.replace("；", "。").split("。") if len(s.strip()) >= 8]
-    if not statements:
-        return 0.0
-    supported = 0
-    for statement in statements:
-        tokens = _keywords(statement)
-        hit = any(
-            token and len(token) >= 2 and token in snippet
-            for token in tokens
-            for snippet in snippets
-        )
-        if hit:
-            supported += 1
-    return _safe_div(float(supported), float(len(statements)))
-
-
-def _keywords(text: str) -> List[str]:
-    if not text:
-        return []
-    raw_tokens = re.findall(r"[a-zA-Z0-9]{2,}|[\u4e00-\u9fff]{2,}", text)
-    tokens: List[str] = []
-    for tok in raw_tokens:
-        tok = tok.strip()
-        if not tok:
-            continue
-        tokens.append(tok)
-        if re.fullmatch(r"[\u4e00-\u9fff]{4,}", tok):
-            # Expand Chinese phrases into small n-grams for better overlap matching.
-            max_n = min(4, len(tok))
-            for n in range(2, max_n + 1):
-                for i in range(0, len(tok) - n + 1):
-                    tokens.append(tok[i : i + n])
-    # Preserve order, remove duplicates.
-    deduped: List[str] = []
-    seen = set()
-    for token in tokens:
-        if token in seen:
-            continue
-        seen.add(token)
-        deduped.append(token)
-    return deduped[:40]
-
-
-def _keyword_overlap(query: str, answer: str) -> float:
-    q = set(_keywords(query))
-    if not q:
-        return 0.0
-    a = set(_keywords(answer))
-    return _safe_div(float(len(q & a)), float(len(q)))
-
-
-def _structure_completeness(output: Dict[str, Any], required_fields: List[str]) -> float:
-    if not required_fields:
-        return 1.0
-    hit = sum(1 for field in required_fields if field in output and output[field] not in (None, "", []))
-    return _safe_div(float(hit), float(len(required_fields)))
-
-
 def _load_replay_payload(case: EvalCase, project_root: Path) -> Dict[str, Any]:
-    if case.fixture_mode != "replay" or not case.fixture_recorded_tools:
+    if case.fixture_mode != "replay":
         return {}
+    if not case.fixture_recorded_tools:
+        return {"_replay_error": "Replay fixture path is missing in case.fixtures.recorded_tools"}
     replay_path = project_root / case.fixture_recorded_tools
     if not replay_path.exists():
         return {"_replay_error": f"Replay fixture not found: {replay_path}"}
     return json.loads(replay_path.read_text(encoding="utf-8"))
 
 
+def _validate_replay_schema(case: EvalCase, payload: Dict[str, Any]) -> Optional[str]:
+    """Validate replay payload with tool schema when applicable."""
+    if case.target != "tool":
+        return None
+
+    stage = str(case.stage or "").strip().lower()
+    try:
+        if stage == "data_num":
+            validate_data_num_output(payload)
+        elif stage == "data_collect":
+            validate_data_collect_output(payload)
+        elif stage == "weibo_aisearch":
+            validate_weibo_aisearch_output(payload)
+    except SchemaError as exc:
+        return f"Replay schema validation failed ({stage}): {exc}"
+    return None
+
+
 def _execute_case(case: EvalCase, project_root: Path) -> Dict[str, Any]:
     """Execute one case. Day1 skeleton keeps implementation deterministic."""
     replay_payload = _load_replay_payload(case, project_root)
+    if replay_payload:
+        if replay_payload.get("_replay_error"):
+            return {"error": replay_payload["_replay_error"]}
+        schema_error = _validate_replay_schema(case, replay_payload)
+        if schema_error:
+            return {"error": schema_error}
+        return replay_payload
 
     if case.target == "wiki":
-        if replay_payload.get("_replay_error"):
-            return {"answer": "", "sources": [], "error": replay_payload["_replay_error"]}
-        if replay_payload:
-            return replay_payload
         query = str(case.input_payload.get("query", "")).strip()
+        options = case.input_payload.get("options") if isinstance(case.input_payload.get("options"), dict) else {}
+        topk = int(options.get("topk") or 6)
+        style = str(options.get("style") or "concise")
+        return answer_wiki_query(query=query, topk=topk, style=style, project_root=project_root)
+
+    if case.target == "tool":
         return {
-            "answer": f"[stub] wiki answer for: {query}" if query else "[stub] wiki answer",
-            "sources": [{"title": "stub_source", "path": "N/A"}],
+            "status": "warning",
+            "message": (
+                f"Target 'tool' live execution not wired (stage={case.stage!r}). "
+                "Use fixtures.mode=replay and fixtures.recorded_tools for contract checks."
+            ),
         }
 
     return {
@@ -196,60 +203,6 @@ def _to_tool_error(output: Dict[str, Any]) -> Optional[ToolError]:
     return ToolError(error_code="E_RUNTIME", error_message=str(err), retryable=False)
 
 
-def _evaluate_metrics(
-    case: EvalCase,
-    output: Dict[str, Any],
-    latency_ms: int,
-) -> Tuple[Dict[str, float], List[str]]:
-    expectations = case.expectations
-    required_fields = expectations.get("required_fields")
-    required_fields = required_fields if isinstance(required_fields, list) else []
-
-    answer = str(output.get("answer", ""))
-    query = str(case.input_payload.get("query", ""))
-    sources = output.get("sources")
-    source_snippets: List[str] = []
-    if isinstance(sources, list):
-        for item in sources:
-            if isinstance(item, dict):
-                source_snippets.append(str(item.get("snippet", "")))
-                source_snippets.append(str(item.get("title", "")))
-            elif isinstance(item, str):
-                source_snippets.append(item)
-
-    metrics: Dict[str, float] = {
-        "latency_ms": float(latency_ms),
-        "traceability_score": _contains_any_evidence(answer, source_snippets),
-        "relevance_score": _keyword_overlap(query, answer),
-        "structure_completeness": _structure_completeness(output, required_fields),
-        "fallback_rate": 0.0,
-    }
-
-    thresholds = expectations.get("thresholds")
-    thresholds = thresholds if isinstance(thresholds, dict) else {}
-
-    fail_reasons: List[str] = []
-    for metric_name in HARD_METRICS:
-        threshold = thresholds.get(metric_name)
-        if metric_name == "latency_ms":
-            max_latency = expectations.get("max_latency_ms", threshold)
-            if max_latency is not None and metrics["latency_ms"] > float(max_latency):
-                fail_reasons.append(
-                    f"latency_ms too high: {metrics['latency_ms']:.0f} > {float(max_latency):.0f}"
-                )
-            continue
-        if threshold is not None and metrics.get(metric_name, 0.0) < float(threshold):
-            fail_reasons.append(
-                f"{metric_name} below threshold: {metrics.get(metric_name, 0.0):.3f} < {float(threshold):.3f}"
-            )
-
-    # additional hard guard
-    if required_fields and metrics["structure_completeness"] < 1.0:
-        fail_reasons.append("required fields missing from output")
-
-    return metrics, fail_reasons
-
-
 def _write_json(path: Path, data: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -271,7 +224,7 @@ def run_evaluation(
     mode: Optional[str],
 ) -> Dict[str, Any]:
     """Run evaluation cases and return summary object."""
-    _ = suite  # planned in Day2
+    _maybe_seed_random()
     cases_dir = project_root / "tests" / "evals" / "cases"
     if not cases_dir.exists():
         raise FileNotFoundError(f"Cases directory not found: {cases_dir}")
@@ -288,6 +241,8 @@ def run_evaluation(
             continue
         if mode and case.fixture_mode != mode:
             continue
+        if suite and suite not in case.suite_tags:
+            continue
 
         # Build context for every evaluation case (future-proof for workflow integration).
         ctx: WorkflowContext = new_context(
@@ -298,18 +253,29 @@ def run_evaluation(
         ctx.diagnostics.update({"case_id": case.case_id, "target": case.target, "stage": case.stage})
 
         trace_events: List[Dict[str, Any]] = []
-        start_ts = time.time()
         trace_events.append({"ts": _utc_now_iso(), "event": "case_start", "run_id": run_id, "case_id": case.case_id})
 
+        start_ts = time.time()
         output = _execute_case(case, project_root)
-        latency_ms = int((time.time() - start_ts) * 1000)
-        metrics, fail_reasons = _evaluate_metrics(case, output, latency_ms)
+        if _deterministic_enabled() and case.fixture_mode == "replay":
+            latency_ms = 0
+        else:
+            latency_ms = int((time.time() - start_ts) * 1000)
+        query = str(case.input_payload.get("query", ""))
+        status, metrics, reasons = evaluate_case(
+            query=query,
+            output=output,
+            latency_ms=latency_ms,
+            expectations_raw=case.expectations,
+            project_root=project_root,
+        )
 
         stage_name = str(case.stage or case.target)
+        stage_status = "success" if status == "pass" else ("warning" if status == "warning" else "failed")
         ctx.set_stage_result(
             StageResult(
                 stage=stage_name,
-                status="success" if not fail_reasons else "failed",
+                status=stage_status,
                 metrics={"latency_ms": latency_ms, **metrics},
                 artifacts={"output": output},
                 error=_to_tool_error(output),
@@ -318,7 +284,6 @@ def run_evaluation(
         )
         ctx.artifacts.update({"output": output})
 
-        status = "pass" if not fail_reasons else "fail"
         trace_events.append(
             {
                 "ts": _utc_now_iso(),
@@ -343,6 +308,7 @@ def run_evaluation(
             "run_id": run_id,
             "case_id": case.case_id,
             "target": case.target,
+            "suite": case.suite,
             "stage": case.stage,
             "status": status,
             "metrics": metrics,
@@ -351,22 +317,65 @@ def run_evaluation(
                 "output": str(output_path.relative_to(project_root)),
                 "context": str((case_root / "context.json").relative_to(project_root)),
             },
-            "fail_reasons": fail_reasons,
+            "fail_reasons": reasons,
         }
         _write_json(case_root / "metrics.json", result)
         summaries.append(result)
 
     total = len(summaries)
     passed = sum(1 for item in summaries if item["status"] == "pass")
+    warned = sum(1 for item in summaries if item["status"] == "warning")
+    failed = sum(1 for item in summaries if item["status"] == "fail")
     summary = {
         "run_id": run_id,
         "timestamp": _utc_now_iso(),
         "total_cases": total,
         "pass_cases": passed,
+        "warning_cases": warned,
+        "fail_cases": failed,
         "pass_rate": _safe_div(float(passed), float(total)) if total else 0.0,
         "results": summaries,
     }
     _write_json(run_root / "summary.json", summary)
+
+    blockers: List[Dict[str, Any]]
+    if suite and total == 0:
+        ci_status = "failed"
+        blockers = [
+            {
+                "case_id": None,
+                "target": None,
+                "stage": None,
+                "fail_reasons": [f"No cases matched suite={suite!r}"],
+            }
+        ]
+    else:
+        blockers = [
+            {
+                "case_id": item["case_id"],
+                "target": item["target"],
+                "stage": item.get("stage"),
+                "fail_reasons": item.get("fail_reasons") or [],
+            }
+            for item in summaries
+            if item.get("status") == "fail"
+        ]
+        ci_status = "failed" if failed else ("warning" if warned else "passed")
+    ci_report: Dict[str, Any] = {
+        "run_id": run_id,
+        "timestamp": summary["timestamp"],
+        "suite_filter": suite,
+        "total_cases": total,
+        "pass_cases": passed,
+        "warning_cases": warned,
+        "fail_cases": failed,
+        "pass_rate": summary["pass_rate"],
+        "status": ci_status,
+        "blockers": blockers,
+    }
+    _write_json(run_root / "ci_report.json", ci_report)
+    summary["ci_report"] = ci_report
+
     return summary
 
 

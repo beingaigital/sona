@@ -11,6 +11,7 @@ from cli.tools_ui import show_tools_list
 from cli.models_ui import show_models_list
 from cli.clear_utils import confirm_and_clear
 from cli.hot_ui import run_hot_command
+from cli.wiki_ui import run_wiki_command, run_wiki_approve_command
 
 
 def interactive() -> None:
@@ -80,6 +81,20 @@ def interactive() -> None:
                     custom_config_path = parts[1] if len(parts) > 1 else None
                     run_hot_command(custom_config_path)
                     continue
+
+                # 处理 /wiki-approve 命令（候选回流）
+                if user_input.strip().startswith("/wiki-approve"):
+                    parts = user_input.strip().split(maxsplit=1)
+                    selector = parts[1].strip() if len(parts) > 1 else None
+                    run_wiki_approve_command(selector)
+                    continue
+
+                # 处理 /wiki 命令（知识问答）
+                if user_input.strip().startswith("/wiki"):
+                    parts = user_input.strip().split(maxsplit=1)
+                    wiki_query = parts[1].strip() if len(parts) > 1 else None
+                    run_wiki_command(wiki_query)
+                    continue
                 
                 # 处理其他未知命令
                 console.print(f"[yellow]未知命令: {user_input}[/yellow]")
@@ -92,12 +107,19 @@ def interactive() -> None:
                 console.print("  [cyan]/tools[/cyan]   - 查看所有可用工具")
                 console.print("  [cyan]/hot[/cyan]     - 运行热点抓取与态势感知流程")
                 console.print("  [dim]                 示例: /hot 或 /hot config/config.yaml[/dim]")
+                console.print("  [cyan]/wiki[/cyan]    - 知识库问答（answer + sources）")
+                console.print("  [dim]                 示例: /wiki 什么是舆情反转？[/dim]")
+                console.print("  [cyan]/wiki-approve[/cyan] - 审核并回流高价值候选到 output")
+                console.print("  [dim]                 示例: /wiki-approve 或 /wiki-approve 罗永浩[/dim]")
                 console.print("  [cyan]/clear[/cyan]   - 清除 memory 和 sandbox")
                 console.print("  [cyan]/exit[/cyan]    - 退出程序")
                 continue
             
             # 默认行为：只提示，不创建会话
-            console.print("[yellow]提示: 使用 '/new' 开启新会话，或使用 '/memory' 恢复之前的会话[/yellow]")
+            console.print(
+                "[yellow]提示: 使用 '/new' 开启新会话，'/memory' 恢复会话，"
+                "'/event' 事件分析，'/wiki' 知识问答，'/hot' 热点态势。[/yellow]"
+            )
             
         except KeyboardInterrupt:
             console.print(f"\n\n[cyan]感谢使用 [bold magenta]Sona[/bold magenta]，再见！[/cyan]\n")

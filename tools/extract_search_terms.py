@@ -3,15 +3,36 @@
 from __future__ import annotations
 
 import json
+import os
 from datetime import datetime, timedelta
 
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.tools import tool
 
 from mcps.web_search import bocha_ai_search
+from tools._contracts import dumps_result
+from tools._observe import tool_span
 from model.factory import get_tools_model
 from utils.date_utils import get_today_str, get_yesterday_end
 from utils.prompt_loader import get_extract_search_terms_prompt
+
+
+def _default_range_days() -> int:
+    raw = str(os.environ.get("SONA_EXTRACT_DEFAULT_RANGE_DAYS", "30")).strip()
+    try:
+        n = int(raw)
+    except Exception:
+        n = 30
+    return max(1, min(n, 365))
+
+
+def _bocha_search_count() -> int:
+    raw = str(os.environ.get("SONA_BOCHA_SEARCH_COUNT", "20")).strip()
+    try:
+        n = int(raw)
+    except Exception:
+        n = 20
+    return max(1, min(n, 50))
 
 
 def _extract_related_materials(search_result: dict) -> str:
@@ -68,16 +89,17 @@ def extract_search_terms(query: str) -> str:
     """
     # 进行初步搜索
     try:
-        search_result = bocha_ai_search(
-            query=query,
-            summary=True,
-            count=20,
-            freshness="oneWeek"
-        )
-        
+        with tool_span("extract_search_terms.bocha", query_len=len(query or "")):
+            search_result = bocha_ai_search(
+                query=query,
+                summary=True,
+                count=_bocha_search_count(),
+                freshness="oneWeek",
+            )
+
         # 提取相关资料
         related_materials = _extract_related_materials(search_result)
-        
+
     except Exception as e:
         # 如果搜索失败，使用默认值
         related_materials = f"搜索失败：{str(e)}"
@@ -92,12 +114,15 @@ def extract_search_terms(query: str) -> str:
     if not prompt:
         # 如果 prompt 不存在，返回默认配置（时间范围需要模型生成）
         yesterday_end = get_yesterday_end()
-        default_time_range = f"{(yesterday_end - timedelta(days=30)).strftime('%Y-%m-%d %H:%M:%S')};{yesterday_end.strftime('%Y-%m-%d %H:%M:%S')}"
-        return json.dumps({
-            "eventIntroduction": "",
-            "searchWords": [],
-            "timeRange": default_time_range
-        }, ensure_ascii=False)
+        days = _default_range_days()
+        default_time_range = f"{(yesterday_end - timedelta(days=days)).strftime('%Y-%m-%d %H:%M:%S')};{yesterday_end.strftime('%Y-%m-%d %H:%M:%S')}"
+        return dumps_result(
+            {
+                "eventIntroduction": "",
+                "searchWords": [],
+                "timeRange": default_time_range,
+            }
+        )
     
     # 构建用户输入，包含 query、相关资料、当前时间等信息
     user_content = f"""用户查询：{query.strip() or "未提供内容"}
@@ -118,43 +143,51 @@ def extract_search_terms(query: str) -> str:
     ]
     
     try:
-        response = llm.invoke(messages)
+        with tool_span("extract_search_terms.llm"):
+            response = llm.invoke(messages)
         content = getattr(response, "content", "") or str(response)
         result = (content or "").strip()
-        
+
         # 尝试解析 JSON，如果失败则返回默认值
         try:
             parsed = json.loads(result)
             # 确保包含所有必需字段
             if not isinstance(parsed, dict):
                 raise ValueError("返回的不是字典格式")
-            
+
             # 设置默认值（如果模型没有生成时间范围，使用默认值）
             if "timeRange" not in parsed or not parsed.get("timeRange"):
                 yesterday_end = get_yesterday_end()
-                default_time_range = f"{(yesterday_end - timedelta(days=30)).strftime('%Y-%m-%d %H:%M:%S')};{yesterday_end.strftime('%Y-%m-%d %H:%M:%S')}"
+                days = _default_range_days()
+                default_time_range = f"{(yesterday_end - timedelta(days=days)).strftime('%Y-%m-%d %H:%M:%S')};{yesterday_end.strftime('%Y-%m-%d %H:%M:%S')}"
                 parsed["timeRange"] = default_time_range
-            
+
             # 移除不需要的字段
             parsed.pop("num", None)
             parsed.pop("groupName", None)
-            
-            return json.dumps(parsed, ensure_ascii=False)
+
+            return dumps_result(parsed)
         except (json.JSONDecodeError, ValueError):
             # 如果解析失败，返回默认配置
             yesterday_end = get_yesterday_end()
-            default_time_range = f"{(yesterday_end - timedelta(days=30)).strftime('%Y-%m-%d %H:%M:%S')};{yesterday_end.strftime('%Y-%m-%d %H:%M:%S')}"
-            return json.dumps({
-                "eventIntroduction": result[:200] if result else "",
-                "searchWords": [],
-                "timeRange": default_time_range
-            }, ensure_ascii=False)
+            days = _default_range_days()
+            default_time_range = f"{(yesterday_end - timedelta(days=days)).strftime('%Y-%m-%d %H:%M:%S')};{yesterday_end.strftime('%Y-%m-%d %H:%M:%S')}"
+            return dumps_result(
+                {
+                    "eventIntroduction": result[:200] if result else "",
+                    "searchWords": [],
+                    "timeRange": default_time_range,
+                }
+            )
     except Exception as e:
         # 如果模型调用失败，返回默认配置
         yesterday_end = get_yesterday_end()
-        default_time_range = f"{(yesterday_end - timedelta(days=30)).strftime('%Y-%m-%d %H:%M:%S')};{yesterday_end.strftime('%Y-%m-%d %H:%M:%S')}"
-        return json.dumps({
-            "eventIntroduction": f"处理失败：{str(e)}",
-            "searchWords": [],
-            "timeRange": default_time_range
-        }, ensure_ascii=False)
+        days = _default_range_days()
+        default_time_range = f"{(yesterday_end - timedelta(days=days)).strftime('%Y-%m-%d %H:%M:%S')};{yesterday_end.strftime('%Y-%m-%d %H:%M:%S')}"
+        return dumps_result(
+            {
+                "eventIntroduction": f"处理失败：{str(e)}",
+                "searchWords": [],
+                "timeRange": default_time_range,
+            }
+        )

@@ -1,0 +1,23 @@
+{
+  "version": "v1",
+  "generated_at": "2026-04-21T01:33:45+00:00",
+  "sections": [
+    "summary",
+    "timeline",
+    "analysis",
+    "recommendations"
+  ],
+  "references_count": 1,
+  "has_summary": true,
+  "has_timeline": true,
+  "has_recommendations": true,
+  "has_analogous_cases": false,
+  "analogous_cases_count": 0,
+  "has_public_opinion_patterns": true,
+  "pattern_points_count": 1,
+  "has_theory_analysis": true,
+  "theory_frameworks": [
+    "议程设置"
+  ]
+}
+

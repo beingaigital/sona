@@ -1,0 +1,38 @@
+# Harness Day9: pytest + minimal replay eval gate (ci-gate suite).
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  tests-and-harness-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Pytest
+        run: pytest -q
+
+      - name: Eval harness gate (replay)
+        env:
+          EVAL_MODE: replay
+          EVAL_DETERMINISTIC: "1"
+        run: python scripts/eval_runner.py --suite ci-gate --mode replay
+
+      - name: Upload eval CI report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-ci-report
+          path: eval_results/**/ci_report.json
+          if-no-files-found: warn

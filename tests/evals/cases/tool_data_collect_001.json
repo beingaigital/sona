@@ -1,0 +1,27 @@
+{
+  "id": "tool_data_collect_001",
+  "suite": "netinsight-smoke",
+  "suites": [
+    "ci-gate"
+  ],
+  "target": "tool",
+  "stage": "data_collect",
+  "input": {
+    "query": "data_collect 契约校验"
+  },
+  "fixtures": {
+    "mode": "replay",
+    "recorded_tools": "tests/fixtures/tool_data_collect_001/output.json"
+  },
+  "expectations": {
+    "required_fields": [
+      "save_path",
+      "meta"
+    ],
+    "thresholds": {
+      "structure_completeness": 1.0
+    },
+    "max_latency_ms": 60000
+  }
+}
+

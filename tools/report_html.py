@@ -15,12 +15,27 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.tools import tool
 
 from model.factory import get_report_model
-from tools.report_html_template import build_html_from_morandi_template, get_report_html_template_path
+from tools.report_html_template import (
+    build_html_from_morandi_template,
+    format_report_length_instruction,
+    get_report_html_template_path,
+    normalize_report_length,
+)
+from tools.report_meta import build_report_meta_from_html
 from utils.path import ensure_task_dirs, get_task_result_dir
 from utils.prompt_loader import get_report_html_prompt
 from utils.task_context import get_task_id
 from utils.methodology_loader import load_methodology_for_report
+from tools.oprag import (
+    LEGACY_YQZK_KNOWLEDGE_SNAPSHOT_FILENAME,
+    OPRAG_KNOWLEDGE_SNAPSHOT_FILENAME,
+)
 import webbrowser
+
+
+def _is_oprag_knowledge_snapshot_filename(name: str) -> bool:
+    n = str(name or "").strip()
+    return n in (OPRAG_KNOWLEDGE_SNAPSHOT_FILENAME, LEGACY_YQZK_KNOWLEDGE_SNAPSHOT_FILENAME)
 
 
 def _read_json_files(directory: str) -> List[Dict[str, Any]]:
@@ -189,13 +204,60 @@ def _build_reference_context(json_files: List[Dict[str, Any]]) -> Tuple[str, boo
     return "\n".join(lines), bool(ref_hits)
 
 
-def _build_yqzk_snapshot_context(json_files: List[Dict[str, Any]]) -> Tuple[str, bool]:
+def _collect_theory_evidence_lines(json_files: List[Dict[str, Any]], limit: int = 8) -> List[str]:
     """
-    汇总 yqzk_knowledge_snapshot.json 中的方法论/案例/指标要点，作为高优先级知识上下文。
+    收集可直接用于“理论研判”的证据行（优先来自 reference_insights / OPRAG 快照）。
+    """
+    rows: List[Dict[str, Any]] = []
+    ref_ins = _get_json_dict_by_filenames(json_files, "reference_insights.json")
+    if isinstance(ref_ins, dict):
+        rs = ref_ins.get("results")
+        if isinstance(rs, list):
+            rows.extend([x for x in rs if isinstance(x, dict)])
+
+    for fn in ("oprag_knowledge_snapshot.json", LEGACY_YQZK_KNOWLEDGE_SNAPSHOT_FILENAME):
+        snap = _get_json_dict_by_filenames(json_files, fn)
+        if not isinstance(snap, dict):
+            continue
+        refs = snap.get("references") if isinstance(snap.get("references"), dict) else {}
+        rs = refs.get("results") if isinstance(refs.get("results"), list) else []
+        rows.extend([x for x in rs if isinstance(x, dict)])
+        break
+
+    out: List[str] = []
+    seen: set[str] = set()
+    for row in rows:
+        kind = str(row.get("kind", "") or "").strip().lower()
+        title = str(row.get("title", "") or "").strip()
+        source = str(row.get("source", "") or row.get("path", "") or "").strip()
+        snippet = str(row.get("snippet", "") or "").strip()
+        name = str(row.get("name", "") or "").strip()
+        is_theory = (kind == "theory") or ("理论" in title) or ("舆情分析的相关理论" in source)
+        if not is_theory:
+            continue
+        concept = name or title or "理论条目"
+        key = f"{concept}|{source}|{snippet[:120]}"
+        if key in seen:
+            continue
+        seen.add(key)
+        line = f"- 理论: {concept}"
+        if source:
+            line += f"；来源: {source}"
+        if snippet:
+            line += f"；摘录: {snippet[:180]}" + ("..." if len(snippet) > 180 else "")
+        out.append(line)
+        if len(out) >= max(1, limit):
+            break
+    return out
+
+
+def _build_oprag_snapshot_context(json_files: List[Dict[str, Any]]) -> Tuple[str, bool]:
+    """
+    汇总 oprag_knowledge_snapshot.json（及旧名 yqzk_knowledge_snapshot.json）中的方法论/案例/指标要点。
     """
     snapshot: Dict[str, Any] = {}
     for item in json_files:
-        if str(item.get("filename", "") or "").strip() == "yqzk_knowledge_snapshot.json":
+        if _is_oprag_knowledge_snapshot_filename(str(item.get("filename", "") or "")):
             c = item.get("content")
             if isinstance(c, dict):
                 snapshot = c
@@ -203,7 +265,7 @@ def _build_yqzk_snapshot_context(json_files: List[Dict[str, Any]]) -> Tuple[str,
     if not snapshot:
         return "", False
 
-    lines: List[str] = ["舆情智库知识快照（yqzk）:"]
+    lines: List[str] = ["舆情智库知识快照（OPRAG）:"]
     # 兼容 load_sentiment_knowledge 返回 shape：{"keyword":...,"knowledge":...} 或检索 JSON 字符串
     knowledge_text = str(snapshot.get("knowledge", "") or "").strip()
     if knowledge_text:
@@ -242,18 +304,33 @@ def _build_collab_context(json_files: List[Dict[str, Any]]) -> Tuple[str, bool]:
     if user_judgement:
         has_any = True
         lines.append("用户研判重点:")
-        lines.append(f"- {user_judgement[:220]}" + ("..." if len(user_judgement) > 220 else ""))
+        # 研判输入常包含完整结构化分析，保留更长上下文避免关键观点在注入阶段丢失
+        lines.append(user_judgement[:2600] + ("..." if len(user_judgement) > 2600 else ""))
         focus_keywords = judgement.get("focus_keywords")
         if isinstance(focus_keywords, list) and focus_keywords:
             keys = [str(x).strip() for x in focus_keywords if str(x).strip()]
             if keys:
                 lines.append("用户关注关键词: " + "、".join(keys[:10]))
+        # 从用户文本中抽取显式要点（标题/编号/项目符号）供模型优先对齐
+        keypoints: List[str] = []
+        for raw in user_judgement.splitlines():
+            t = raw.strip().lstrip("•").lstrip("-").strip()
+            if not t:
+                continue
+            if re.match(r"^\d+[\.\、\)]\s*", t) or any(x in t for x in ("焦点", "困境", "建议", "走向", "关注点", "执法", "法律", "政策")):
+                keypoints.append(t)
+            if len(keypoints) >= 8:
+                break
+        if keypoints:
+            lines.append("用户研判关键要点（需在报告中显式回应）:")
+            for kp in keypoints:
+                lines.append(f"- {kp[:160]}" + ("..." if len(kp) > 160 else ""))
 
     expert_note = str(expert_notes.get("expert_note", "") or "").strip()
     if expert_note:
         has_any = True
         lines.append("专家补充观点:")
-        lines.append(f"- {expert_note[:260]}" + ("..." if len(expert_note) > 260 else ""))
+        lines.append(expert_note[:2000] + ("..." if len(expert_note) > 2000 else ""))
 
     weibo_results = weibo_ref.get("results") if isinstance(weibo_ref.get("results"), list) else []
     if weibo_results:
@@ -272,11 +349,333 @@ def _build_collab_context(json_files: List[Dict[str, Any]]) -> Tuple[str, bool]:
     return "\n".join(lines), has_any
 
 
+def _get_json_dict_by_filenames(json_files: List[Dict[str, Any]], *candidates: str) -> Optional[Dict[str, Any]]:
+    """按文件名（忽略大小写）查找第一个 dict content。"""
+    want = {str(c or "").strip().lower() for c in candidates if str(c or "").strip()}
+    for item in json_files:
+        fn = str(item.get("filename", "") or "").strip().lower()
+        if fn in want:
+            c = item.get("content")
+            if isinstance(c, dict):
+                return c
+    return None
+
+
+def _build_wiki_qa_priority_block(content: Dict[str, Any]) -> str:
+    """wiki_qa_snapshot.json → 叙事模型优先阅读的纯文本（避免被后续 14k 截断裁掉）。"""
+    lines: List[str] = [
+        "## 【优先阅读】本地 Wiki 知识库（opinion_analysis_kb / wiki_cli 召回）",
+        "",
+        "以下片段来自你编译的三层 wiki；正文与「路径」必须进入报告的理论/复盘引用（至少 2 条不同路径或标题）。",
+        "",
+    ]
+    ans = str(content.get("answer") or "").strip()
+    if ans:
+        lines.append("### 合成回答/要点摘录")
+        lines.append(ans[:10_000] + ("..." if len(ans) > 10_000 else ""))
+        lines.append("")
+    sources = content.get("sources")
+    if isinstance(sources, list) and sources:
+        lines.append("### 检索来源（须引用）")
+        for i, s in enumerate(sources[:10], 1):
+            if not isinstance(s, dict):
+                continue
+            title = str(s.get("title") or "").strip()
+            path = str(s.get("path") or "").strip()
+            snip = str(s.get("snippet") or "").strip()
+            score = s.get("score", "")
+            lines.append(f"- [{i}] **{title}**（score={score}）")
+            if path:
+                lines.append(f"  - 路径: `{path}`")
+            if snip:
+                lines.append(f"  - 摘录: {snip[:520]}" + ("..." if len(snip) > 520 else ""))
+        lines.append("")
+    meta = content.get("_wiki_meta")
+    if isinstance(meta, dict) and meta:
+        lines.append("### 召回元信息")
+        lines.append(
+            f"- retrieved_count={meta.get('retrieved_count', '')} llm_used={meta.get('llm_used', '')}"
+        )
+        lines.append("")
+    return "\n".join(line for line in lines if line is not None).strip()
+
+
+def _build_weibo_priority_block(content: Dict[str, Any]) -> str:
+    """weibo_aisearch_reference.json → 外部讨论线索（须与本地 CSV 交叉验证）。"""
+    lines: List[str] = [
+        "## 【优先阅读】微博智搜（外部线索，非事实锚点）",
+        "",
+        "以下仅作舆论场线索；`INTRO_BACKGROUND` 与「公众讨论焦点」须至少吸收 2 条摘要，并写明需与本地数据核对。",
+        "",
+    ]
+    topic = str(content.get("topic") or content.get("query") or "").strip()
+    url = str(content.get("url") or "").strip()
+    err = str(content.get("error") or "").strip()
+    if topic:
+        lines.append(f"- 检索主题: {topic}")
+    if url:
+        lines.append(f"- 入口链接: {url}")
+    if err:
+        lines.append(f"- 抓取说明: {err[:240]}")
+    lines.append("")
+    results = content.get("results")
+    if isinstance(results, list) and results:
+        lines.append("### 智搜摘要片段")
+        for i, r in enumerate(results[:14], 1):
+            if not isinstance(r, dict):
+                continue
+            snip = str(r.get("snippet") or "").strip()
+            if snip:
+                lines.append(f"- [{i}] {snip[:400]}" + ("..." if len(snip) > 400 else ""))
+    else:
+        lines.append("（无 snippet 结果；可写「证据不足」并依赖本地数据。）")
+    lines.append("")
+    return "\n".join(lines).strip()
+
+
+def _build_oprag_snapshot_priority_block(snapshot: Dict[str, Any]) -> str:
+    """压缩 OPRAG 快照：突出检索 hits，避免与 methodology 全文重复。"""
+    lines: List[str] = [
+        "## 【优先阅读】OPRAG 知识快照（与事件 query 对齐）",
+        "",
+        "说明：若命中含 `kind=theory`，对应 `expert_notes/舆情分析的相关理论` 成稿；理论研判须优先吸收，并与数据交叉验证；"
+        "三个理论槽位应写**不同概念名**，避免重复套用同一词条。",
+        "",
+    ]
+    q = str(snapshot.get("query") or "").strip()
+    if q:
+        lines.append(f"- 快照 query: {q}")
+    ref = snapshot.get("references")
+    if isinstance(ref, dict):
+        results = ref.get("results")
+        if isinstance(results, list) and results:
+            lines.append("- 检索命中（优先引用 `kind=theory` 与 `kind=wiki`，并与事件数据对齐）:")
+            for r in results[:10]:
+                if not isinstance(r, dict):
+                    continue
+                snip = str(r.get("snippet") or "").strip()
+                title = str(r.get("title") or "").strip()
+                kind = str(r.get("kind") or "").strip()
+                src = str(r.get("source") or "").strip()
+                if not snip:
+                    continue
+                tag = f" [{kind}]" if kind else ""
+                lines.append(f"  ・ {snip[:300]}{'...' if len(snip) > 300 else ''}（{title}{tag}）")
+                if src and len(src) < 200:
+                    lines.append(f"    来源文件: {src}")
+    know = snapshot.get("knowledge")
+    if isinstance(know, str) and know.strip():
+        lines.append("")
+        lines.append("- 知识工具输出（摘录，避免与下方「智库方法论」整段重复）:")
+        lines.append(know[:3500] + ("..." if len(know) > 3500 else ""))
+    lines.append("")
+    return "\n".join(lines).strip()
+
+
+def _build_reference_insights_priority_block(content: Dict[str, Any]) -> str:
+    lines: List[str] = [
+        "## 【优先阅读】本地智库检索（reference_insights.json）",
+        "",
+    ]
+    results = content.get("results")
+    if not isinstance(results, list) or not results:
+        return ""
+    for i, r in enumerate(results[:10], 1):
+        if not isinstance(r, dict):
+            continue
+        snip = str(r.get("snippet") or "").strip()
+        title = str(r.get("title") or "").strip()
+        kind = str(r.get("kind") or "").strip()
+        if not snip:
+            continue
+        lines.append(f"- [{i}] {snip[:420]}" + ("..." if len(snip) > 420 else "") + f"（来源: {title}{'/' + kind if kind else ''}）")
+    lines.append("")
+    return "\n".join(lines).strip()
+
+
+def build_kb_priority_context_for_report(json_files: List[Dict[str, Any]]) -> str:
+    """
+    组装「叙事模型必达」优先区：Wiki + 微博智搜 + Graph RAG + 参考检索 + OPRAG。
+    解决原先 analysis_results 前 14k 截断导致 wiki/微博从未进入模型上下文的问题。
+    """
+    parts: List[str] = []
+
+    wiki = _get_json_dict_by_filenames(json_files, "wiki_qa_snapshot.json")
+    if wiki:
+        block = _build_wiki_qa_priority_block(wiki)
+        if block:
+            parts.append(block)
+
+    weibo = _get_json_dict_by_filenames(json_files, "weibo_aisearch_reference.json")
+    if weibo:
+        block = _build_weibo_priority_block(weibo)
+        if block:
+            parts.append(block)
+
+    graph_txt, _graph_on = _build_graph_rag_context(json_files)
+    if graph_txt.strip():
+        parts.append(
+            "## 【优先阅读】Graph RAG 增强摘要\n\n"
+            + graph_txt.strip()
+            + "\n\n"
+        )
+
+    ref_ins = _get_json_dict_by_filenames(json_files, "reference_insights.json")
+    if ref_ins:
+        rb = _build_reference_insights_priority_block(ref_ins)
+        if rb:
+            parts.append(rb)
+
+    for fn in ("oprag_knowledge_snapshot.json", LEGACY_YQZK_KNOWLEDGE_SNAPSHOT_FILENAME):
+        snap = _get_json_dict_by_filenames(json_files, fn)
+        if snap:
+            parts.append(_build_oprag_snapshot_priority_block(snap))
+            break
+
+    return "\n\n".join(p for p in parts if str(p).strip()).strip()
+
+
 def _safe_int(value: Any) -> int:
     try:
         return int(str(value).replace(",", "").strip())
     except Exception:
         return 0
+
+
+def _resolve_project_root_from_analysis_dir(analysis_results_dir: str) -> Optional[Path]:
+    """Best-effort resolve repository root from analysis results directory."""
+    candidates: List[Path] = []
+    try:
+        p = Path(str(analysis_results_dir or "")).expanduser()
+        if not p.is_absolute():
+            p = (Path.cwd() / p).resolve()
+        else:
+            p = p.resolve()
+        candidates.extend([p, *list(p.parents)])
+    except Exception:
+        pass
+    cwd = Path.cwd().resolve()
+    candidates.extend([cwd, *list(cwd.parents)])
+
+    seen: set[str] = set()
+    for c in candidates:
+        key = str(c)
+        if key in seen:
+            continue
+        seen.add(key)
+        if (c / ".git").exists() and (c / "eval_results").exists():
+            return c
+    return None
+
+
+def _extract_eval_report_feedback(*, project_root: Optional[Path], max_reasons: int = 8) -> Dict[str, Any]:
+    """
+    从最近一次评测中提取 report 阶段 warning/fail 的可执行反馈，
+    用于下一次报告生成时的反向约束提示。
+    """
+    if not project_root:
+        return {"has_feedback": False}
+    eval_root = project_root / "eval_results"
+    if not eval_root.exists():
+        return {"has_feedback": False}
+
+    summary_files = sorted(
+        [p / "summary.json" for p in eval_root.iterdir() if p.is_dir() and (p / "summary.json").exists()],
+        key=lambda x: x.stat().st_mtime,
+        reverse=True,
+    )
+    if not summary_files:
+        return {"has_feedback": False}
+
+    for summary_path in summary_files:
+        try:
+            payload = json.loads(summary_path.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        if not isinstance(payload, dict):
+            continue
+        run_id = str(payload.get("run_id", "") or "").strip()
+        results = payload.get("results")
+        if not isinstance(results, list):
+            continue
+
+        report_items = []
+        for item in results:
+            if not isinstance(item, dict):
+                continue
+            stage = str(item.get("stage", "") or "").strip().lower()
+            status = str(item.get("status", "") or "").strip().lower()
+            if stage == "report" and status in {"warning", "fail"}:
+                report_items.append(item)
+        if not report_items:
+            continue
+
+        raw_reasons: List[str] = []
+        for item in report_items:
+            reasons = item.get("fail_reasons")
+            if isinstance(reasons, list):
+                for r in reasons:
+                    s = str(r or "").strip()
+                    if s:
+                        raw_reasons.append(s)
+        dedup: List[str] = []
+        seen_reason: set[str] = set()
+        for r in raw_reasons:
+            if r in seen_reason:
+                continue
+            seen_reason.add(r)
+            dedup.append(r)
+            if len(dedup) >= max_reasons:
+                break
+
+        if not dedup:
+            continue
+
+        guidance: List[str] = []
+        lower_all = "\n".join(dedup).lower()
+        if "placeholder_leakage" in lower_all or "证据不足" in lower_all:
+            guidance.append("避免输出占位词（如“证据不足/待补充/TODO”）；若证据弱，改为明确证据边界并补充可复核引用。")
+        if "lifecycle_consistency" in lower_all:
+            guidance.append("统一 KPI 阶段与正文阶段表述，禁止出现互相冲突的当前阶段判断。")
+        if "metric_source_consistency" in lower_all:
+            guidance.append("同一指标口径保持单一百分比，避免同文内出现冲突数值。")
+        if "claim_consistency" in lower_all:
+            guidance.append("风险等级与总体态度结论在全篇保持一致，避免前后自相矛盾。")
+        if "report.required_sections" in lower_all or "required_flags" in lower_all:
+            guidance.append("确保完整覆盖摘要/时间线/分析/建议四类结构，并显式呈现关键段落标识。")
+
+        return {
+            "has_feedback": True,
+            "run_id": run_id,
+            "summary_path": str(summary_path),
+            "reasons": dedup,
+            "guidance": guidance[:5],
+        }
+
+    return {"has_feedback": False}
+
+
+def _build_eval_feedback_block(feedback: Dict[str, Any]) -> str:
+    """将最近一次评测反馈转为可注入提示词的结构化文本。"""
+    if not isinstance(feedback, dict) or not bool(feedback.get("has_feedback")):
+        return ""
+    run_id = str(feedback.get("run_id", "") or "").strip()
+    reasons = feedback.get("reasons") if isinstance(feedback.get("reasons"), list) else []
+    guidance = feedback.get("guidance") if isinstance(feedback.get("guidance"), list) else []
+
+    lines: List[str] = ["## 上次评测回灌（自动）"]
+    if run_id:
+        lines.append(f"- 来源评测 run_id: {run_id}")
+    if reasons:
+        lines.append("- 需修复问题：")
+        for r in reasons[:8]:
+            lines.append(f"  - {str(r)}")
+    if guidance:
+        lines.append("- 本次生成硬约束：")
+        for g in guidance[:5]:
+            lines.append(f"  - {str(g)}")
+    lines.append("- 要求：逐条消解上述问题，避免重复触发 warning/fail。")
+    return "\n".join(lines).strip()
 
 
 def _extract_dataset_csv_path(json_files: List[Dict[str, Any]]) -> Optional[Path]:
@@ -407,23 +806,34 @@ def _needs_quality_retry(html_content: str) -> bool:
     return False
 
 
-def _has_effective_yqzk_reference(
+def _has_effective_oprag_reference(
     *,
     html_content: str,
-    has_yqzk_snapshot: bool,
+    has_oprag_snapshot: bool,
 ) -> bool:
     """
-    检查报告正文是否体现 yqzk 知识库引用。
-    仅在存在 yqzk 快照输入时启用检查。
+    检查报告正文是否体现 OPRAG/舆情知识库引用。
+    仅在存在知识快照输入时启用检查。
     """
-    if not has_yqzk_snapshot:
+    if not has_oprag_snapshot:
         return True
     text = str(html_content or "")
     if not text:
         return False
-    # 命中“知识库/智库/wiki/方法论/案例”等关键词至少 2 类，认为有体现
+    # 显式出现本地 wiki 路径或目录名即视为已引用知识库（避免仅复述内置三理论）
+    if any(
+        k in text
+        for k in (
+            "opinion_analysis_kb",
+            "references/wiki",
+            "本地 Wiki",
+            "wiki_cli",
+        )
+    ):
+        return True
+    # 命中“知识库/智库/wiki/方法论/案例”等关键词至少 2 类，认为有体现（含旧名 yqzk 以兼容历史 HTML）
     keyword_groups = [
-        ("舆情智库", "知识库", "yqzk"),
+        ("舆情智库", "知识库", "oprag", "yqzk"),
         ("wiki", "概念", "方法论"),
         ("相似案例", "历史案例", "案例对比"),
     ]
@@ -1271,7 +1681,8 @@ def _get_file_url(file_path: Path) -> str:
 @tool
 def report_html(
     eventIntroduction: str,
-    analysisResultsDir: str
+    analysisResultsDir: str,
+    report_length: str = "长篇",
 ) -> str:
     """
     描述：生成HTML报告。根据提供的事件基础介绍和分析结果文件夹，生成美观的HTML舆情分析报告。
@@ -1279,12 +1690,16 @@ def report_html(
     输入：
     - eventIntroduction（必填）：事件基础介绍，由 extract_search_terms 工具生成，用于告知模型事件背景，避免分析跑偏。
     - analysisResultsDir（必填）：分析结果文件夹路径，通常是 sandbox/任务ID/过程文件，包含所有分析结果的JSON文件。
+    - report_length（可选）：短篇 | 中篇 | 长篇；控制叙事与正文的展开程度，默认长篇。
     输出：JSON字符串，包含以下字段：
     - html_file_path：生成的HTML文件路径（保存在任务的结果文件夹中）
     - file_url：本地文件访问地址（file:// 协议，可直接在浏览器中打开）
     """
     import json as json_module
-    
+
+    rl = normalize_report_length(report_length)
+    length_instruction = format_report_length_instruction(rl)
+
     # 获取任务ID
     task_id = get_task_id()
     if not task_id:
@@ -1322,9 +1737,12 @@ def report_html(
             "file_url": ""
         }, ensure_ascii=False)
     
-    # 读取舆情智库方法论
+    # 读取舆情智库方法论（不与 OPRAG 快照重复拼接；快照走下方「优先区」进入叙事模型）
     methodology_content = load_methodology_for_report(topic=eventIntroduction)
-    
+
+    # Wiki / 微博智搜 / Graph RAG / 参考检索 / OPRAG 合并为「优先区」，避免模板叙事阶段只读到 analysis 前 14k 而丢失 wiki
+    kb_priority_text = build_kb_priority_context_for_report(json_files)
+
     # 构建提示词
     analysis_results_text = ""
     for json_file in json_files:
@@ -1341,27 +1759,34 @@ def report_html(
         analysis_results_text += "\n"
 
     graph_rag_summary, graph_rag_enabled = _build_graph_rag_context(json_files)
-    if graph_rag_summary:
-        analysis_results_text += "\n## Graph RAG 增强摘要（结构化提炼）\n"
-        analysis_results_text += graph_rag_summary
-        analysis_results_text += "\n"
-
     reference_summary, has_reference_hits = _build_reference_context(json_files)
-    if reference_summary:
-        analysis_results_text += "\n## 舆情智库参考摘要（结构化提炼）\n"
-        analysis_results_text += reference_summary
-        analysis_results_text += "\n"
+    oprag_snapshot_summary, has_oprag_snapshot = _build_oprag_snapshot_context(json_files)
+    theory_evidence_lines = _collect_theory_evidence_lines(json_files, limit=10)
+    has_theory_evidence = bool(theory_evidence_lines)
 
-    yqzk_snapshot_summary, has_yqzk_snapshot = _build_yqzk_snapshot_context(json_files)
-    if yqzk_snapshot_summary:
-        analysis_results_text += "\n## 舆情智库知识快照（高优先级）\n"
-        analysis_results_text += yqzk_snapshot_summary
-        analysis_results_text += "\n"
-        methodology_content = (
-            methodology_content
-            + "\n\n【yqzk知识快照补充】\n"
-            + yqzk_snapshot_summary
+    if not kb_priority_text.strip():
+        if graph_rag_summary:
+            analysis_results_text += "\n## Graph RAG 增强摘要（结构化提炼）\n"
+            analysis_results_text += graph_rag_summary
+            analysis_results_text += "\n"
+        if reference_summary:
+            analysis_results_text += "\n## 舆情智库参考摘要（结构化提炼）\n"
+            analysis_results_text += reference_summary
+            analysis_results_text += "\n"
+        if oprag_snapshot_summary:
+            analysis_results_text += "\n## 舆情智库知识快照（高优先级）\n"
+            analysis_results_text += oprag_snapshot_summary
+            analysis_results_text += "\n"
+    else:
+        analysis_results_text += (
+            "\n## 说明\n"
+            "以下章节已在「叙事优先区」完整提供给模型（见模板侧 kb_priority_text）："
+            "本地 Wiki、微博智搜、Graph RAG、reference_insights、OPRAG 快照；此处 JSON 为同一任务的原始备份。\n\n"
         )
+    if has_theory_evidence:
+        analysis_results_text += "\n## 理论研判可用证据（禁止忽略）\n"
+        analysis_results_text += "\n".join(theory_evidence_lines)
+        analysis_results_text += "\n"
 
     collab_summary, has_collab_context = _build_collab_context(json_files)
     if collab_summary:
@@ -1369,12 +1794,19 @@ def report_html(
         analysis_results_text += collab_summary
         analysis_results_text += "\n"
 
+    project_root = _resolve_project_root_from_analysis_dir(analysisResultsDir)
+    eval_feedback = _extract_eval_report_feedback(project_root=project_root)
+    eval_feedback_block = _build_eval_feedback_block(eval_feedback)
+    if eval_feedback_block:
+        analysis_results_text += "\n\n" + eval_feedback_block + "\n"
+
     template_path = get_report_html_template_path()
     model_error = ""
-    yqzk_warning = ""
-    yqzk_enforce_note = (
-        "\n\n【强制补充】本报告输入已提供 yqzk 知识快照。"
+    oprag_warning = ""
+    oprag_enforce_note = (
+        "\n\n【强制补充】本报告输入已提供 OPRAG 知识快照。"
         "请在理论研判、舆论引导与处置建议、总结复盘中显式引用知识库概念或案例，并与本次数据交叉验证。"
+        "理论研判须优先使用快照中 `kind=theory` 的条目（若存在），且三个理论槽位不得重复同一概念名。"
     )
 
     if template_path:
@@ -1385,17 +1817,21 @@ def report_html(
                 event_introduction=eventIntroduction,
                 analysis_results_text=analysis_results_text,
                 methodology_text=methodology_content,
+                kb_priority_text=kb_priority_text,
+                report_length=rl,
             )
-            if not _has_effective_yqzk_reference(html_content=html_content, has_yqzk_snapshot=has_yqzk_snapshot):
+            if not _has_effective_oprag_reference(html_content=html_content, has_oprag_snapshot=has_oprag_snapshot):
                 html_content = build_html_from_morandi_template(
                     template_path=template_path,
                     json_files=json_files,
                     event_introduction=eventIntroduction,
-                    analysis_results_text=analysis_results_text + yqzk_enforce_note,
-                    methodology_text=methodology_content + yqzk_enforce_note,
+                    analysis_results_text=analysis_results_text + oprag_enforce_note,
+                    methodology_text=methodology_content + oprag_enforce_note,
+                    kb_priority_text=kb_priority_text,
+                    report_length=rl,
                 )
-                if not _has_effective_yqzk_reference(html_content=html_content, has_yqzk_snapshot=has_yqzk_snapshot):
-                    yqzk_warning = "报告已重试生成，但 yqzk 引用仍不足，建议补充更明确的知识库关键词。"
+                if not _has_effective_oprag_reference(html_content=html_content, has_oprag_snapshot=has_oprag_snapshot):
+                    oprag_warning = "报告已重试生成，但 OPRAG 引用仍不足，建议补充更明确的知识库关键词。"
         except Exception as e:
             model_error = f"模板报告生成失败: {str(e)}"
             html_content = _build_fallback_html(
@@ -1430,12 +1866,21 @@ def report_html(
 
             return pattern.sub(repl, t)
 
+        analysis_for_prompt = analysis_results_text
+        if kb_priority_text.strip():
+            analysis_for_prompt = (
+                kb_priority_text.strip()
+                + "\n\n---\n\n## 过程文件与后续材料（完整 JSON 见下）\n\n"
+                + analysis_results_text
+            )
+
         prompt = _replace_placeholders(
             prompt_template,
             event_intro=eventIntroduction,
-            analysis_text=analysis_results_text,
+            analysis_text=analysis_for_prompt,
             methodology_text=methodology_content,
         )
+        prompt += "\n\n" + length_instruction
         prompt += (
             "\n\n【事实边界要求】\n"
             "你只能引用输入材料中出现的事实、名称与数据；若证据不足，请明确写“证据不足”，不得编造案例或观点。"
@@ -1443,7 +1888,13 @@ def report_html(
         prompt += (
             "\n\n【图后结论强制要求】\n"
             "所有包含可视化图表的小节，必须在图表后紧跟“简要分析结论”文字块（2-3条要点）。\n"
-            "每个结论块必须包含：1) 主要发现；2) 风险或影响；3) 一条建议动作。"
+            "不强制固定“发现-风险-建议”三段论；可按自然叙述写作，但要保证结论可核验且与图表数据一致。"
+        )
+        prompt += (
+            "\n\n【基础数据描述与知识库分区约束】\n"
+            "基础数据描述章节（声量、情感、关键时间节点、地域、核心发布者、词云、生命周期）只能依据本次过程文件数据得出描述性结论，"
+            "不得引用历史知识库观点或往期案例来替代当前数据解读。\n"
+            "知识库/Wiki/OPRAG 内容仅用于：理论研判、回应观察、处置建议、总结复盘。"
         )
         prompt += (
             "\n\n【ECharts 脚本约束】\n"
@@ -1467,20 +1918,44 @@ def report_html(
                 "\n\n【参考资料引用要求】\n"
                 "若输入中存在 reference_insights.json，请至少引用 2 条其中的 snippet，并在句末标注来源标题。\n"
                 "理论/观点优先使用 reference_insights 与 Graph RAG 中真实出现的内容；未出现者不得强行套用。\n"
-                "若证据不足，请明确写“证据不足”。"
+                "若证据不足，请明确写“证据不足”。\n"
+                "注意：这些引用只用于理论研判/复盘/建议，不用于替代基础图表数据描述。"
             )
-        if has_yqzk_snapshot:
+        if has_theory_evidence:
             prompt += (
-                "\n\n【yqzk强制引用要求】\n"
+                "\n\n【理论研判强制要求】\n"
+                "输入已提供“理论研判可用证据（禁止忽略）”，理论槽位必须优先引用该段内容；"
+                "当该段存在有效理论条目时，禁止把三个理论槽位写成“证据不足”。\n"
+                "三个理论槽位必须是不同概念名，并写出“本次数据证据 -> 理论机制 -> 风险影响 -> 建议动作”链路。"
+            )
+        if has_oprag_snapshot:
+            prompt += (
+                "\n\n【OPRAG强制引用要求】\n"
                 "输入中已提供“舆情智库知识快照（高优先级）”。请在以下至少三处显式引用其概念/案例并与本次数据交叉验证：\n"
                 "1) 理论研判；2) 舆论引导与处置建议；3) 总结复盘。\n"
-                "禁止只复述知识库观点，必须写出“本次数据证据 -> yqzk概念 -> 结论/建议”的链路。"
+                "禁止只复述知识库观点，必须写出“本次数据证据 -> OPRAG概念 -> 结论/建议”的链路。"
             )
         if has_collab_context:
             prompt += (
                 "\n\n【协同输入对齐要求】\n"
                 "若输入含 user_judgement_input.json 或 user_expert_notes.json，需在“研判结论/建议”中显式回应其关注点。\n"
-                "若输入含 weibo_aisearch_reference.json，请将其作为外部参考线索而非事实锚点，必须与本地数据交叉验证后再下结论。"
+                "若输入含 weibo_aisearch_reference.json，请将其作为外部参考线索而非事实锚点，必须与本地数据交叉验证后再下结论。\n"
+                "若存在“用户研判关键要点（需在报告中显式回应）”，请至少在以下两处逐条对齐：\n"
+                "1) SUMMARY_BULLETS；2) RESPONSE_ANALYSIS_BULLETS 或 RECAP_*。\n"
+                "不得只泛泛提及“已参考用户观点”，而应明确写出对应观点与本次数据是否支持。"
+            )
+        if kb_priority_text.strip():
+            prompt += (
+                "\n\n【叙事优先区（本段已在 analysis_results 最前）】\n"
+                "若开头出现「本地 Wiki 知识库」：引用应优先放在理论研判、回应观察、总结复盘、处置建议。\n"
+                "若出现「微博智搜」：仅可作为外部线索，必须与本地采集数据核对，且不能替代基础图表描述。\n"
+                "禁止仅用内置议程设置/沉默螺旋/蝴蝶效应三件套敷衍；无证据处写「证据不足」。"
+            )
+        if eval_feedback_block:
+            prompt += (
+                "\n\n【上次评测回灌（自动）】\n"
+                + eval_feedback_block
+                + "\n请把上述问题逐条映射到正文改写策略中，避免再次触发一致性/证据链 warning。"
             )
 
         # 调用模型生成HTML
@@ -1494,16 +1969,19 @@ def report_html(
 
             # 质量兜底：过于浅层时进行一次强化重试
             if _needs_quality_retry(str(html_content)) or (
-                not _has_effective_yqzk_reference(html_content=str(html_content), has_yqzk_snapshot=has_yqzk_snapshot)
+                not _has_effective_oprag_reference(html_content=str(html_content), has_oprag_snapshot=has_oprag_snapshot)
             ):
                 retry_prompt = (
                     prompt
+                    + "\n\n"
+                    + length_instruction
                     + "\n\n【强制质量要求】\n"
                     + "1) 不能只做数据描述，必须给出研判结论、风险研判、回应建议。\n"
                     + "2) 必须完整覆盖：舆情分析核心维度、舆情生命周期阶段、理论规律分析、回应观察与分析、总结复盘。\n"
                     + "3) 每个章节至少包含1条“数据证据 -> 结论”的推理链。\n"
                     + "4) 明确引用并吸收“舆情智库方法论指导”中的术语与框架。\n"
-                    + "5) 所有图表后必须紧跟“简要分析结论”（2-3条要点，含发现/影响/建议）。\n"
+                    + "5) 所有图表后必须紧跟“简要分析结论”（2-3条要点），不要求固定“发现-风险-建议”格式。\n"
+                    + "6) 基础图表结论只依据本次数据；知识库引用集中在理论研判/复盘/处置建议章节。\n"
                 )
                 retry_messages = [
                     SystemMessage(content="你是资深舆情研究员，同时是可视化报告专家。"),
@@ -1513,8 +1991,8 @@ def report_html(
                 retry_html = retry_resp.content if hasattr(retry_resp, "content") else str(retry_resp)
                 if retry_html and len(str(retry_html).strip()) >= len(str(html_content).strip()):
                     html_content = retry_html
-            if not _has_effective_yqzk_reference(html_content=str(html_content), has_yqzk_snapshot=has_yqzk_snapshot):
-                yqzk_warning = "报告已重试生成，但 yqzk 引用仍不足，建议补充更明确的知识库关键词。"
+            if not _has_effective_oprag_reference(html_content=str(html_content), has_oprag_snapshot=has_oprag_snapshot):
+                oprag_warning = "报告已重试生成，但 OPRAG 引用仍不足，建议补充更明确的知识库关键词。"
         except Exception as e:
             model_error = f"模型生成HTML失败: {str(e)}"
             html_content = _build_fallback_html(
@@ -1547,6 +2025,8 @@ def report_html(
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     html_filename = f"report_{timestamp}.html"
     html_file_path = result_dir / html_filename
+    meta_filename = f"report_meta_{timestamp}.json"
+    meta_file_path = result_dir / meta_filename
     
     # 保存HTML文件
     try:
@@ -1558,6 +2038,16 @@ def report_html(
             "html_file_path": "",
             "file_url": ""
         }, ensure_ascii=False)
+
+    # Build and persist report_meta (v1 contract).
+    report_meta_obj: Dict[str, Any] = {}
+    try:
+        report_meta_obj = build_report_meta_from_html(str(html_content))
+        with open(meta_file_path, "w", encoding="utf-8") as f:
+            f.write(json_module.dumps(report_meta_obj, ensure_ascii=False, indent=2))
+    except Exception:
+        # Do not fail the main report generation if meta extraction fails.
+        report_meta_obj = {}
     
     # 生成 file:// URL
     file_url = _get_file_url(html_file_path)
@@ -1565,12 +2055,16 @@ def report_html(
     # 返回结果（包含HTML文件路径和 file:// URL）
     result = {
         "html_file_path": str(html_file_path),
-        "file_url": file_url
+        "file_url": file_url,
+        "report_meta_file_path": str(meta_file_path) if meta_file_path else "",
+        "report_meta": report_meta_obj,
+        "eval_feedback_applied": bool(eval_feedback.get("has_feedback")),
+        "eval_feedback_run_id": str(eval_feedback.get("run_id", "") or ""),
     }
     if model_error:
         result["warning"] = model_error
-    if yqzk_warning:
-        result["yqzk_warning"] = yqzk_warning
+    if oprag_warning:
+        result["oprag_warning"] = oprag_warning
 
     # 尝试在默认浏览器中自动打开（失败不影响主流程）
     try:

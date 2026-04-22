@@ -1,0 +1,50 @@
+{
+  "id": "wiki_event_overview_004",
+  "suite": "basic",
+  "suites": [
+    "ci-gate"
+  ],
+  "target": "wiki",
+  "stage": null,
+  "input": {
+    "query": "粉底液将军是什么事件？",
+    "options": {
+      "topk": 6,
+      "style": "teach"
+    }
+  },
+  "fixtures": {
+    "mode": "replay",
+    "recorded_tools": "tests/fixtures/wiki_event_overview_004/tools.json"
+  },
+  "expectations": {
+    "required_fields": [
+      "answer",
+      "sources"
+    ],
+    "min_sources": 2,
+    "min_unique_source_titles": 2,
+    "required_source_fields": [
+      "title",
+      "snippet"
+    ],
+    "case_example": {
+      "must_contain_any": [
+        "逐玉",
+        "粉底液将军",
+        "钧正平"
+      ],
+      "must_not_contain_any": [
+        "立善志",
+        "行善业",
+        "可先把它理解为一个可验证的概念问题"
+      ]
+    },
+    "max_latency_ms": 15000,
+    "thresholds": {
+      "traceability_score": 0.25,
+      "relevance_score": 0.12,
+      "structure_completeness": 1.0
+    }
+  }
+}

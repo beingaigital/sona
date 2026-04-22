@@ -1,5 +1,8 @@
 {
   "id": "wiki_concept_001",
+  "suites": [
+    "ci-gate"
+  ],
   "target": "wiki",
   "stage": null,
   "input": {
@@ -19,6 +22,11 @@
       "sources"
     ],
     "min_sources": 2,
+    "min_unique_source_titles": 2,
+    "required_source_fields": [
+      "title",
+      "snippet"
+    ],
     "max_latency_ms": 15000,
     "thresholds": {
       "traceability_score": 0.7,

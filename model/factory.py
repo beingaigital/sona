@@ -6,7 +6,11 @@ import os
 import yaml
 from typing import Any, Callable, Dict, Optional
 from langchain_openai import ChatOpenAI
-from langchain_google_genai import ChatGoogleGenerativeAI
+
+try:
+    from langchain_google_genai import ChatGoogleGenerativeAI
+except ImportError:  # 未安装时仍可正常使用 qwen/deepseek 等 OpenAI 兼容端点
+    ChatGoogleGenerativeAI = None  # type: ignore[misc, assignment]
 
 from utils.env_loader import get_env_config
 from utils.path import get_config_path
@@ -105,11 +109,14 @@ def _create_openai_compatible(
     """
     kwargs = _apply_default_llm_runtime_kwargs(kwargs)
     # 流式场景下默认请求返回 usage（通过 model_kwargs 注入，避免触发「非默认参数」warning）
+    # DashScope 等端点：stream=false 时不得带 stream_options（否则 400 invalid_value）
+    streaming_on = bool(kwargs.get("streaming", True))
     model_kwargs = kwargs.get("model_kwargs") if isinstance(kwargs.get("model_kwargs"), dict) else {}
-    if "stream_options" not in model_kwargs and "stream_options" not in kwargs:
+    if not streaming_on:
+        model_kwargs.pop("stream_options", None)
+    elif "stream_options" not in model_kwargs and "stream_options" not in kwargs:
         model_kwargs["stream_options"] = {"include_usage": True}
     kwargs["model_kwargs"] = model_kwargs
-    # OpenAI 接口要求 stream_options 与 stream 同时显式开启
     kwargs.setdefault("streaming", True)
     try:
         return ChatOpenAI(model=model, api_key=api_key, base_url=base_url, **kwargs)
@@ -122,12 +129,13 @@ def _create_openai_compatible(
 # 创建openai模型接口
 def _create_openai(model: str, api_key: str, **kwargs: Any) -> Any:
     kwargs = _apply_default_llm_runtime_kwargs(kwargs)
-    # 流式场景下默认请求返回 usage（通过 model_kwargs 注入，避免触发「非默认参数」warning）
+    streaming_on = bool(kwargs.get("streaming", True))
     model_kwargs = kwargs.get("model_kwargs") if isinstance(kwargs.get("model_kwargs"), dict) else {}
-    if "stream_options" not in model_kwargs and "stream_options" not in kwargs:
+    if not streaming_on:
+        model_kwargs.pop("stream_options", None)
+    elif "stream_options" not in model_kwargs and "stream_options" not in kwargs:
         model_kwargs["stream_options"] = {"include_usage": True}
     kwargs["model_kwargs"] = model_kwargs
-    # OpenAI 接口要求 stream_options 与 stream 同时显式开启
     kwargs.setdefault("streaming", True)
     try:
         return ChatOpenAI(model=model, api_key=api_key, **kwargs)

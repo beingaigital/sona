@@ -40,4 +40,16 @@ filterwarnings = [
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["cli*", "agent*", "config*", "model*", "tools*", "utils*", "mcps*", "prompt*", "skills*", "scripts*"]
+include = [
+    "cli*",
+    "agent*",
+    "workflow*",
+    "config*",
+    "model*",
+    "tools*",
+    "utils*",
+    "mcps*",
+    "prompt*",
+    "skills*",
+    "scripts*",
+]

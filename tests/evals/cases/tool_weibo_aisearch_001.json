@@ -1,0 +1,28 @@
+{
+  "id": "tool_weibo_aisearch_001",
+  "suite": "netinsight-smoke",
+  "target": "tool",
+  "stage": "weibo_aisearch",
+  "input": {
+    "query": "weibo_aisearch 契约校验"
+  },
+  "fixtures": {
+    "mode": "replay",
+    "recorded_tools": "tests/fixtures/tool_weibo_aisearch_001/output.json"
+  },
+  "expectations": {
+    "required_fields": [
+      "topic",
+      "url",
+      "count",
+      "results",
+      "source",
+      "authenticated"
+    ],
+    "thresholds": {
+      "structure_completeness": 1.0
+    },
+    "max_latency_ms": 60000
+  }
+}
+

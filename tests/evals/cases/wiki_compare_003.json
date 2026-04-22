@@ -1,0 +1,39 @@
+{
+  "id": "wiki_compare_003",
+  "suite": "basic",
+  "target": "wiki",
+  "stage": null,
+  "input": {
+    "query": "舆情反转和舆情发酵有什么区别？",
+    "options": {
+      "topk": 6,
+      "style": "concise"
+    }
+  },
+  "fixtures": {
+    "mode": "replay",
+    "recorded_tools": "tests/fixtures/wiki_compare_003/tools.json"
+  },
+  "expectations": {
+    "required_fields": [
+      "answer",
+      "sources"
+    ],
+    "min_sources": 2,
+    "min_unique_source_titles": 2,
+    "required_source_fields": [
+      "title",
+      "snippet"
+    ],
+    "compare": {
+      "min_dimensions": 2
+    },
+    "max_latency_ms": 15000,
+    "thresholds": {
+      "traceability_score": 0.65,
+      "relevance_score": 0.2,
+      "structure_completeness": 1.0
+    }
+  }
+}
+

@@ -1,0 +1,20 @@
+{
+  "topic": "大学生高铁骂熊孩子",
+  "url": "https://s.weibo.com/aisearch?q=%E5%A4%A7%E5%AD%A6%E7%94%9F%E9%AB%98%E9%93%81%E9%AA%82%E7%86%8A%E5%AD%A9%E5%AD%90&Refer=weibo_aisearch",
+  "count": 2,
+  "results": [
+    {
+      "snippet": "【极目锐评| #大学生高铁怒吼熊孩子到底是谁错了# 】 #大学生高铁怒吼熊孩子算反应过度吗# ..."
+    },
+    {
+      "snippet": "#高铁上孩童吵闹大学生怒吼瞬间安静# 不是大学生凶，是有些家长太没数 ..."
+    }
+  ],
+  "error": "",
+  "fallback_used": true,
+  "source": "playwright",
+  "authenticated": true,
+  "cookie_path_used": false,
+  "fetched_at": "2026-04-18 18:48:44.570845"
+}
+

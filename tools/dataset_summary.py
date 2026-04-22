@@ -2,15 +2,14 @@
 
 from __future__ import annotations
 
-import csv
 import json
 from dataclasses import dataclass
 from datetime import datetime
-from pathlib import Path
 from typing import Any, Dict, Optional, List
 
 from langchain_core.tools import tool
 
+from tools._csv_io import read_csv_fieldnames_sample_and_total
 from utils.path import ensure_task_dirs
 from utils.task_context import get_task_id
 
@@ -100,31 +99,6 @@ def _extract_time_coverage(rows: List[Dict[str, str]]) -> Dict[str, Optional[str
     return {"min_time": min_time, "max_time": max_time, "time_column": chosen_col}
 
 
-def _read_csv_header_and_sample(save_path: str, sample_limit: int = 200) -> tuple[List[str], List[Dict[str, str]], int]:
-    """
-    读取 CSV 的字段名、样本行与行数（尽量避免把大文件全部读入内存）。
-    """
-
-    csv_path = Path(save_path)
-    if not csv_path.exists():
-        raise FileNotFoundError(f"CSV 文件不存在: {save_path}")
-
-    with open(csv_path, "r", encoding="utf-8-sig", errors="replace") as f:
-        reader = csv.DictReader(f)
-        if not reader.fieldnames:
-            return [], [], 0
-
-        fieldnames = list(reader.fieldnames)
-        rows: List[Dict[str, str]] = []
-        row_count = 0
-        for i, row in enumerate(reader):
-            row_count += 1
-            if len(rows) < sample_limit:
-                rows.append({k: (v or "") for k, v in row.items()})
-
-    return fieldnames, rows, row_count
-
-
 @tool
 def dataset_summary(save_path: str) -> str:
     """
@@ -147,7 +121,9 @@ def dataset_summary(save_path: str) -> str:
         )
 
     try:
-        fieldnames, sample_rows, row_count = _read_csv_header_and_sample(save_path)
+        fieldnames, sample_rows, row_count = read_csv_fieldnames_sample_and_total(
+            save_path, sample_limit=200
+        )
         time_coverage = _extract_time_coverage(sample_rows)
         summary = CsvSummary(
             row_count=row_count,

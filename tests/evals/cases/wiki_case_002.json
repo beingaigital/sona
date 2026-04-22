@@ -1,0 +1,45 @@
+{
+  "id": "wiki_case_002",
+  "suite": "basic",
+  "suites": [
+    "ci-gate"
+  ],
+  "target": "wiki",
+  "stage": null,
+  "input": {
+    "query": "请用案例解释舆情反转通常如何发生？",
+    "options": {
+      "topk": 6,
+      "style": "teach"
+    }
+  },
+  "fixtures": {
+    "mode": "replay",
+    "recorded_tools": "tests/fixtures/wiki_case_002/tools.json"
+  },
+  "expectations": {
+    "required_fields": [
+      "answer",
+      "sources"
+    ],
+    "min_sources": 2,
+    "min_unique_source_titles": 2,
+    "required_source_fields": [
+      "title",
+      "snippet"
+    ],
+    "case_example": {
+      "must_contain_any": [
+        "例如",
+        "案例"
+      ]
+    },
+    "max_latency_ms": 15000,
+    "thresholds": {
+      "traceability_score": 0.65,
+      "relevance_score": 0.2,
+      "structure_completeness": 1.0
+    }
+  }
+}
+

@@ -18,6 +18,26 @@ def get_project_root() -> Path:
     return _PROJECT_ROOT
 
 
+# 历史目录名为中文，曾用全仓库字符串替换迁移；此处用码位拼接避免再被误批量改写。
+_LEGACY_OPINION_KB_DIR = "".join(chr(c) for c in (0x8206, 0x60C5, 0x6DF1, 0x5EA6, 0x5206, 0x6790))
+
+
+def get_opinion_analysis_kb_root(project_root: Path | None = None) -> Path:
+    """
+    项目根下「舆情分析知识库」根目录（英文文件夹 ``opinion_analysis_kb``，内含 references/ 等）。
+
+    若仍存在旧的中文目录名（见 ``_LEGACY_OPINION_KB_DIR``），则优先新目录，否则回退旧目录。
+    """
+    root = project_root if project_root is not None else get_project_root()
+    new_p = root / "opinion_analysis_kb"
+    legacy = root / _LEGACY_OPINION_KB_DIR
+    if new_p.is_dir():
+        return new_p
+    if legacy.is_dir():
+        return legacy
+    return new_p
+
+
 def get_config_dir() -> Path:
     """配置目录：项目根/config。"""
     return get_project_root() / "config"

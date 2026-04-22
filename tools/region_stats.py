@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import csv
 import json as json_module
 import re
 from collections import Counter
@@ -12,6 +11,7 @@ from typing import Any, Dict, List, Optional, Sequence, Set, Tuple
 
 from langchain_core.tools import tool
 
+from tools._csv_io import read_csv_rows_all
 from utils.path import get_task_process_dir
 from utils.task_context import get_task_id
 
@@ -56,34 +56,6 @@ def _looks_like_province_level(raw_location: str) -> bool:
         return s in _MUNICIPALITIES
 
     return False
-
-
-def _read_csv_rows(file_path: str) -> List[Dict[str, Any]]:
-    """读取 CSV 文件，返回 DictReader 行集合（自适应编码）。"""
-    file = Path(file_path)
-    if not file.exists():
-        raise FileNotFoundError(f"数据文件不存在: {file_path}")
-
-    rows: List[Dict[str, Any]] = []
-    encodings_to_try: List[str] = ["utf-8-sig", "utf-8", "gb18030", "gbk"]
-    last_error: Optional[Exception] = None
-    for enc in encodings_to_try:
-        try:
-            with open(file, "r", encoding=enc, errors="strict") as f:
-                reader = csv.DictReader(f)
-                for row in reader:
-                    rows.append(row)
-            break
-        except Exception as e:
-            rows = []
-            last_error = e
-            continue
-    if not rows and last_error is not None:
-        with open(file, "r", encoding="utf-8-sig", errors="replace") as f:
-            reader = csv.DictReader(f)
-            for row in reader:
-                rows.append(row)
-    return rows
 
 
 def _identify_ip_location_column(fieldnames: Sequence[str]) -> Optional[str]:
@@ -201,7 +173,7 @@ def region_stats(
         )
 
     try:
-        rows = _read_csv_rows(dataFilePath)
+        rows = read_csv_rows_all(dataFilePath)
     except Exception as e:
         return json_module.dumps(
             {

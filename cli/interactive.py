@@ -36,10 +36,32 @@ from utils.message_utils import messages_from_session_data
 from cli.event_analysis_workflow import run_event_analysis_workflow
 from cli.router import route_query, get_router
 from cli.hot_ui import run_hot_command
+from cli.wiki_ui import run_wiki_command, run_wiki_approve_command
 from tools.extract_search_terms import extract_search_terms
 from rich.prompt import Confirm
 
 LOG_PATH = "/Users/biaowenhuang/Documents/sona-master/.cursor/debug.log"
+
+
+def _full_report_workflow_options(
+    route_policy: Optional[Dict[str, Any]] = None,
+    *,
+    existing_data_path: Optional[str] = None,
+    skip_data_collect: bool = False,
+    force_fresh_start: Optional[bool] = False,
+) -> Dict[str, Any]:
+    """合并路由策略中的 report_length，并传递数据复用相关选项到 full_report 模式。"""
+    rl = ""
+    if isinstance(route_policy, dict):
+        rl = str(route_policy.get("report_length") or "").strip()
+    if not rl:
+        rl = str(get_router().policy_loader.get_policy().report_length or "").strip()
+    return {
+        "existing_data_path": existing_data_path,
+        "skip_data_collect": skip_data_collect,
+        "force_fresh_start": force_fresh_start,
+        "report_length": rl or "中篇",
+    }
 
 
 _PT_SESSION = None
@@ -210,6 +232,7 @@ def run_session_query(
     previous_messages: Optional[List[BaseMessage]] = None,
     show_spinner: bool = False,
     task_mode: str = "qa",
+    workflow_options: Optional[Dict[str, Any]] = None,
 ) -> dict[str, Any]:
     """
     在会话中运行查询，支持 token 追踪
@@ -303,6 +326,7 @@ def run_session_query(
             previous_messages=previous_messages,
             token_tracker=token_tracker,
             task_mode=task_mode,
+            workflow_options=workflow_options,
         ):
             
             # 处理 token 级别的流式输出
@@ -1065,6 +1089,12 @@ def run_session_loop(
                     previous_messages,
                     show_spinner=True,
                     task_mode="full_report",
+                    workflow_options=_full_report_workflow_options(
+                        route_policy,
+                        existing_data_path=existing_data_path,
+                        skip_data_collect=skip_data_collect,
+                        force_fresh_start=False,
+                    ),
                 )
             elif use_event_brief_workflow:
                 run_session_query(
@@ -1187,6 +1217,10 @@ def run_session_loop(
                             previous_messages,
                             show_spinner=True,
                             task_mode="full_report",
+                            workflow_options=_full_report_workflow_options(
+                                None,
+                                force_fresh_start=False,
+                            ),
                         )
                         session_data = session_manager.load_session(task_id)
                         if session_data:
@@ -1205,6 +1239,30 @@ def run_session_loop(
                         session_manager.add_message(task_id, "assistant", "已执行热点态势感知流程。")
                     except Exception as e:
                         console.print(f"[red]/hot 执行失败: {str(e)}[/red]")
+                        traceback.print_exc()
+                    continue
+
+                # 处理 /wiki-approve 命令（候选审批回流）
+                if user_input.strip().startswith("/wiki-approve"):
+                    parts = user_input.strip().split(maxsplit=1)
+                    selector = parts[1].strip() if len(parts) > 1 else None
+                    try:
+                        run_wiki_approve_command(selector)
+                        session_manager.add_message(task_id, "assistant", "已执行 /wiki-approve 候选回流。")
+                    except Exception as e:
+                        console.print(f"[red]/wiki-approve 执行失败: {str(e)}[/red]")
+                        traceback.print_exc()
+                    continue
+
+                # 处理 /wiki 命令（知识问答，与会话并行、不写长上下文）
+                if user_input.strip().startswith("/wiki"):
+                    parts = user_input.strip().split(maxsplit=1)
+                    wiki_query = parts[1].strip() if len(parts) > 1 else None
+                    try:
+                        run_wiki_command(wiki_query)
+                        session_manager.add_message(task_id, "assistant", "已执行 /wiki 知识库问答。")
+                    except Exception as e:
+                        console.print(f"[red]/wiki 执行失败: {str(e)}[/red]")
                         traceback.print_exc()
                     continue
 
@@ -1293,7 +1351,10 @@ def run_session_loop(
                     continue
                 
                 # 其他系统命令在main.py中处理，这里仅支持会话内命令
-                console.print(f"[yellow]会话内可用命令: /exit, /set, /event, /hot, /compress[/yellow]")
+                console.print(
+                    "[yellow]会话内可用命令: "
+                    "/exit, /set, /event, /hot, /wiki, /wiki-approve, /compress[/yellow]"
+                )
                 continue
 
             # 若开启事件分析 debug 开关，则把普通输入也路由到事件分析工作流
@@ -1314,6 +1375,7 @@ def run_session_loop(
                         previous_messages,
                         show_spinner=True,
                         task_mode="full_report",
+                        workflow_options=_full_report_workflow_options(None),
                     )
                     session_data = session_manager.load_session(task_id)
                     if session_data:
@@ -1371,6 +1433,12 @@ def run_session_loop(
                     previous_messages,
                     show_spinner=True,
                     task_mode="full_report",
+                    workflow_options=_full_report_workflow_options(
+                        route_policy,
+                        existing_data_path=existing_data_path,
+                        skip_data_collect=skip_data_collect,
+                        force_fresh_start=False,
+                    ),
                 )
             elif should_apply_route and route_decision == "event_brief_workflow":
                 run_session_query(

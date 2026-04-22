@@ -1,0 +1,58 @@
+{
+  "version": 1,
+  "description": "Project memory: domain routing policies for retrieval + evidence injection (auditable, roll-backable, A/B friendly).",
+  "domains": {
+    "控烟": {
+      "match": {
+        "keywords": [
+          "控烟",
+          "禁烟",
+          "吸烟",
+          "抽烟",
+          "二手烟",
+          "烟草",
+          "无烟",
+          "烟卡",
+          "电子烟",
+          "公共场所吸烟",
+          "吸烟区",
+          "高铁站吸烟",
+          "高铁站禁烟",
+          "车站禁烟",
+          "站内吸烟"
+        ]
+      },
+      "must_include": {
+        "concept_pages": [
+          "opinion_analysis_kb/references/wiki/concepts/控烟.md",
+          "opinion_analysis_kb/references/wiki/concepts/烟草控制.md"
+        ],
+        "wiki_sources": [
+          "opinion_analysis_kb/references/wiki/sources/2025年控烟舆情分析年度报告0318.md",
+          "opinion_analysis_kb/references/wiki/sources/2024第三季度控烟舆情监测报告_20250102.md",
+          "opinion_analysis_kb/references/wiki/sources/2024年第四季度控烟舆情报告.md",
+          "opinion_analysis_kb/references/wiki/sources/2024年控烟舆情监测年度报告0320.md",
+          "opinion_analysis_kb/references/wiki/sources/2024年上半年控烟舆情报告1110.md",
+          "opinion_analysis_kb/references/wiki/sources/2024年_烟卡_舆情专题分析报告.md"
+        ]
+      },
+      "prefer": {
+        "concept_pages": [
+          "opinion_analysis_kb/references/wiki/concepts/公共卫生.md",
+          "opinion_analysis_kb/references/wiki/concepts/公共健康.md",
+          "opinion_analysis_kb/references/wiki/concepts/政策法规.md"
+        ]
+      },
+      "blocklist": {
+        "path_contains": [
+          "opinion_analysis_kb/references/wiki/output/_candidates/"
+        ]
+      },
+      "injection_limits": {
+        "max_seed_pages": 10,
+        "max_seed_chars_for_llm": 18000
+      }
+    }
+  }
+}
+
