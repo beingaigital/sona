@@ -1,0 +1,49 @@
+{
+  "total_count": 1887,
+  "items": [
+    {
+      "platform": "微博",
+      "count": 1680,
+      "percentage": 89.03
+    },
+    {
+      "platform": "自媒体号",
+      "count": 119,
+      "percentage": 6.31
+    },
+    {
+      "platform": "短视频",
+      "count": 60,
+      "percentage": 3.18
+    },
+    {
+      "platform": "新闻app",
+      "count": 13,
+      "percentage": 0.69
+    },
+    {
+      "platform": "微信",
+      "count": 7,
+      "percentage": 0.37
+    },
+    {
+      "platform": "视频",
+      "count": 4,
+      "percentage": 0.21
+    },
+    {
+      "platform": "新闻网站",
+      "count": 2,
+      "percentage": 0.11
+    },
+    {
+      "platform": "论坛",
+      "count": 2,
+      "percentage": 0.11
+    }
+  ],
+  "chart_type": "pie",
+  "created_at": "2026-04-27 22:13:33.289334",
+  "calculation_source": "csv_groupby_platform"
+}
+

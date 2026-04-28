@@ -1,0 +1,36 @@
+{
+  "task_id": "00d769e6-6647-4e48-8740-5ec5a1987f20",
+  "query": "分析12306回应家长和孩子相隔14个车厢这一事件的舆情",
+  "created_at": "2026-04-26 00:34:05.940227",
+  "status": "passed",
+  "checks": [
+    {
+      "name": "collect_plan_interaction_guard",
+      "status": "pass",
+      "reason": "reject_respected"
+    },
+    {
+      "name": "sentiment_quality_guard",
+      "status": "pass",
+      "reason": "distribution_or_fallback_ok"
+    },
+    {
+      "name": "reference_recall_quality",
+      "status": "pass",
+      "reason": "recall_has_relevant_hits"
+    },
+    {
+      "name": "topic_relevance_quality",
+      "status": "pass",
+      "reason": "topic_alignment_ok"
+    }
+  ],
+  "event_count": 7,
+  "suggestions": [
+    "若交互拒绝被忽略，请检查 collect_plan 分支是否存在非交互默认放行。",
+    "若情感结果单边失真，优先启用/检查 CSV 情感列 fallback 与样本覆盖率。",
+    "若参考检索跑题，收紧 query 构造并提高词项重合过滤阈值。",
+    "若主题偏航，请提高 topic_relevance_guard 阈值并收紧 searchWords/queryTemplates（或开启事件核心词优先模式）。"
+  ]
+}
+

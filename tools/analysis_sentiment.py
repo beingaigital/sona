@@ -634,7 +634,43 @@ def analysis_sentiment(
             else:
                 scores_by_row[i] = _label_to_score(norm_label)
 
-    if use_existing_sentiment and sentiment_col:
+    # 快速抽样重判（可选）：在“已有情感列但不可信”场景，用 LLM 对抽样重判，避免全量耗时。
+    # - 默认关闭；开启方式：SONA_SENTIMENT_FAST_SAMPLE=1 且允许重判
+    # - 抽样规模：max(min(n*rate, max_rows), min_rows)
+    fast_sample_enabled = str(os.environ.get("SONA_SENTIMENT_FAST_SAMPLE", "0")).strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "y",
+        "on",
+    }
+    sample_rate_raw = str(os.environ.get("SONA_SENTIMENT_FAST_SAMPLE_RATE", "0.1")).strip()
+    sample_max_raw = str(os.environ.get("SONA_SENTIMENT_FAST_SAMPLE_MAX_ROWS", "220")).strip()
+    sample_min_raw = str(os.environ.get("SONA_SENTIMENT_FAST_SAMPLE_MIN_ROWS", "60")).strip()
+    try:
+        sample_rate = float(sample_rate_raw)
+    except Exception:
+        sample_rate = 0.1
+    try:
+        sample_max_rows = int(sample_max_raw)
+    except Exception:
+        sample_max_rows = 220
+    try:
+        sample_min_rows = int(sample_min_raw)
+    except Exception:
+        sample_min_rows = 60
+    sample_rate = max(0.01, min(sample_rate, 0.5))
+    sample_max_rows = max(40, min(sample_max_rows, 1200))
+    sample_min_rows = max(20, min(sample_min_rows, 400))
+
+    use_llm_sample = bool(
+        fast_sample_enabled
+        and allow_llm_rejudge_with_existing
+        and sentiment_col
+        and use_existing_sentiment  # 原本会直接复用情感列；改为抽样重判以提高准确性
+    )
+
+    if use_existing_sentiment and sentiment_col and (not use_llm_sample):
         _build_scores_from_existing_sentiment()
     else:
         # LLM 重判路径（仅在用户明确要求重跑，或无可用情感列时执行）
@@ -669,6 +705,15 @@ def analysis_sentiment(
                 scores_by_row[i] = None
                 continue
             to_score.append((i, cleaned))
+
+        # 抽样重判：仅取部分样本做 LLM 打分，统计用样本估计（速度优先）
+        if use_llm_sample and to_score:
+            import random
+
+            target = int(round(len(to_score) * sample_rate))
+            target = max(sample_min_rows, min(target, sample_max_rows, len(to_score)))
+            random.seed(17)
+            to_score = random.sample(to_score, k=target) if len(to_score) > target else to_score
 
         # Cap total rows to score to keep walltime bounded (can be tuned via env).
         if len(to_score) > _SENTIMENT_MAX_ROWS:
@@ -731,7 +776,22 @@ def analysis_sentiment(
         preview = (cleaned[:200] + "...") if len(cleaned) > 200 else cleaned
         row_scores_brief.append({"row_index": i, "score": s, "label": label, "text_preview": preview})
 
-    statistics = _build_statistics(n, scores_by_row)
+    # 注意：若为抽样重判，则 scores_by_row 只覆盖部分行；统计应基于已打分样本估计比例
+    if use_llm_sample and not use_existing_sentiment:
+        sampled_scores = {i: s for i, s in scores_by_row.items() if s is not None}
+        # 若极端情况下无有效样本，则退回中立
+        if not sampled_scores:
+            sampled_scores = {0: 5}
+        statistics = _build_statistics(len(sampled_scores), sampled_scores)
+        statistics["total"] = n
+        statistics["sampling"] = {
+            "enabled": True,
+            "sampled_rows": len(sampled_scores),
+            "sample_rate": round(len(sampled_scores) / max(1, n), 4),
+            "note": "情感分布为抽样估计（为提升速度，未对全量逐条重判）",
+        }
+    else:
+        statistics = _build_statistics(n, scores_by_row)
     statistics["content_columns"] = content_columns
     statistics["batching"] = {
         "batch_size": _SENTIMENT_DYNAMIC_BATCH_SIZE,
@@ -742,7 +802,11 @@ def analysis_sentiment(
         "max_walltime_sec": _SENTIMENT_MAX_WALLTIME_SEC,
         "max_rows": _SENTIMENT_MAX_ROWS,
         "max_chars_per_text": _MAX_CHARS_PER_TEXT,
-        "mode": "existing_sentiment_column" if use_existing_sentiment else "llm_scoring",
+        "mode": (
+            "existing_sentiment_column"
+            if use_existing_sentiment
+            else ("llm_sampling" if use_llm_sample else "llm_scoring")
+        ),
         "sentiment_column": sentiment_col or "",
     }
     statistics["concurrency_metrics"] = (

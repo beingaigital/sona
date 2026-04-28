@@ -1,0 +1,17 @@
+{
+  "spec": "v1",
+  "case_id": "event_analysis_disney_smoking_20260427",
+  "source_task_id": "ee04e8d9-8582-4550-bdc7-08dcb298b40b",
+  "query": "分析近日上海迪士尼乐园游客劝阻男子吸烟反被打一事的舆情",
+  "captured_from": {
+    "sandbox_dir": "sandbox/20260427近日上海迪士尼乐园游客劝阻男子吸烟反舆情事件分析_任务ee04e8d9",
+    "report_meta": "结果文件/report_meta_20260427_221923.json",
+    "process_dir": "过程文件"
+  },
+  "captured_at": "2026-04-28",
+  "notes": [
+    "该案例用于回归：渠道占比字段映射、声量/热度口径、时间线发布时间摘要注入、harness guard 基线。",
+    "为避免提交大 HTML 与大 CSV，本 golden case 仅保留 meta、harness、以及小体积过程 JSON。"
+  ]
+}
+

@@ -1,16 +1,48 @@
-"""Runtime harness for online workflow supervision and scoring."""
+"""Runtime harness for online workflow supervision and scoring.
+
+This module also supports exporting a "golden case" snapshot for future
+regression checks (report + harness artifacts).
+"""
 
 from __future__ import annotations
 
 import json
+import re
+import shutil
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 
 def _now_iso() -> str:
     return datetime.now().isoformat(sep=" ")
+
+
+def _repo_root() -> Path:
+    # workflow/runtime_harness.py -> workflow/ -> repo root
+    return Path(__file__).resolve().parents[1]
+
+
+def _sanitize_text_paths(text: str, *, repo_root: Path) -> str:
+    """Replace machine-specific absolute paths with stable placeholders."""
+    s = str(text or "")
+    root = str(repo_root)
+    if root:
+        s = s.replace(root, "<REPO_ROOT>")
+    # Also sanitize /Users/<name>/... style paths (macOS).
+    s = re.sub(r"/Users/[^/\s]+", "<USER_HOME>", s)
+    return s
+
+
+def _sanitize_json(obj: Any, *, repo_root: Path) -> Any:
+    if isinstance(obj, dict):
+        return {k: _sanitize_json(v, repo_root=repo_root) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_sanitize_json(v, repo_root=repo_root) for v in obj]
+    if isinstance(obj, str):
+        return _sanitize_text_paths(obj, repo_root=repo_root)
+    return obj
 
 
 @dataclass
@@ -84,10 +116,12 @@ class RuntimeHarness:
             return {"name": "topic_relevance_quality", "status": "warning", "reason": "missing_topic_relevance_event"}
         d = events[-1].get("details", {})
         coverage = float(d.get("coverage", 0.0) or 0.0)
+        composite = float(d.get("composite", 0.0) or 0.0)
         min_coverage = float(d.get("min_coverage", 0.12) or 0.12)
         overlap_count = int(d.get("overlap_count", 0) or 0)
         overrides = [e for e in self.events if e.get("event_type") == "topic_relevance_override"]
-        if coverage < min_coverage:
+        score = composite if composite > 0 else coverage
+        if score < min_coverage:
             if overrides and bool(overrides[-1].get("details", {}).get("continued", False)):
                 return {"name": "topic_relevance_quality", "status": "warning", "reason": "topic_drift_user_overrode"}
             return {"name": "topic_relevance_quality", "status": "fail", "reason": "topic_drift_detected"}
@@ -117,7 +151,7 @@ class RuntimeHarness:
                 "若交互拒绝被忽略，请检查 collect_plan 分支是否存在非交互默认放行。",
                 "若情感结果单边失真，优先启用/检查 CSV 情感列 fallback 与样本覆盖率。",
                 "若参考检索跑题，收紧 query 构造并提高词项重合过滤阈值。",
-                "若主题偏航，请提高 topic_relevance_guard 阈值并收紧 searchWords/queryTemplates。",
+                "若主题偏航，请提高 topic_relevance_guard 阈值并收紧 searchWords/queryTemplates（或开启事件核心词优先模式）。",
             ],
         }
         trace_path = self.process_dir / "runtime_harness_trace.json"
@@ -126,3 +160,94 @@ class RuntimeHarness:
         trace_path.write_text(json.dumps({"events": self.events}, ensure_ascii=False, indent=2), encoding="utf-8")
         scorecard_path.write_text(json.dumps(scorecard, ensure_ascii=False, indent=2), encoding="utf-8")
         return scorecard
+
+    def export_golden_case(
+        self,
+        *,
+        case_id: str,
+        report_html_path: Optional[Path] = None,
+        report_meta_path: Optional[Path] = None,
+        golden_root: Optional[Path] = None,
+        overwrite: bool = False,
+        extra_process_files: Optional[List[str]] = None,
+    ) -> Path:
+        """
+        Export a stable, reviewable "golden case" snapshot under ``eval_results/golden_cases``.
+
+        Notes:
+        - We copy only lightweight artifacts (html + meta + harness files + selected JSONs).
+        - Absolute paths inside JSON are sanitized to make diffs stable across machines.
+        """
+        repo_root = _repo_root()
+        out_root = (golden_root or (repo_root / "eval_results" / "golden_cases")).resolve()
+        out_dir = out_root / case_id
+        if out_dir.exists():
+            if not overwrite:
+                raise FileExistsError(f"golden case already exists: {out_dir}")
+            shutil.rmtree(out_dir)
+        out_dir.mkdir(parents=True, exist_ok=True)
+
+        def _copy_text_file(src: Path, dst_name: str) -> None:
+            raw = src.read_text(encoding="utf-8", errors="replace")
+            (out_dir / dst_name).write_text(raw, encoding="utf-8")
+
+        def _copy_json_sanitized(src: Path, dst_name: str) -> None:
+            raw = src.read_text(encoding="utf-8", errors="replace")
+            obj = json.loads(raw)
+            obj2 = _sanitize_json(obj, repo_root=repo_root)
+            (out_dir / dst_name).write_text(json.dumps(obj2, ensure_ascii=False, indent=2), encoding="utf-8")
+
+        # Report artifacts
+        if report_html_path and report_html_path.exists():
+            _copy_text_file(report_html_path, "report.html")
+        if report_meta_path and report_meta_path.exists():
+            _copy_json_sanitized(report_meta_path, "report_meta.json")
+
+        # Harness artifacts
+        trace_path = self.process_dir / "runtime_harness_trace.json"
+        scorecard_path = self.process_dir / "runtime_harness_scorecard.json"
+        if trace_path.exists():
+            _copy_json_sanitized(trace_path, "runtime_harness_trace.json")
+        if scorecard_path.exists():
+            _copy_json_sanitized(scorecard_path, "runtime_harness_scorecard.json")
+
+        # Selected process files (small JSON only)
+        selected = [
+            "dataset_summary.json",
+            "keyword_stats.json",
+            "channel_distribution.json",
+            "region_stats.json",
+            "author_stats.json",
+            "volume_stats.json",
+            "timeline_analysis_fallback_20260426_002836.json",
+            "sentiment_analysis_fallback_20260426_002836.json",
+        ]
+        if extra_process_files:
+            selected.extend([str(x) for x in extra_process_files if str(x).strip()])
+        copied_any = False
+        for name in selected:
+            src = self.process_dir / name
+            if not src.exists() or not src.is_file():
+                continue
+            if src.suffix.lower() != ".json":
+                continue
+            try:
+                _copy_json_sanitized(src, f"process_{src.name}")
+                copied_any = True
+            except Exception:
+                continue
+
+        manifest = {
+            "spec": "v1",
+            "case_id": case_id,
+            "task_id": self.task_id,
+            "query": self.user_query,
+            "exported_at": _now_iso(),
+            "has_report_html": bool(report_html_path and report_html_path.exists()),
+            "has_report_meta": bool(report_meta_path and report_meta_path.exists()),
+            "has_harness_trace": trace_path.exists(),
+            "has_harness_scorecard": scorecard_path.exists(),
+            "copied_process_json": copied_any,
+        }
+        (out_dir / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+        return out_dir

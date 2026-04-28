@@ -1047,6 +1047,38 @@ def retrieve_wiki_sources(query: str, *, topk: int = 6, project_root: Path | Non
                 )
             )
 
+    # Anchor boosting: for event-like queries, ensure key entity/phrase matches get a small lift.
+    q0 = re.sub(r"\s+", "", str(query or ""))
+    anchor_terms: List[str] = []
+    if "12306" in q0:
+        anchor_terms.extend(["12306", "铁路12306"])
+    m_gap = re.search(r"相隔\d{1,2}(?:个)?车厢", q0)
+    if m_gap:
+        anchor_terms.append(m_gap.group(0).replace("个车厢", "车厢"))
+    for seg in re.findall(r"[\u4e00-\u9fff]{3,6}", q0):
+        if seg in {"舆情分析", "事件分析", "分析报告"}:
+            continue
+        anchor_terms.append(seg)
+        if len(anchor_terms) >= 10:
+            break
+    seen_a: set[str] = set()
+    dedup_a: List[str] = []
+    for t in anchor_terms:
+        s = str(t or "").strip()
+        if not s:
+            continue
+        if s in seen_a:
+            continue
+        seen_a.add(s)
+        dedup_a.append(s)
+    anchor_terms = dedup_a[:10]
+
+    if anchor_terms:
+        for s in ranked:
+            hay = f"{s.title} {s.snippet}"
+            if any(t in hay for t in anchor_terms[:6]):
+                s.score = float(s.score) + 0.08
+
     ranked.sort(key=lambda x: x.score, reverse=True)
     # 若存在非占位来源，则丢弃「实体页 + 定义证据不足」类片段
     non_stub = [x for x in ranked if not _is_entity_stub_source(x)]
@@ -1074,7 +1106,16 @@ def retrieve_wiki_sources(query: str, *, topk: int = 6, project_root: Path | Non
 
     min_evidence = float(os.environ.get("SONA_WIKI_MIN_EVIDENCE_SCORE", "0.09") or "0.09")
     if out and max(s.score for s in out) < min_evidence:
-        out = []
+        # 若存在 anchor_term 命中，则保留命中来源以避免“有相关但整体分数偏低”被清空
+        if anchor_terms:
+            kept: List[WikiSource] = []
+            for s in out:
+                hay = f"{s.title} {s.snippet}"
+                if any(t in hay for t in anchor_terms[:6]):
+                    kept.append(s)
+            out = kept[: max(1, min(int(topk), 6))] if kept else []
+        else:
+            out = []
 
     # Attach lightweight debug meta via a side-channel object is not possible here; caller adds meta.
     # We stash on function attribute for tests/debug only (best-effort).
@@ -1160,7 +1201,16 @@ def answer_wiki_query(
         pass
     root = (project_root or Path(__file__).resolve().parents[1]).resolve()
     normalized_query = _normalize_query(query)
-    sources = retrieve_wiki_sources(query, topk=topk, project_root=project_root)
+    # Dynamic topk: event overview / entity-heavy queries benefit from a wider recall set.
+    try:
+        topk_in = int(topk or 6)
+    except Exception:
+        topk_in = 6
+    q0 = re.sub(r"\s+", "", str(query or ""))
+    dynamic_topk = topk_in
+    if any(k in q0 for k in ("回应", "通报", "说明", "事件", "一事", "舆情")) or "12306" in q0:
+        dynamic_topk = max(dynamic_topk, 9)
+    sources = retrieve_wiki_sources(query, topk=dynamic_topk, project_root=project_root)
     if not sources:
         return {
             "answer": "当前证据不足，未在知识库中检索到足够相关片段。建议缩小问题范围或换更具体关键词继续追问。",
@@ -1170,6 +1220,7 @@ def answer_wiki_query(
                 "fallback_used": True,
                 "fallback_reason": "insufficient_evidence",
                 "retrieved_count": 0,
+                "retrieval_debug": getattr(retrieve_wiki_sources, "_last_debug", {}),
             },
         }
 

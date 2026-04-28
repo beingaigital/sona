@@ -496,6 +496,50 @@ def _count_csv_rows(file_path: str) -> int:
     return 0
 
 
+def _count_channels_from_csv(file_path: str) -> Dict[str, int]:
+    """
+    从最终样本 CSV 统计渠道占比，优先反映“实际入样”而非计划采集数。
+    """
+    p = str(file_path or "").strip()
+    if not p or not Path(p).exists():
+        return {}
+    col_candidates = ("平台", "platform", "source", "来源平台", "站点")
+    best: Dict[str, int] = {}
+    try:
+        import csv
+
+        for enc in ("utf-8-sig", "utf-8", "gb18030", "gbk"):
+            try:
+                with open(p, "r", encoding=enc, errors="strict") as f:
+                    reader = csv.DictReader(f)
+                    rows = list(reader)
+                if not rows:
+                    continue
+                headers = list(rows[0].keys())
+                platform_col = ""
+                for c in headers:
+                    cs = str(c or "").strip()
+                    if any(x.lower() == cs.lower() for x in col_candidates):
+                        platform_col = cs
+                        break
+                if not platform_col:
+                    continue
+                counts: Dict[str, int] = {}
+                for row in rows:
+                    name = str(row.get(platform_col, "") or "").strip()
+                    if not name:
+                        continue
+                    counts[name] = counts.get(name, 0) + 1
+                if counts:
+                    best = counts
+                    break
+            except Exception:
+                continue
+    except Exception:
+        return {}
+    return best
+
+
 def _normalize_search_words_for_collection(words: List[str], user_query: str) -> List[str]:
     """
     采集前关键词增强：
@@ -505,6 +549,7 @@ def _normalize_search_words_for_collection(words: List[str], user_query: str) ->
     """
     base = [str(w or "").strip() for w in words if str(w or "").strip()]
     q_words = _fallback_search_words_from_query(user_query, max_words=10)
+    precise_event_words = _derive_precise_event_search_words(user_query)
     extra: List[str] = []
     suffixes = ("舆情分析", "事件分析", "分析报告", "舆情事件", "事件舆情", "舆情")
     for w in base:
@@ -519,7 +564,7 @@ def _normalize_search_words_for_collection(words: List[str], user_query: str) ->
             for seg in re.findall(r"[\u4e00-\u9fff]{2,6}", t):
                 if len(seg) >= 3:
                     extra.append(seg)
-    merged = base + extra + q_words
+    merged = precise_event_words + base + extra + q_words
     dedup: List[str] = []
     seen = set()
     for w in merged:
@@ -531,6 +576,146 @@ def _normalize_search_words_for_collection(words: List[str], user_query: str) ->
         if len(dedup) >= 16:
             break
     return dedup or base or q_words
+
+
+def _truthy_env(name: str, default: str = "false") -> bool:
+    v = str(os.environ.get(name, default) or "").strip().lower()
+    return v in ("1", "true", "yes", "y", "on")
+
+
+def _event_query_strict_enabled() -> bool:
+    """
+    事件型 query 的“核心词优先”模式：
+    - 默认关闭，避免对非事件主题造成采集不足
+    - 开启后：优先使用 _derive_precise_event_search_words 的核心词；若样本不足再逐轮放开
+    """
+    return _truthy_env("SONA_EVENT_QUERY_STRICT_MODE", "false")
+
+
+def _build_search_word_levels(*, base_words: List[str], user_query: str) -> Dict[str, List[str]]:
+    """
+    将 searchWords 拆成 3 层（核心/扩展/宽泛），用于事件型分轮回退。
+
+    - core: 高置信短语（机构/关键冲突短语），用于第一轮采集
+    - extended: core + 轻量切分/去后缀短语（仍偏精确）
+    - broad: extended + query 回退词（更宽）
+    """
+    base = [str(w or "").strip() for w in (base_words or []) if str(w or "").strip()]
+    q_words = _fallback_search_words_from_query(user_query, max_words=10)
+    precise_event_words = _derive_precise_event_search_words(user_query)
+
+    # 扩展：复用原逻辑的 extra（去后缀 + 2~6 字切分）
+    extra: List[str] = []
+    suffixes = ("舆情分析", "事件分析", "分析报告", "舆情事件", "事件舆情", "舆情")
+    for w in base:
+        t = w
+        for suf in suffixes:
+            t = t.replace(suf, "")
+        t = re.sub(r"\s+", "", t).strip("，,。.;；:：")
+        if len(t) >= 4:
+            extra.append(t)
+        if len(t) >= 8:
+            for seg in re.findall(r"[\u4e00-\u9fff]{2,6}", t):
+                if len(seg) >= 3:
+                    extra.append(seg)
+
+    def _dedup(items: List[str], *, cap: int) -> List[str]:
+        out: List[str] = []
+        seen: set[str] = set()
+        for it in items:
+            s = str(it or "").strip()
+            if not s:
+                continue
+            k = s.lower()
+            if k in seen:
+                continue
+            seen.add(k)
+            out.append(s)
+            if len(out) >= cap:
+                break
+        return out
+
+    core = _dedup(precise_event_words, cap=3)
+    extended = _dedup(core + base + extra, cap=10)
+    broad = _dedup(extended + q_words, cap=16)
+    return {"core": core, "extended": extended, "broad": broad}
+
+
+def _pick_search_words_for_round(
+    *,
+    base_words: List[str],
+    user_query: str,
+    round_idx: int,
+) -> tuple[List[str], str]:
+    """
+    返回 (search_words_for_collect, level_name)。
+
+    round_idx 从 1 开始：
+    - strict 模式下：1=core, 2=extended, >=3=broad
+    - 非 strict：保持旧行为（等价于 broad）
+    """
+    levels = _build_search_word_levels(base_words=base_words, user_query=user_query)
+    strict = _event_query_strict_enabled() and bool(levels.get("core"))
+    if not strict:
+        broad = levels.get("broad") or _normalize_search_words_for_collection(base_words, user_query)
+        return broad, "broad"
+
+    if round_idx <= 1:
+        return levels.get("core") or [], "core"
+    if round_idx == 2:
+        return levels.get("extended") or (levels.get("core") or []), "extended"
+    return levels.get("broad") or (levels.get("extended") or []), "broad"
+
+
+def _derive_precise_event_search_words(user_query: str) -> List[str]:
+    """
+    为“事件型 query”提取更短、更可检索的核心词，降低长句误召回。
+    例如：`12306回应家长和孩子相隔14个车厢事件` -> `铁路12306`, `家长孩子相隔14车厢`
+    """
+    q = str(user_query or "").strip()
+    if not q:
+        return []
+    q0 = re.sub(r"\s+", "", q)
+    out: List[str] = []
+
+    if "12306" in q0:
+        out.append("铁路12306")
+
+    m_gap = re.search(r"家长.{0,3}孩子.{0,6}相隔\d{1,2}(?:个)?车厢", q0)
+    if m_gap:
+        phrase = m_gap.group(0)
+        phrase = phrase.replace("和", "").replace("与", "").replace("及", "")
+        phrase = phrase.replace("个车厢", "车厢")
+        out.append(phrase)
+
+    # 常见“X回应Y事件”：拆出机构词 + 事件短语词
+    m_resp = re.search(r"([^\s，。；、]{2,18}?)(回应|通报|说明)([^\s，。；、]{3,24})", q0)
+    if m_resp:
+        actor = m_resp.group(1)
+        evt = m_resp.group(3)
+        actor = re.sub(r"(近日|今日|昨天|关于)$", "", actor)
+        evt = re.sub(r"(事件|问题|一事)$", "", evt)
+        if actor and len(actor) >= 2:
+            out.append(actor)
+        if evt and len(evt) >= 3:
+            out.append(evt)
+
+    # 去重并限制长度
+    dedup: List[str] = []
+    seen: set[str] = set()
+    for w in out:
+        s = str(w or "").strip("，,。.;；:： ")
+        if not s:
+            continue
+        if len(s) > 18:
+            s = s[:18]
+        if s in seen:
+            continue
+        seen.add(s)
+        dedup.append(s)
+        if len(dedup) >= 4:
+            break
+    return dedup
 
 
 def _save_collect_manifest(
@@ -1909,18 +2094,88 @@ def _topic_relevance_metrics(
         anchor_tokens |= _anchorize(ww)
 
     keyword_tokens: set[str] = set()
+    keyword_raw: List[str] = []
     for w in top_keywords[:80]:
-        keyword_tokens |= _anchorize(str(w))
+        ws = str(w or "").strip().lower()
+        if not ws:
+            continue
+        keyword_raw.append(ws)
+        keyword_tokens |= _anchorize(ws)
 
-    overlap = sorted(anchor_tokens & keyword_tokens)
-    denom = max(1, min(len(anchor_tokens), 18))
+    hard_overlap = set(anchor_tokens & keyword_tokens)
+    soft_overlap: set[str] = set()
+    for a in anchor_tokens:
+        if a in hard_overlap:
+            soft_overlap.add(a)
+            continue
+        for kw in keyword_raw:
+            # 软匹配：覆盖“14车厢 / 相隔14车厢 / 12306回应”等近似写法
+            if a in kw or kw in a:
+                soft_overlap.add(a)
+                break
+            if len(a) >= 3 and re.search(re.escape(a), kw):
+                soft_overlap.add(a)
+                break
+
+    overlap = sorted(soft_overlap)
+    # 分母更保守，避免 anchor 过多时 coverage 被稀释到接近 0
+    denom = max(1, min(len(anchor_tokens), 10))
     coverage = float(len(overlap)) / float(denom)
+
+    # phrase coverage: favor event anchors (e.g. "12306", "相隔14车厢") over generic tokens
+    def _extract_query_phrases(q: str, ws: List[str]) -> List[str]:
+        q0 = re.sub(r"\s+", "", str(q or ""))
+        phrases: List[str] = []
+        if "12306" in q0:
+            phrases.append("12306")
+            phrases.append("铁路12306")
+        m = re.search(r"相隔\d{1,2}(?:个)?车厢", q0)
+        if m:
+            phrases.append(m.group(0).replace("个车厢", "车厢"))
+        # add explicit search words as phrases (but cap length)
+        for x in (ws or [])[:10]:
+            s = str(x or "").strip()
+            if 2 <= len(s) <= 18:
+                phrases.append(s)
+        # light chunks from query (3-6 chars) as fallback
+        for seg in re.findall(r"[\u4e00-\u9fff]{3,6}", q0):
+            if seg in {"舆情分析", "事件分析", "分析报告"}:
+                continue
+            phrases.append(seg)
+            if len(phrases) >= 14:
+                break
+        # dedup keep order
+        out: List[str] = []
+        seen: set[str] = set()
+        for p in phrases:
+            t = str(p or "").strip()
+            if not t:
+                continue
+            if t in seen:
+                continue
+            seen.add(t)
+            out.append(t)
+        return out[:12]
+
+    query_phrases = _extract_query_phrases(user_query, search_words)
+    phrase_hits: List[str] = []
+    kw_text = " ".join(str(k or "") for k in top_keywords[:120])
+    for p in query_phrases:
+        if p and p in kw_text:
+            phrase_hits.append(p)
+    phrase_denom = max(1, min(len(query_phrases), 8))
+    coverage_phrase = float(len(set(phrase_hits))) / float(phrase_denom)
+    composite = round(0.55 * coverage + 0.45 * coverage_phrase, 4)
+
     return {
         "anchor_count": len(anchor_tokens),
         "keyword_token_count": len(keyword_tokens),
         "overlap_count": len(overlap),
         "overlap_terms": overlap[:20],
         "coverage": round(coverage, 4),
+        "coverage_phrase": round(coverage_phrase, 4),
+        "phrase_hits": list(dict.fromkeys(phrase_hits))[:12],
+        "composite": composite,
     }
 
 
@@ -2778,7 +3033,20 @@ def run_event_analysis_pipeline(
 
             boolean_strategy = str(suggested_collect_plan.get("boolean_strategy") or "")
             boolean_mode = "AND" if boolean_strategy.upper().startswith("AND") else "OR"
-            search_words_for_collect = _normalize_search_words_for_collection(search_plan["searchWords"], user_query)
+            search_words_for_collect, sw_level = _pick_search_words_for_round(
+                base_words=search_plan.get("searchWords", []),
+                user_query=user_query,
+                round_idx=1,
+            )
+            runtime_harness.record(
+                "collect_search_words",
+                {
+                    "round_idx": 1,
+                    "level": sw_level,
+                    "strict_mode": _event_query_strict_enabled(),
+                    "search_words": search_words_for_collect[:16],
+                },
+            )
             words_for_num, keyword_mode_for_num = build_data_num_search_words(search_plan, search_words_for_collect)
             if not words_for_num:
                 raise ValueError("检索词为空：请检查 searchWords 或 netinsightAdvancedQuery")
@@ -3078,7 +3346,20 @@ def run_event_analysis_pipeline(
                         retry_days = max(10, base_days + 7 * round_idx)
                         retry_time_range = _build_default_time_range(retry_days)
                         retry_threshold = int(retry_threshold_base * (1 + 0.5 * (round_idx - 1)))
-                        _sw_retry = _normalize_search_words_for_collection(search_plan.get("searchWords", []), user_query)
+                        _sw_retry, _level_retry = _pick_search_words_for_round(
+                            base_words=search_plan.get("searchWords", []),
+                            user_query=user_query,
+                            round_idx=round_idx,
+                        )
+                        runtime_harness.record(
+                            "collect_search_words",
+                            {
+                                "round_idx": round_idx,
+                                "level": _level_retry,
+                                "strict_mode": _event_query_strict_enabled(),
+                                "search_words": (_sw_retry or [])[:16],
+                            },
+                        )
                         _wn_retry, _ = build_data_num_search_words(search_plan, _sw_retry)
                         retry_matrix = _build_uniform_search_matrix(_wn_retry or _sw_retry, retry_threshold)
                         retry_platforms = suggested_collect_plan.get("platforms") or ["微博"]
@@ -3222,17 +3503,23 @@ def run_event_analysis_pipeline(
             "topic_relevance_quality",
             {
                 "coverage": relevance.get("coverage", 0.0),
+                "coverage_phrase": relevance.get("coverage_phrase", 0.0),
+                "composite": relevance.get("composite", 0.0),
                 "overlap_count": relevance.get("overlap_count", 0),
                 "anchor_count": relevance.get("anchor_count", 0),
                 "top_keywords_count": len(top_keywords),
                 "min_coverage": min_topic_coverage,
                 "overlap_terms": relevance.get("overlap_terms", []),
+                "phrase_hits": relevance.get("phrase_hits", []),
             },
         )
-        if float(relevance.get("coverage", 0.0) or 0.0) < min_topic_coverage:
+        guard_score = float(relevance.get("composite", relevance.get("coverage", 0.0)) or 0.0)
+        if guard_score < min_topic_coverage:
             detail = (
-                f"topic_relevance_guard 失败：coverage={relevance.get('coverage')} < {min_topic_coverage}; "
-                f"overlap_terms={','.join(relevance.get('overlap_terms', [])[:8]) or 'none'}"
+                f"topic_relevance_guard 失败：score={relevance.get('composite', relevance.get('coverage'))} < {min_topic_coverage}; "
+                f"coverage={relevance.get('coverage')} phrase={relevance.get('coverage_phrase')} "
+                f"hits={','.join(relevance.get('phrase_hits', [])[:6]) or 'none'} "
+                f"overlap_terms={','.join(relevance.get('overlap_terms', [])[:6]) or 'none'}"
             )
             _append_ndjson_log(
                 run_id="event_analysis_quality_guard",
@@ -3240,9 +3527,12 @@ def run_event_analysis_pipeline(
                 location="workflow/event_analysis_pipeline.py:topic_relevance_guard",
                 message="主题相关性低于阈值，终止报告生成",
                 data={
+                    "score": relevance.get("composite", relevance.get("coverage")),
                     "coverage": relevance.get("coverage"),
+                    "coverage_phrase": relevance.get("coverage_phrase"),
                     "min_coverage": min_topic_coverage,
                     "overlap_terms": relevance.get("overlap_terms", []),
+                    "phrase_hits": relevance.get("phrase_hits", []),
                     "top_keywords_preview": top_keywords[:15],
                 },
             )
@@ -3402,9 +3692,19 @@ def run_event_analysis_pipeline(
         timeline_json = _build_skipped_analysis_payload("timeline", "SONA_ANALYSIS_ENABLE_TIMELINE=false")
     elif not reused_flags["timeline"]:
         t0 = time.time()
+        # 时间线：传入事件锚点，降低“有时间但无关热点”混入概率
+        anchor_terms_for_timeline, _ = _pick_search_words_for_round(
+            base_words=search_plan.get("searchWords", []),
+            user_query=user_query,
+            round_idx=1,
+        )
         timeline_json = _invoke_tool_to_json_with_timeout(
             analysis_timeline,
-            {"eventIntroduction": search_plan["eventIntroduction"], "dataFilePath": save_path},
+            {
+                "eventIntroduction": search_plan["eventIntroduction"],
+                "dataFilePath": save_path,
+                "eventAnchorTerms": anchor_terms_for_timeline[:6],
+            },
             timeout_sec=timeline_timeout_sec,
             tool_name="analysis_timeline",
         )
@@ -3492,9 +3792,15 @@ def run_event_analysis_pipeline(
     if debug:
         console.print("[bold]Step6.5: channel_distribution (optional)[/bold]")
     try:
+        calc_source = ""
         channel_counts: Dict[str, int] = {}
-        if platform_row_distribution:
+        csv_channel_counts = _count_channels_from_csv(save_path)
+        if csv_channel_counts:
+            channel_counts = {str(k): max(0, int(v)) for k, v in csv_channel_counts.items()}
+            calc_source = "csv_groupby_platform"
+        elif platform_row_distribution:
             channel_counts = {str(k): max(0, int(v)) for k, v in platform_row_distribution.items()}
+            calc_source = "platform_row_distribution"
         elif selected_platforms:
             # 当未拿到平台分布明细时，回退为均分占比（仅用于展示，不影响分析结论）
             fallback_total = max(1, _count_csv_rows(save_path))
@@ -3502,6 +3808,7 @@ def run_event_analysis_pipeline(
             base, rem = divmod(fallback_total, n)
             for idx, platform in enumerate(selected_platforms):
                 channel_counts[str(platform)] = int(base + (1 if idx < rem else 0))
+            calc_source = "fallback_even_split"
         total_count = sum(v for v in channel_counts.values() if v > 0)
         channel_items = []
         for platform, count in sorted(channel_counts.items(), key=lambda x: x[1], reverse=True):
@@ -3516,6 +3823,7 @@ def run_event_analysis_pipeline(
             "chart_type": "pie",
             "mermaid_pie": "\n".join(mermaid_lines),
             "created_at": datetime.now().isoformat(sep=" "),
+            "calculation_source": calc_source,
         }
         channel_path = process_dir / "channel_distribution.json"
         with open(channel_path, "w", encoding="utf-8", errors="replace") as f:
@@ -3682,7 +3990,7 @@ def run_event_analysis_pipeline(
     user_judgement_text = str(os.environ.get("SONA_EVENT_USER_JUDGEMENT", "") or "").strip()
     if collab_enabled and not user_judgement_text:
         user_judgement_text = _prompt_text_timeout(
-            "可选：请输入你对该事件的研判重点（将写入报告参考）",
+            "可选：主研判输入（影响报告核心叙事/优先级；45s 无响应跳过）",
             timeout_sec=max(collab_timeout_sec, 25),
             default_text="",
         )
@@ -3694,6 +4002,7 @@ def run_event_analysis_pipeline(
         "source": "env" if str(os.environ.get("SONA_EVENT_USER_JUDGEMENT", "") or "").strip() else ("interactive" if user_judgement_text else "none"),
         "user_judgement": user_judgement_text,
         "focus_keywords": user_focus_keywords,
+        "difference_note": "本字段用于主研判（优先级/结论取向）；Step10.4 的 expert_note 用于补充专业背景、证据线索或反例校验，可自动复用本输入。",
         "weibo_aisearch_ref_path": str(weibo_ref_path) if weibo_ref_json else "",
         "weibo_aisearch_ref_count": int((weibo_ref_json or {}).get("count") or 0) if isinstance(weibo_ref_json, dict) else 0,
         "context_priority": {
@@ -4016,13 +4325,31 @@ def run_event_analysis_pipeline(
     if debug:
         console.print("[bold]Step10.2: wiki_snapshot (optional)[/bold]")
     try:
-        wiki_query = f"{search_plan.get('eventIntroduction', user_query)}".strip() or str(user_query or "").strip()
+        wiki_query = _build_reference_query(user_query=user_query, search_plan=search_plan)
+        wiki_query = wiki_query or (f"{search_plan.get('eventIntroduction', user_query)}".strip() or str(user_query or "").strip())
         wiki_out = answer_wiki_query(
             wiki_query,
             topk=6,
             style="teach",
             project_root=_ROOT,
         )
+        weak_wiki = False
+        if isinstance(wiki_out, dict):
+            _src = wiki_out.get("sources")
+            if not isinstance(_src, list) or len(_src) < 3:
+                weak_wiki = True
+        if weak_wiki:
+            fallback_out = answer_wiki_query(
+                str(user_query or "").strip(),
+                topk=10,
+                style="teach",
+                project_root=_ROOT,
+            )
+            if isinstance(fallback_out, dict):
+                fallback_sources = fallback_out.get("sources")
+                old_sources = wiki_out.get("sources") if isinstance(wiki_out, dict) else []
+                if isinstance(fallback_sources, list) and len(fallback_sources) > (len(old_sources) if isinstance(old_sources, list) else 0):
+                    wiki_out = fallback_out
         wiki_snapshot_path = process_dir / "wiki_qa_snapshot.json"
         with open(wiki_snapshot_path, "w", encoding="utf-8", errors="replace") as f:
             json.dump(wiki_out, f, ensure_ascii=False, indent=2)
@@ -4143,15 +4470,29 @@ def run_event_analysis_pipeline(
         expert_note = str(os.environ.get("SONA_EVENT_EXPERT_NOTE", "") or "").strip()
         if collab_enabled and not expert_note:
             expert_note = _prompt_text_timeout(
-                "可选：补充你的专家研判（将作为参考材料进入报告）",
+                "可选：专家补充说明（专业背景/证据线索/反例校验；可复用主研判；45s 无响应跳过）",
                 timeout_sec=max(collab_timeout_sec, 25),
                 default_text="",
             )
+        derived = False
+        if (not expert_note) and user_judgement_text:
+            expert_note = user_judgement_text
+            derived = True
         expert_note_path = process_dir / "user_expert_notes.json"
         expert_note_payload = {
             "has_input": bool(expert_note),
-            "source": "env" if str(os.environ.get("SONA_EVENT_EXPERT_NOTE", "") or "").strip() else ("interactive" if expert_note else "none"),
+            "source": (
+                "env"
+                if str(os.environ.get("SONA_EVENT_EXPERT_NOTE", "") or "").strip()
+                else (
+                    "derived_from_user_judgement"
+                    if derived
+                    else ("interactive" if expert_note else "none")
+                )
+            ),
             "expert_note": expert_note,
+            "derived_from_user_judgement": derived,
+            "difference_note": "本字段用于专家补充（证据线索/专业背景/反例校验）；为空时可自动复用 Step9 主研判以避免重复输入。",
             "created_at": datetime.now().isoformat(sep=" "),
         }
         with open(expert_note_path, "w", encoding="utf-8", errors="replace") as f:

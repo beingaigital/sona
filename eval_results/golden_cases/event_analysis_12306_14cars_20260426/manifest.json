@@ -1,0 +1,18 @@
+{
+  "spec": "v1",
+  "case_id": "event_analysis_12306_14cars_20260426",
+  "source_task_id": "00d769e6-6647-4e48-8740-5ec5a1987f20",
+  "query": "分析12306回应家长和孩子相隔14个车厢这一事件的舆情",
+  "captured_from": {
+    "sandbox_dir": "sandbox/00d769e6-6647-4e48-8740-5ec5a1987f20",
+    "report_html": "结果文件/report_20260426_003404.html",
+    "report_meta": "结果文件/report_meta_20260426_003404.json",
+    "process_dir": "过程文件"
+  },
+  "captured_at": "2026-04-26",
+  "notes": [
+    "该案例报告与过程产物质量高，可作为 harness 范本/回归基线。",
+    "JSON 中的绝对路径已做占位符化（<REPO_ROOT>/<USER_HOME>）以保证跨机器 diff 稳定。"
+  ]
+}
+

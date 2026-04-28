@@ -1,0 +1,138 @@
+{
+  "events": [
+    {
+      "ts": "2026-04-27 22:00:26.901842",
+      "event_type": "collect_plan_first_decision",
+      "details": {
+        "collab_enabled": true,
+        "decision": "reject",
+        "timeout_sec": 45,
+        "action": "edit"
+      }
+    },
+    {
+      "ts": "2026-04-27 22:01:32.257293",
+      "event_type": "collect_plan_outcome",
+      "details": {
+        "outcome": "edited_then_accept"
+      }
+    },
+    {
+      "ts": "2026-04-27 22:01:32.273849",
+      "event_type": "collect_search_words",
+      "details": {
+        "round_idx": 1,
+        "level": "broad",
+        "strict_mode": false,
+        "search_words": [
+          "上海迪士尼劝阻吸烟被打",
+          "迪士尼乐园吸烟冲突",
+          "上海迪士尼游客被打",
+          "公共场所禁烟管理",
+          "上海迪士尼劝",
+          "阻吸烟被打",
+          "迪士尼乐园吸",
+          "烟冲突",
+          "上海迪士尼游",
+          "客被打",
+          "分析近日上海迪士尼乐园游客劝阻男子吸烟反被打一事的舆情"
+        ]
+      }
+    },
+    {
+      "ts": "2026-04-27 22:12:36.678830",
+      "event_type": "topic_relevance_quality",
+      "details": {
+        "coverage": 1.0,
+        "coverage_phrase": 0.0,
+        "composite": 0.55,
+        "overlap_count": 5,
+        "anchor_count": 5,
+        "top_keywords_count": 80,
+        "min_coverage": 0.08,
+        "overlap_terms": [
+          "上海迪士尼劝阻吸烟被打",
+          "上海迪士尼游客被打",
+          "公共场所禁烟管理",
+          "分析近日上海迪士尼乐园游客劝阻男子吸烟反被打一事的舆情",
+          "迪士尼乐园吸烟冲突"
+        ],
+        "phrase_hits": []
+      }
+    },
+    {
+      "ts": "2026-04-27 22:13:33.277822",
+      "event_type": "sentiment_quality",
+      "details": {
+        "skipped": false,
+        "source": "existing_column_fallback",
+        "total": 1887,
+        "positive_count": 21,
+        "negative_count": 1103,
+        "neutral_count": 763,
+        "fallback_used": true
+      }
+    },
+    {
+      "ts": "2026-04-27 22:13:33.290479",
+      "event_type": "channel_distribution",
+      "details": {
+        "total_count": 1887,
+        "channels": [
+          {
+            "platform": "微博",
+            "count": 1680,
+            "percentage": 89.03
+          },
+          {
+            "platform": "自媒体号",
+            "count": 119,
+            "percentage": 6.31
+          },
+          {
+            "platform": "短视频",
+            "count": 60,
+            "percentage": 3.18
+          },
+          {
+            "platform": "新闻app",
+            "count": 13,
+            "percentage": 0.69
+          },
+          {
+            "platform": "微信",
+            "count": 7,
+            "percentage": 0.37
+          },
+          {
+            "platform": "视频",
+            "count": 4,
+            "percentage": 0.21
+          },
+          {
+            "platform": "新闻网站",
+            "count": 2,
+            "percentage": 0.11
+          },
+          {
+            "platform": "论坛",
+            "count": 2,
+            "percentage": 0.11
+          }
+        ],
+        "path": "<REPO_ROOT>/sandbox/ee04e8d9-8582-4550-bdc7-08dcb298b40b/过程文件/channel_distribution.json"
+      }
+    },
+    {
+      "ts": "2026-04-27 22:16:27.795812",
+      "event_type": "reference_recall_quality",
+      "details": {
+        "reference_query": "分析近日上海迪士尼乐园游客劝阻男子吸烟反被打一事的舆情 迪士尼乐园吸烟冲突 上海迪士尼游客被打 公共场所禁烟管理",
+        "raw_count": 9,
+        "filtered_count": 9,
+        "dropped_count": 0
+      }
+    }
+  ]
+}
+

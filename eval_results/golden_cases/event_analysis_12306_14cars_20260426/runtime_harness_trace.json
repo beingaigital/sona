@@ -1,0 +1,104 @@
+{
+  "events": [
+    {
+      "ts": "2026-04-26 00:22:29.005921",
+      "event_type": "collect_plan_first_decision",
+      "details": {
+        "collab_enabled": true,
+        "decision": "reject",
+        "timeout_sec": 45,
+        "action": "edit"
+      }
+    },
+    {
+      "ts": "2026-04-26 00:22:58.608732",
+      "event_type": "collect_plan_outcome",
+      "details": {
+        "outcome": "edited_then_accept"
+      }
+    },
+    {
+      "ts": "2026-04-26 00:22:58.629238",
+      "event_type": "collect_search_words",
+      "details": {
+        "round_idx": 1,
+        "level": "broad",
+        "strict_mode": false,
+        "search_words": [
+          "铁路12306",
+          "家长孩子相隔14车厢",
+          "分析12306",
+          "12306回应",
+          "家长和孩子相隔14个车厢",
+          "12306购票",
+          "铁路同行人购票",
+          "家长和孩子相",
+          "个车厢",
+          "分析12306回应家长和孩子相隔14个车厢这一事件的舆情"
+        ]
+      }
+    },
+    {
+      "ts": "2026-04-26 00:27:03.122675",
+      "event_type": "topic_relevance_quality",
+      "details": {
+        "coverage": 0.7778,
+        "coverage_phrase": 0.0,
+        "composite": 0.4278,
+        "overlap_count": 7,
+        "anchor_count": 9,
+        "top_keywords_count": 80,
+        "min_coverage": 0.08,
+        "overlap_terms": [
+          "个车厢",
+          "个车厢这一事件的舆情",
+          "回应",
+          "回应家长和孩子相隔",
+          "家长和孩子相隔",
+          "购票",
+          "铁路同行人购票"
+        ],
+        "phrase_hits": []
+      }
+    },
+    {
+      "ts": "2026-04-26 00:28:36.656392",
+      "event_type": "sentiment_quality",
+      "details": {
+        "skipped": false,
+        "source": "existing_column_fallback",
+        "total": 1831,
+        "positive_count": 209,
+        "negative_count": 420,
+        "neutral_count": 1202,
+        "fallback_used": true
+      }
+    },
+    {
+      "ts": "2026-04-26 00:28:36.669031",
+      "event_type": "channel_distribution",
+      "details": {
+        "total_count": 1831,
+        "channels": [
+          {
+            "platform": "微博",
+            "count": 1831,
+            "percentage": 100.0
+          }
+        ],
+        "path": "<REPO_ROOT>/sandbox/00d769e6-6647-4e48-8740-5ec5a1987f20/过程文件/channel_distribution.json"
+      }
+    },
+    {
+      "ts": "2026-04-26 00:31:31.869419",
+      "event_type": "reference_recall_quality",
+      "details": {
+        "reference_query": "分析12306回应家长和孩子相隔14个车厢这一事件的舆情 12306回应 12306购票 铁路同行人购票",
+        "raw_count": 12,
+        "filtered_count": 12,
+        "dropped_count": 0
+      }
+    }
+  ]
+}
+
