@@ -2,7 +2,7 @@
 
 更新日期：2026-04-28  
 当前基线：`feature-analysis` 分支，稳定快照提交 `cc6953c`  
-目标周期：6 周完成可用升级，8 周完成稳定化与验收  
+目标周期：6 周完成可用升级，8 周完成稳定化与 GUI 雏形验收  
 协作规模：20 位同学，按模块小组并行推进
 
 ---
@@ -16,7 +16,7 @@ Sona 目前已经从“能调用工具的 ReAct Agent”进入“可稳定跑完
 - 让报告质量可评测、可复盘、可迭代。
 - 让舆情知识库从资料堆变成领域方法论和案例网络。
 - 让事件分析从一次性报告升级为持续监测、专题分析和案例沉淀。
-- 让 CLI 保持稳定，同时为未来接入 Opinion System 的对话式入口预留 API/工作流边界。
+- 让 CLI 保持稳定，同时基于现有版本并行做一个轻量 GUI 雏形，先服务 Sona 本体升级。
 
 外部舆情产品的共性能力主要集中在全网/多源监测、关键词规则、情感识别、负面预警、趋势可视化、报告导出、传播路径和知识图谱等模块。参考调研来源：
 
@@ -39,7 +39,7 @@ Sona 目前已经从“能调用工具的 ReAct Agent”进入“可稳定跑完
 4. 案例库 Wiki：每次分析能沉淀一份标准化案例文件，并能被后续检索、归类和复用。
 5. 专题监测：支持以“高铁舆情”“控烟舆情”等关键词创建专题，周期性采集、入库、分析和预警。
 6. Harness 与评估：有 golden cases、自动评分、人工反馈入口和回归 dashboard。
-7. 接入准备：CLI 继续可用，同时提供清晰的工作流 API，方便未来挂到 Opinion System 的对话入口。
+7. GUI 雏形：基于现有版本提供任务发起、运行状态、报告查看、案例检索、专题配置的最小可用界面。
 
 ---
 
@@ -66,7 +66,7 @@ Sona 目前已经从“能调用工具的 ReAct Agent”进入“可稳定跑完
 - 报告中的图表、情感、时间线、关键事件节点、处置建议需要进一步“舆情专家化”。
 - Hot 热点分析还偏信息聚合，缺少热点分层、风险判定、事件簇归并和后续深挖入口。
 - 缺少 Postgres 持久层支撑专题监测、历史趋势、案例库和定时任务。
-- GUI 是否建设还没到“单独做产品”的时机，应先设计 API 和对话式接入边界。
+- GUI 可以先做雏形，但定位应是 Sona 的轻量工作台，不做复杂大屏，也不等待全部升级完成后才启动。
 
 ---
 
@@ -158,24 +158,80 @@ Sona 目前已经从“能调用工具的 ReAct Agent”进入“可稳定跑完
   - 支持专题日报/周报/月报。
   - 支持“专题 -> 事件簇 -> 单事件深挖”的工作流。
 
-### Phase 5：接入 Opinion System 与轻量 GUI 决策（第 6-8 周）
+### Phase G：GUI 雏形并行建设（第 1-4 周）
 
-目标：不急着做重 GUI，先把 Sona 做成可被对话系统稳定调用的分析服务。
+目标：不等 Sona 全部升级完成，先基于现有 CLI/工作流做一个可试用 GUI 雏形，帮助后续报告查看、案例积累和专题配置。
 
-建议：
+定位：
 
-- 暂不建设完整 GUI 后台，避免分散精力。
-- 优先提供：
+- 做 Sona 本体的轻量工作台，本轮不做外部系统对接。
+- 先覆盖最短闭环：
+  - 任务创建：输入事件 query、选择报告长度、是否复用历史数据。
+  - 任务状态：展示 task_id、当前阶段、过程文件、错误信息。
+  - 报告查看：打开 HTML 报告，展示关键 JSON 摘要。
+  - 案例库：检索 case.md，按领域/主体/风险类型筛选。
+  - 专题配置：创建专题关键词、排除词、平台、频率、阈值。
+- GUI 可以调用 CLI 命令或轻量服务层，不要求一次性做完整后端。
+- 技术路线由同学 19-20 调研后确定，优先选择改动小、能快速跑起来的方案。
+
+后置但保留的能力：
+
+- Sona 内部服务层：
   - `sona analyze-event`
   - `sona monitor-topic`
   - `sona hot`
   - `sona wiki`
   - `sona case`
-  - `sona serve` 或 FastAPI 服务层
-- Opinion System 通过对话框触发 Sona 工作流，并接收报告、案例和中间状态。
-- 轻量 GUI 可以只做“报告查看 + 案例库检索 + 专题配置”，不做完整分析编辑器。
+  - `sona serve` 或 FastAPI 服务层，用于 GUI 调用
 
 ---
+
+## 4.1 连接信息与配置边界
+
+本轮可以直接使用你已经准备好的 Supabase Postgres 与 Neo4j Aura 实例，但连接密钥不得写入版本化代码或公开文档。任务提示中统一使用环境变量，项目负责人在本地 `.env` 或部署环境中填入真实值。
+
+### Supabase Postgres
+
+用途：
+
+- 专题监测长期数据。
+- 历史快照、预警记录、专题报告索引。
+- 后续 GUI 的任务/专题状态读取。
+
+连接参数：
+
+- host: `aws-1-us-west-2.pooler.supabase.com`
+- port: `5432`
+- database: `postgres`
+- user: `postgres.fhatjtbrgtynrfqtvpsn`
+- env:
+  - `SONA_POSTGRES_URL=postgresql://postgres.fhatjtbrgtynrfqtvpsn:${SONA_SUPABASE_DB_PASSWORD}@aws-1-us-west-2.pooler.supabase.com:5432/postgres`
+  - `SONA_SUPABASE_DB_PASSWORD=<由项目负责人在本地 .env 填入>`
+
+### Neo4j Aura
+
+用途：
+
+- 舆情案例图谱。
+- 主体、风险模式、处置策略、理论框架关系。
+- Graph RAG 相似案例与可迁移经验召回。
+
+连接参数：
+
+- uri: `neo4j+s://3cb72f36.databases.neo4j.io`
+- user: `3cb72f36`
+- database: `3cb72f36`
+- env:
+  - `SONA_NEO4J_URI=neo4j+s://3cb72f36.databases.neo4j.io`
+  - `SONA_NEO4J_USER=3cb72f36`
+  - `SONA_NEO4J_DATABASE=3cb72f36`
+  - `SONA_NEO4J_PASSWORD=<由项目负责人在本地 .env 填入>`
+
+实施要求：
+
+- 同学 06、17、18、20 使用上述变量名，不在代码中硬编码密码。
+- health check 输出只能展示 host/user/database，不能打印 password 或完整 DSN。
+- `.env.example` 只放变量名和占位值；真实 `.env` 不提交。
 
 ## 5. 20 人任务分配
 
@@ -255,11 +311,17 @@ Sona 目前已经从“能调用工具的 ReAct Agent”进入“可稳定跑完
 - 完善 `tools/graph_rag_query.py`。
 - 新增 Neo4j connection health check。
 - 在 `workflow/event_analysis_pipeline.py` 中稳定调用 Graph RAG。
+- 按本计划“4.1 连接信息与配置边界”接入 Neo4j Aura：
+  - `SONA_NEO4J_URI=neo4j+s://3cb72f36.databases.neo4j.io`
+  - `SONA_NEO4J_USER=3cb72f36`
+  - `SONA_NEO4J_DATABASE=3cb72f36`
+  - `SONA_NEO4J_PASSWORD` 从本地 `.env` 读取。
 
 验收：
 
 - 无 Neo4j 时自动降级，不影响报告生成。
 - 有 Neo4j 时报告能出现相似案例、关系网络和处置经验。
+- health check 不输出明文密码。
 
 #### 同学 07：健康舆情领域包
 
@@ -407,11 +469,17 @@ Sona 目前已经从“能调用工具的 ReAct Agent”进入“可稳定跑完
   - `alerts`
   - `case_links`
 - 编写 migration 和数据访问层。
+- 使用 Supabase Postgres 作为本轮专题监测数据库：
+  - host: `aws-1-us-west-2.pooler.supabase.com`
+  - database: `postgres`
+  - user: `postgres.fhatjtbrgtynrfqtvpsn`
+  - `SONA_POSTGRES_URL` 从本地 `.env` 读取，格式见 4.1。
 
 验收：
 
 - 可创建专题、写入采集数据、读取历史趋势。
 - 本地无 Postgres 时给出清晰配置错误，不影响事件分析主链路。
+- migration 可重复执行，避免重复建表或破坏已有数据。
 
 #### 同学 18：专题监测工作流
 
@@ -419,40 +487,50 @@ Sona 目前已经从“能调用工具的 ReAct Agent”进入“可稳定跑完
 
 - 新增 `workflow/topic_monitoring_pipeline.py`。
 - 支持创建专题、周期采集、快照分析、风险预警、专题报告。
-- 与 Opinion System 设计中的数据库方案对齐。
+- 与同学 17 的 Supabase Postgres schema 对齐。
+- 支持手动触发优先，定时调度后置。
 
 验收：
 
 - 可运行示例：“高铁舆情”专题连续监测。
 - 支持日报/周报输出。
+- 每次专题快照能写入 Postgres，并能链接到生成的报告或 case 文件。
 
 ### E 组：架构接入与产品化（2 人）
 
-#### 同学 19：CLI/API 边界与 Opinion System 接入
+#### 同学 19：Sona CLI/API 边界
 
 负责范围：
 
 - 梳理 CLI 命令和工作流 API。
-- 设计 `sona serve` 或 FastAPI 层。
-- 输出 OpenAPI 风格接口草案。
+- 设计 `sona serve` 或 FastAPI 层，服务 GUI 雏形和本地自动化。
+- 输出 Sona 内部 OpenAPI 风格接口草案。
+- 不做外部系统对接。
 
 验收：
 
-- Opinion System 可以通过 API 触发事件分析、专题分析、wiki 查询。
+- GUI 或本地脚本可以通过 API 触发事件分析、专题分析、wiki 查询。
 - API 返回 task_id、状态、中间文件、最终报告路径。
+- API 不阻塞 CLI 主路径；CLI 仍可独立运行。
 
-#### 同学 20：轻量 GUI 原型与取舍
+#### 同学 20：轻量 GUI 原型
 
 负责范围：
 
-- 调研是否需要 GUI。
-- 设计最小 GUI：报告查看、案例检索、专题配置、任务状态。
-- 不做复杂大屏，不替代 Opinion System 对话入口。
+- 基于现有版本直接做最小 GUI 雏形。
+- 页面范围：
+  - 任务创建页。
+  - 任务状态页。
+  - 报告查看页。
+  - 案例库检索页。
+  - 专题配置页。
+- 可先用本地文件和 CLI/API 混合方式跑通，不等待全部垂类升级完成。
 
 验收：
 
-- 输出 `docs/gui_decision.md`。
-- 若做原型，仅做轻量 viewer/config，不影响主工作流。
+- 输出可运行原型和 `docs/gui_prototype.md`。
+- 至少能发起一次事件分析任务并打开已有 HTML 报告。
+- GUI 崩溃或配置缺失不影响 CLI。
 
 ---
 
@@ -559,7 +637,7 @@ Sona 目前已经从“能调用工具的 ReAct Agent”进入“可稳定跑完
 
 数据库建议：
 
-- Postgres 存结构化长期数据。
+- Supabase Postgres 存结构化长期数据。
 - 本地文件继续存报告和中间产物。
 - Neo4j 存关系和案例知识。
 
@@ -592,8 +670,8 @@ Sona 目前已经从“能调用工具的 ReAct Agent”进入“可稳定跑完
 
 - 30 个 golden cases 总分平均提升 20% 以上。
 - 核心链路失败能清晰降级。
-- Opinion System 接入 API 草案完成。
-- GUI 决策文档完成。
+- Sona 内部 API 草案完成。
+- GUI 雏形完成，并能读取报告、案例和专题配置。
 
 ---
 
@@ -624,8 +702,9 @@ Sona 目前已经从“能调用工具的 ReAct Agent”进入“可稳定跑完
 
 对策：
 
-- 先做 API 和报告 viewer。
-- 未来主要交互入口放到 Opinion System 对话框。
+- GUI 只做轻量雏形，优先报告查看、任务状态、案例检索、专题配置。
+- 不做复杂大屏、不做权限系统、不做多用户协作。
+- GUI 使用现有 CLI/API 能力，避免倒逼主链路大改。
 
 ### 风险 5：报告质量难以客观评估
 
@@ -655,8 +734,8 @@ Sona 目前已经从“能调用工具的 ReAct Agent”进入“可稳定跑完
 第三优先级：
 
 1. 同学 14 升级 hot。
-2. 同学 19 做 API 接入。
-3. 同学 20 做 GUI 取舍和轻量原型。
+2. 同学 19 做 Sona 内部 API。
+3. 同学 20 做 GUI 雏形。
 
 ---
 
@@ -664,7 +743,7 @@ Sona 目前已经从“能调用工具的 ReAct Agent”进入“可稳定跑完
 
 Sona 最理想的下一阶段形态不是“一个有很多按钮的软件”，而是一个舆情分析工作台内核：
 
-- 用户在 Opinion System 对话框里提出任务。
+- 用户可以在 CLI 或轻量 GUI 里提出任务。
 - Sona 自动判断是事件分析、热点态势、专题监测、案例查询还是知识问答。
 - 运行过程中保留 CLI/debug 能力，方便开发和复盘。
 - 产出报告、案例、图谱证据、专题快照。
