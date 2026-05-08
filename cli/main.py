@@ -1,8 +1,11 @@
-"""CLI 主入口：交互式命令行界面。"""
+"""CLI 主入口：交互式命令行界面与子命令（如 ``serve``）。"""
 
 from __future__ import annotations
 
+import os
 import sys
+
+import typer
 from rich.prompt import Prompt
 from cli.display import print_icon, print_welcome, console
 from cli.interactive import run_session_loop
@@ -12,6 +15,12 @@ from cli.models_ui import show_models_list
 from cli.clear_utils import confirm_and_clear
 from cli.hot_ui import run_hot_command
 from cli.wiki_ui import run_wiki_command, run_wiki_approve_command
+from cli.serve_cmd import run_serve
+
+app = typer.Typer(
+    help="Sona：舆情分析 Agent。默认进入交互式 CLI；使用子命令 ``serve`` 启动 HTTP API。",
+    add_completion=False,
+)
 
 
 def interactive() -> None:
@@ -133,9 +142,38 @@ def interactive() -> None:
             traceback.print_exc()
 
 
+@app.callback(invoke_without_command=True)
+def _typer_root(ctx: typer.Context) -> None:
+    """无子命令时进入交互式 CLI。"""
+    if ctx.invoked_subcommand is None:
+        interactive()
+
+
+@app.command("serve")
+def serve_command(
+    host: str = typer.Option(
+        os.environ.get("SONA_API_HOST", "127.0.0.1"),
+        "--host",
+        help="监听地址（可用环境变量 SONA_API_HOST）。",
+    ),
+    port: int = typer.Option(
+        int(os.environ.get("SONA_API_PORT", "8765")),
+        "--port",
+        help="监听端口（可用环境变量 SONA_API_PORT）。",
+    ),
+    reload: bool = typer.Option(
+        False,
+        "--reload",
+        help="开发模式：代码变更自动重载（单进程）。",
+    ),
+) -> None:
+    """启动 FastAPI HTTP API（``GET /health``、``POST /v1/analyze-event`` 等）。"""
+    run_serve(host=host, port=port, reload=reload)
+
+
 def main() -> None:
-    """主函数：启动交互式模式。"""
-    interactive()
+    """入口：交给 Typer 解析子命令；无参数时进入交互式模式。"""
+    app()
 
 
 if __name__ == "__main__":
