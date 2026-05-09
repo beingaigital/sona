@@ -1,0 +1,108 @@
+{
+  "output_dir": "opinion_analysis_kb\\compiled",
+  "type_counts": {
+    "Actor": 28,
+    "Case": 894,
+    "RiskPattern": 2,
+    "ResponseTactic": 5
+  },
+  "field_stats": {
+    "Case": {
+      "trigger_points": {
+        "exists_count": 894,
+        "nonempty_count": 52,
+        "nonempty_rate": 0.0582
+      },
+      "key_claims": {
+        "exists_count": 894,
+        "nonempty_count": 52,
+        "nonempty_rate": 0.0582
+      },
+      "public_sentiment": {
+        "exists_count": 894,
+        "nonempty_count": 52,
+        "nonempty_rate": 0.0582
+      },
+      "escalation_path": {
+        "exists_count": 894,
+        "nonempty_count": 52,
+        "nonempty_rate": 0.0582
+      },
+      "turning_points": {
+        "exists_count": 894,
+        "nonempty_count": 0,
+        "nonempty_rate": 0.0
+      },
+      "lessons_learned": {
+        "exists_count": 894,
+        "nonempty_count": 52,
+        "nonempty_rate": 0.0582
+      },
+      "official_response": {
+        "exists_count": 894,
+        "nonempty_count": 0,
+        "nonempty_rate": 0.0
+      },
+      "resolution": {
+        "exists_count": 894,
+        "nonempty_count": 0,
+        "nonempty_rate": 0.0
+      }
+    },
+    "RiskPattern": {
+      "trigger_conditions": {
+        "exists_count": 2,
+        "nonempty_count": 0,
+        "nonempty_rate": 0.0
+      },
+      "early_warning_signals": {
+        "exists_count": 2,
+        "nonempty_count": 0,
+        "nonempty_rate": 0.0
+      },
+      "typical_escalation_path": {
+        "exists_count": 2,
+        "nonempty_count": 0,
+        "nonempty_rate": 0.0
+      },
+      "recommended_tactics": {
+        "exists_count": 2,
+        "nonempty_count": 0,
+        "nonempty_rate": 0.0
+      }
+    },
+    "ResponseTactic": {
+      "actions": {
+        "exists_count": 5,
+        "nonempty_count": 0,
+        "nonempty_rate": 0.0
+      },
+      "failure_modes": {
+        "exists_count": 5,
+        "nonempty_count": 0,
+        "nonempty_rate": 0.0
+      },
+      "example_cases": {
+        "exists_count": 5,
+        "nonempty_count": 0,
+        "nonempty_rate": 0.0
+      },
+      "message_templates": {
+        "exists_count": 5,
+        "nonempty_count": 0,
+        "nonempty_rate": 0.0
+      },
+      "success_metrics": {
+        "exists_count": 5,
+        "nonempty_count": 0,
+        "nonempty_rate": 0.0
+      }
+    }
+  },
+  "invalid_files": [],
+  "notes": [
+    "exists_count 表示字段结构是否存在。",
+    "nonempty_count 表示字段是否有实际内容。",
+    "旧 wiki 文档弱映射填充率有限，新领域资料应按 domains/template 模板显式填写。"
+  ]
+}

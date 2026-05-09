@@ -8,7 +8,6 @@ from typing import Any, Dict, List
 import yaml
 
 from utils.path import get_config_path, get_prompt_dir
-from utils.policy_docs import format_harness_policy_for_prompt
 
 
 def _load_prompt_yaml() -> Dict[str, Any]:
@@ -81,14 +80,17 @@ def get_report_html_prompt() -> str:
 
 def get_report_html_template_basename() -> str:
     """
-    固定 HTML 报告模板文件名（位于 prompt/ 下）。
-    注意：不能走 get_prompt_config()，否则会把 .html 文件内容当作「配置字符串」读入。
+    返回 Morandi 等固定 HTML 模板文件名（位于 prompt/）。
+    优先读取 config/prompt.yaml 的 report_html_template；缺省则使用已存在的 morandi 模板。
     """
     raw = _load_prompt_yaml()
-    v = raw.get("report_html_template")
-    if v is None:
-        return ""
-    return str(v).strip()
+    name = raw.get("report_html_template")
+    if isinstance(name, str) and name.strip():
+        return name.strip()
+    default_name = "report_html_morandi_template.html"
+    if (get_prompt_dir() / default_name).is_file():
+        return default_name
+    return ""
 
 
 def get_interpretation_prompt() -> str:
@@ -110,13 +112,9 @@ def format_tool_registry_for_prompt(tools: List[Any]) -> str:
 
 
 def get_system_prompt_with_tools(tools: List[Any]) -> str:
-    """获取 system_prompt 正文，并追加系统策略与当前工具注册表信息。"""
+    """获取 system_prompt 正文，并追加当前工具注册表信息。"""
     base = get_system_prompt()
-    policy = format_harness_policy_for_prompt()
     section = format_tool_registry_for_prompt(tools)
-    parts = [base.strip()]
-    if policy:
-        parts.append(policy.strip())
-    if section:
-        parts.append(section.strip())
-    return "\n\n".join([p for p in parts if p]).strip()
+    if not section:
+        return base
+    return (base.rstrip() + "\n\n" + section).strip()

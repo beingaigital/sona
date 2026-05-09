@@ -1,0 +1,15 @@
+{
+  "type": "Case",
+  "title": "世界卫生组织",
+  "source_file": "涓栫晫鍗敓缁勭粐.md",
+  "confidence": "medium",
+  "keywords": [
+    "自动生成",
+    "增量更新"
+  ],
+  "domain": "",
+  "actors": [],
+  "risk_patterns": [],
+  "response_tactics": [],
+  "summary": ""
+}

@@ -1,0 +1,14 @@
+{
+  "type": "RiskPattern",
+  "title": "舆情风险",
+  "source_file": "鑸嗘儏椋庨櫓.md",
+  "confidence": "medium",
+  "keywords": [
+    "自动生成",
+    "增量更新"
+  ],
+  "domain": "",
+  "description": "",
+  "indicators": [],
+  "severity": "medium"
+}

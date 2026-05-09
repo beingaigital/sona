@@ -1,0 +1,9 @@
+{
+  "status": "warning",
+  "message": "workflow sentiment replay stub loaded",
+  "summary": {
+    "positive": 0.22,
+    "neutral": 0.41,
+    "negative": 0.37
+  }
+}

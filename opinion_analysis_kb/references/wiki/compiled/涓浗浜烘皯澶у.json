@@ -1,0 +1,15 @@
+{
+  "type": "Case",
+  "title": "中国人民大学",
+  "source_file": "涓浗浜烘皯澶у.md",
+  "confidence": "medium",
+  "keywords": [
+    "自动生成",
+    "增量更新"
+  ],
+  "domain": "",
+  "actors": [],
+  "risk_patterns": [],
+  "response_tactics": [],
+  "summary": ""
+}

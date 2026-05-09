@@ -1,0 +1,12 @@
+{
+  "status": "warning",
+  "message": "workflow report replay stub loaded",
+  "report": {
+    "title": "粉底液将军事件简版舆情报告",
+    "sections": [
+      "事件概述",
+      "情绪观察",
+      "风险提示"
+    ]
+  }
+}

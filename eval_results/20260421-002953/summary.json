@@ -1,0 +1,85 @@
+{
+  "run_id": "20260421-002953",
+  "timestamp": "2026-04-20T16:29:53+00:00",
+  "total_cases": 3,
+  "pass_cases": 0,
+  "warning_cases": 3,
+  "pass_rate": 0.0,
+  "results": [
+    {
+      "run_id": "20260421-002953",
+      "case_id": "wiki_case_002",
+      "target": "wiki",
+      "stage": null,
+      "status": "warning",
+      "metrics": {
+        "latency_ms": 0.0,
+        "traceability_score": 1.0,
+        "relevance_score": 0.16666666666666666,
+        "structure_completeness": 1.0,
+        "fallback_rate": 0.0
+      },
+      "artifacts": {
+        "trace": "eval_results/20260421-002953/wiki_case_002/trace.jsonl",
+        "output": "eval_results/20260421-002953/wiki_case_002/artifacts/output.json",
+        "context": "eval_results/20260421-002953/wiki_case_002/context.json"
+      },
+      "reasons": [
+        "relevance_score below soft threshold: 0.167 < 0.400"
+      ],
+      "fail_reasons": [
+        "relevance_score below soft threshold: 0.167 < 0.400"
+      ]
+    },
+    {
+      "run_id": "20260421-002953",
+      "case_id": "wiki_compare_003",
+      "target": "wiki",
+      "stage": null,
+      "status": "warning",
+      "metrics": {
+        "latency_ms": 0.0,
+        "traceability_score": 1.0,
+        "relevance_score": 0.16666666666666666,
+        "structure_completeness": 1.0,
+        "fallback_rate": 0.0
+      },
+      "artifacts": {
+        "trace": "eval_results/20260421-002953/wiki_compare_003/trace.jsonl",
+        "output": "eval_results/20260421-002953/wiki_compare_003/artifacts/output.json",
+        "context": "eval_results/20260421-002953/wiki_compare_003/context.json"
+      },
+      "reasons": [
+        "relevance_score below soft threshold: 0.167 < 0.350"
+      ],
+      "fail_reasons": [
+        "relevance_score below soft threshold: 0.167 < 0.350"
+      ]
+    },
+    {
+      "run_id": "20260421-002953",
+      "case_id": "wiki_concept_001",
+      "target": "wiki",
+      "stage": null,
+      "status": "warning",
+      "metrics": {
+        "latency_ms": 0.0,
+        "traceability_score": 1.0,
+        "relevance_score": 0.3125,
+        "structure_completeness": 1.0,
+        "fallback_rate": 0.0
+      },
+      "artifacts": {
+        "trace": "eval_results/20260421-002953/wiki_concept_001/trace.jsonl",
+        "output": "eval_results/20260421-002953/wiki_concept_001/artifacts/output.json",
+        "context": "eval_results/20260421-002953/wiki_concept_001/context.json"
+      },
+      "reasons": [
+        "relevance_score below soft threshold: 0.312 < 0.750"
+      ],
+      "fail_reasons": [
+        "relevance_score below soft threshold: 0.312 < 0.750"
+      ]
+    }
+  ]
+}

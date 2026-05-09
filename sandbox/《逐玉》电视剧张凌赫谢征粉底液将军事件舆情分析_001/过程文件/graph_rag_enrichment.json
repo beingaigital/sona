@@ -1,0 +1,104 @@
+{
+  "status": "enabled_but_empty",
+  "reason": "Graph RAG 已执行，但未检索到可用于增强报告的结构化结果。",
+  "errors": [
+    "Neo4j 驱动未安装"
+  ],
+  "similar_cases": {
+    "type": "相似历史案例",
+    "count": 1,
+    "results": [
+      {
+        "error": "Neo4j 驱动未安装"
+      }
+    ]
+  },
+  "theories": [
+    {
+      "type": "舆情规律理论",
+      "count": 1,
+      "results": [
+        {
+          "error": "Neo4j 驱动未安装"
+        }
+      ]
+    },
+    {
+      "type": "舆情规律理论",
+      "count": 1,
+      "results": [
+        {
+          "error": "Neo4j 驱动未安装"
+        }
+      ]
+    },
+    {
+      "type": "舆情规律理论",
+      "count": 1,
+      "results": [
+        {
+          "error": "Neo4j 驱动未安装"
+        }
+      ]
+    }
+  ],
+  "indicators": [
+    {
+      "type": "分析维度指标",
+      "count": 1,
+      "results": [
+        {
+          "error": "Neo4j 驱动未安装"
+        }
+      ]
+    },
+    {
+      "type": "分析维度指标",
+      "count": 1,
+      "results": [
+        {
+          "error": "Neo4j 驱动未安装"
+        }
+      ]
+    },
+    {
+      "type": "分析维度指标",
+      "count": 1,
+      "results": [
+        {
+          "error": "Neo4j 驱动未安装"
+        }
+      ]
+    }
+  ],
+  "input": {
+    "event_type": "影视审美争议",
+    "domain": "影视娱乐",
+    "stage": "消退期",
+    "theory_names": [
+      "生命周期规律",
+      "议程设置规律",
+      "沉默螺旋规律"
+    ],
+    "indicators_dimensions": [
+      "attention",
+      "sentiment",
+      "actor"
+    ]
+  },
+  "user_decision": {
+    "mode": "all",
+    "before": {
+      "similar_cases": 0,
+      "theories": 0,
+      "indicators": 0
+    },
+    "after": {
+      "similar_cases": 0,
+      "theories": 0,
+      "indicators": 0
+    },
+    "collab_mode": "hybrid",
+    "created_at": "2026-04-07 22:04:00.413049"
+  }
+}

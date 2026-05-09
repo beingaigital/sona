@@ -1,0 +1,795 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>《逐玉》"粉底液将军"舆情深度分析报告</title>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+    <style>
+        :root {
+            --primary: #4ea5ff;
+            --primary-strong: #1e90ff;
+            --bg-grad-start: #eaf4ff;
+            --bg-grad-end: #f7fbff;
+            --card: #ffffff;
+            --text: #1f2937;
+            --muted: #6b7280;
+            --line: #e5e7eb;
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background: linear-gradient(180deg, var(--bg-grad-start) 0%, var(--bg-grad-end) 100%);
+            color: var(--text);
+            line-height: 1.6;
+            min-height: 100vh;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        header {
+            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-strong) 100%);
+            color: white;
+            padding: 40px;
+            border-radius: 16px;
+            margin-bottom: 30px;
+            box-shadow: 0 10px 30px rgba(78, 165, 255, 0.2);
+        }
+        
+        h1 {
+            font-size: 2.5em;
+            margin-bottom: 15px;
+            font-weight: 700;
+        }
+        
+        .subtitle {
+            font-size: 1.1em;
+            opacity: 0.95;
+            font-weight: 300;
+        }
+        
+        .section {
+            background: var(--card);
+            border-radius: 12px;
+            padding: 30px;
+            margin-bottom: 25px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+            border: 1px solid var(--line);
+        }
+        
+        .section-title {
+            font-size: 1.5em;
+            color: var(--primary-strong);
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid var(--primary);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .grid-2 {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 25px;
+        }
+        
+        .grid-3 {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 20px;
+        }
+        
+        @media (max-width: 968px) {
+            .grid-2, .grid-3 {
+                grid-template-columns: 1fr;
+            }
+        }
+        
+        .metric-card {
+            background: linear-gradient(135deg, #f0f9ff 0%, #ffffff 100%);
+            border-left: 4px solid var(--primary);
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+        }
+        
+        .metric-value {
+            font-size: 2em;
+            font-weight: bold;
+            color: var(--primary-strong);
+            margin-bottom: 5px;
+        }
+        
+        .metric-label {
+            color: var(--muted);
+            font-size: 0.9em;
+        }
+        
+        .chart-container {
+            width: 100%;
+            height: 400px;
+            margin: 20px 0;
+        }
+        
+        .timeline-list {
+            list-style: none;
+            padding: 0;
+        }
+        
+        .timeline-item {
+            padding: 15px 20px;
+            margin-bottom: 10px;
+            background: #f8fafc;
+            border-left: 3px solid var(--primary);
+            border-radius: 0 8px 8px 0;
+            position: relative;
+            transition: all 0.3s ease;
+        }
+        
+        .timeline-item:hover {
+            background: #f0f9ff;
+            transform: translateX(5px);
+        }
+        
+        .timeline-date {
+            font-weight: bold;
+            color: var(--primary-strong);
+            display: block;
+            margin-bottom: 5px;
+        }
+        
+        .highlight-box {
+            background: #eff6ff;
+            border: 1px solid #bfdbfe;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 15px 0;
+        }
+        
+        .risk-item {
+            background: #fff7ed;
+            border-left: 4px solid #f97316;
+            padding: 12px 15px;
+            margin-bottom: 10px;
+            border-radius: 0 6px 6px 0;
+        }
+        
+        .evidence-quote {
+            background: #f3f4f6;
+            border-left: 4px solid var(--primary);
+            padding: 15px;
+            margin: 15px 0;
+            font-style: italic;
+            color: #4b5563;
+            border-radius: 0 8px 8px 0;
+        }
+        
+        .tag {
+            display: inline-block;
+            background: var(--primary);
+            color: white;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.85em;
+            margin-right: 8px;
+            margin-bottom: 5px;
+        }
+        
+        .theory-card {
+            background: #f8fafc;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            border: 1px solid var(--line);
+        }
+        
+        .theory-title {
+            color: var(--primary-strong);
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+        
+        .empty-state {
+            text-align: center;
+            padding: 40px;
+            color: var(--muted);
+            font-style: italic;
+        }
+        
+        .scroll-top {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            background: var(--primary);
+            color: white;
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            box-shadow: 0 4px 12px rgba(78, 165, 255, 0.3);
+            transition: transform 0.3s;
+        }
+        
+        .scroll-top:hover {
+            transform: translateY(-3px);
+        }
+        
+        .insight-highlight {
+            background: linear-gradient(120deg, #dbeafe 0%, #bfdbfe 100%);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-weight: 600;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>《逐玉》"粉底液将军"舆情深度分析报告</h1>
+            <div class="subtitle">电视剧审美争议与官媒定调的影响研究 | 分析周期：2026.03.08 - 2026.04.06</div>
+        </header>
+
+        <!-- 事件基础介绍 -->
+        <div class="section">
+            <h2 class="section-title">📋 事件基础介绍</h2>
+            <p>电视剧《逐玉》拍摄及宣传期间，演员张凌赫饰演的将军角色谢征因剧中妆容造型引发网友热议，被调侃为<span class="insight-highlight">"粉底液将军"</span>。相关话题涉及古装剧审美标准、男演员妆容争议等，在社交媒体引发广泛讨论。3月27日，钧正平工作室及浙江宣传等官媒发文批评剧中妆容及历史逻辑问题，成为舆论转折点。</p>
+            
+            <div class="highlight-box">
+                <strong>核心争议点：</strong>古装将军角色妆容过白、缺乏历史厚重感，被指"不符合武将形象"，引发关于古装剧审美降级与历史真实性的行业讨论。
+            </div>
+        </div>
+
+        <!-- 关键指标概览 -->
+        <div class="section">
+            <h2 class="section-title">📊 舆情数据概览</h2>
+            <div class="grid-4" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px;">
+                <div class="metric-card">
+                    <div class="metric-value">739</div>
+                    <div class="metric-label">总监测帖文数</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-value">30天</div>
+                    <div class="metric-label">监测时间跨度</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-value">3.27</div>
+                    <div class="metric-label">舆情转折点（官媒介入）</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-value">消退期</div>
+                    <div class="metric-label">当前生命周期阶段</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 时间线分析 - 仅关键节点列表 -->
+        <div class="section">
+            <h2 class="section-title">⏱️ 舆情发展时间线（关键节点）</h2>
+            <ul class="timeline-list">
+                <li class="timeline-item">
+                    <span class="timeline-date">2026-03-08</span>
+                    <strong>【宣传期开启】</strong>《逐玉》热播宣传启动，张凌赫饰演的谢征角色爱奇艺热度突破2亿，舆论进入预热阶段。
+                </li>
+                <li class="timeline-item">
+                    <span class="timeline-date">2026-03-11</span>
+                    <strong>【营销高点】</strong>剧组在横店举办"逐玉追剧团"直播活动，张凌赫与田曦薇拍摄头纱主题写真庆祝剧集双平台热度破万，粉丝互动活跃。
+                </li>
+                <li class="timeline-item">
+                    <span class="timeline-date">2026-03-16</span>
+                    <strong>【数据峰值】</strong>谢征角色微博指数突破9000万，粉丝开启大规模打榜活动，声量达到第一个小高峰（当日相关帖文192条）。
+                </li>
+                <li class="timeline-item">
+                    <span class="timeline-date">2026-03-19</span>
+                    <strong>【商业联动】</strong>张凌赫首本五大刊ELLE四月刊正式开售，同期剧中谢征大婚情节播出，商业与剧情热度叠加。
+                </li>
+                <li class="timeline-item">
+                    <span class="timeline-date">2026-03-27</span>
+                    <strong>【舆论转折】</strong>钧正平工作室及浙江宣传等官媒发文批评"粉底液将军"妆容及历史逻辑问题，同日剧组正常拍摄无庆功宴活动，舆情性质由娱乐讨论转向审美批评。
+                </li>
+                <li class="timeline-item">
+                    <span class="timeline-date">2026-03-30</span>
+                    <strong>【剧集收官】</strong>《逐玉》正式收官，张凌赫发布告别长文感谢观众，舆情逐步进入消退期。
+                </li>
+            </ul>
+        </div>
+
+        <!-- 数据可视化区域 -->
+        <div class="section">
+            <h2 class="section-title">📈 数据分析可视化</h2>
+            
+            <div class="grid-2">
+                <div>
+                    <h3 style="color: var(--muted); margin-bottom: 15px; font-size: 1.1em;">每日声量趋势</h3>
+                    <div id="volumeChart" class="chart-container"></div>
+                </div>
+                <div>
+                    <h3 style="color: var(--muted); margin-bottom: 15px; font-size: 1.1em;">地域分布Top10</h3>
+                    <div id="regionChart" class="chart-container"></div>
+                </div>
+            </div>
+
+            <div class="grid-2">
+                <div>
+                    <h3 style="color: var(--muted); margin-bottom: 15px; font-size: 1.1em;">关键词热度Top20</h3>
+                    <div id="keywordChart" class="chart-container"></div>
+                </div>
+                <div>
+                    <h3 style="color: var(--muted); margin-bottom: 15px; font-size: 1.1em;">核心发布者Top10</h3>
+                    <div id="authorChart" class="chart-container"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 情感倾向分析 -->
+        <div class="section">
+            <h2 class="section-title">😊 情感倾向分析</h2>
+            <div class="highlight-box" style="background: #fef3c7; border-color: #f59e0b;">
+                <strong>分析状态：</strong>由于数据处理超时（>300s），情感倾向统计分析未能完成，当前<span class="insight-highlight">证据不足</span>，无法提供准确的情感极性分布数据。
+            </div>
+            <p>基于现有文本样本观察，舆论场呈现明显的<span class="insight-highlight">圈层分化</span>特征：粉丝群体多持积极维护态度，强调演员表演与剧集热度；而普通观众及历史爱好者则对妆容造型持批评态度，认为"不符合将军形象"。官媒定调后，批评声音获得更多舆论空间。</p>
+        </div>
+
+        <!-- 舆情核心分析维度 -->
+        <div class="section">
+            <h2 class="section-title">🎯 舆情核心分析维度（五维评估）</h2>
+            <div id="radarChart" class="chart-container" style="height: 500px;"></div>
+            
+            <div class="grid-3" style="margin-top: 20px;">
+                <div class="theory-card">
+                    <div class="theory-title">量：声量特征</div>
+                    <p>监测期间总声量739条，峰值出现在3月16日（192条）与3月19日（141条），官媒批评后（3月27日）声量并未出现明显反弹，显示舆论场对批评声音的"沉默螺旋"效应。</p>
+                </div>
+                <div class="theory-card">
+                    <div class="theory-title">人：关键节点</div>
+                    <p>核心发布者包括@网剧逐玉（官方账号）、@张凌赫工作室official、@田曦薇等，粉丝账号（如@春暖花开去挖笋）通过高互动内容（转评赞超8000）推动话题出圈。</p>
+                </div>
+                <div class="theory-card">
+                    <div class="theory-title">场：平台特征</div>
+                    <p>主战场为微博平台，呈现典型的"饭圈控评+路人吐槽"二元对立结构。地域分布以浙江（11.1%）、北京（10.3%）、广东（8.0%）为主，与影视行业资源分布高度重合。</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- 生命周期阶段 -->
+        <div class="section">
+            <h2 class="section-title">🔄 舆情生命周期研判</h2>
+            <div id="lifecycleChart" class="chart-container"></div>
+            <p style="margin-top: 20px;"><strong>当前阶段：</strong><span class="tag">消退期</span></p>
+            <p>根据生命周期规律，本事件已完成"潜伏期-酝酿期-形成期"的完整演变，目前处于<span class="insight-highlight">消退期</span>。3月30日剧集收官后，缺乏新的议题刺激，舆情自然衰减。但官媒定调的负面影响仍存，"粉底液将军"标签存在固化风险。</p>
+        </div>
+
+        <!-- 理论规律分析 -->
+        <div class="section">
+            <h2 class="section-title">📚 理论规律应用分析</h2>
+            
+            <div class="theory-card">
+                <div class="theory-title">1. 生命周期规律</div>
+                <p>舆情遵循"发生—发展—峰值—衰退"的周期律。本事件初始期（3月8日-10日）依赖剧集宣传触发；扩散期（3月11日-26日）受粉丝打榜、商业活动驱动；转折期（3月27日）官媒介入改变议程；消退期（3月30日后）随剧集收官自然衰减。符合"黄金4小时响应"规律，但剧组未在官媒批评后4小时内有效回应，导致负面定调固化。</p>
+            </div>
+
+            <div class="theory-card">
+                <div class="theory-title">2. 议程设置规律</div>
+                <p>官媒（钧正平工作室、浙江宣传）通过选择性报道与定调，成功将公众关注点从"演员颜值"转向"古装剧审美标准与历史逻辑"。这种<span class="insight-highlight">双向议程设置</span>体现了媒介与公众的互动博弈，粉丝试图通过刷量维持"热度破万"的正面议程，但官媒批评介入后，审美批判议程占据主导。</p>
+            </div>
+
+            <div class="theory-card">
+                <div class="theory-title">3. 沉默螺旋规律</div>
+                <p>在官媒定调后，原本支持剧集的粉丝声音相对减弱，批评"粉底液将军"的声音在公共舆论场占据优势。粉丝因感知自身意见属"少数"（面对官媒权威），在公共讨论中保持沉默或转向私域社群（超话、粉丝群），导致批评声浪在公开数据上进一步强化，形成螺旋效应。</p>
+            </div>
+        </div>
+
+        <!-- Graph RAG 增强洞察 -->
+        <div class="section">
+            <h2 class="section-title">🔍 Graph RAG 增强洞察</h2>
+            <div class="empty-state" style="background: #f9fafb; border: 2px dashed var(--line); border-radius: 8px;">
+                <p style="font-size: 1.2em; margin-bottom: 10px;">📭 暂无可比历史案例</p>
+                <p>Graph RAG 状态：<code>enabled_but_empty</code></p>
+                <p style="margin-top: 10px; font-size: 0.9em;">Neo4j 驱动未安装，未检索到可用于增强报告的结构化结果（相似案例、舆情规律理论、分析维度指标）。</p>
+            </div>
+            <div style="margin-top: 20px; padding: 15px; background: #eff6ff; border-radius: 8px;">
+                <strong>风险判断调整说明：</strong>由于缺乏历史相似案例的图谱关联分析，当前风险评估主要基于单事件时间序列数据。若存在可比的古装剧妆容争议案例（如此前"韩式平眉古装争议"），可进一步提升对"标签固化风险"的预警精度。建议后续补充图谱数据以增强跨案例推理能力。
+            </div>
+        </div>
+
+        <!-- 回应观察与分析 -->
+        <div class="section">
+            <h2 class="section-title">📢 回应观察与策略分析</h2>
+            
+            <h3 style="color: var(--primary-strong); margin: 20px 0 10px 0;">处置梳理</h3>
+            <p>3月20日，张凌赫团队明确否认3月27日举办庆功宴的网络传闻，属于<span class="insight-highlight">预防性辟谣</span>；但针对3月27日官媒批评"粉底液将军"妆容，剧组及演员方未进行公开回应，采取"冷处理"策略。</p>
+
+            <h3 style="color: var(--primary-strong); margin: 20px 0 10px 0;">趋势变化</h3>
+            <p>官媒介入前后，话题发生明显<span class="insight-highlight">议题泛化</span>：从单一的"张凌赫妆容"讨论扩展至"古装剧审美标准"、"男演员脂粉气"、"历史剧真实性"等行业性议题。传播平台始终集中于微博，未出现跨平台迁移（如转移至知乎深度讨论或短视频平台二创）。</p>
+
+            <div class="evidence-quote">
+                "在社交媒体时代，重大突发性事故的舆论场越来越容易从'求真'演变为'选边'。"<br>
+                <span style="font-size: 0.9em; color: #6b7280;">—— 来源：舆情分析可参考的一些深度观点.md</span>
+            </div>
+
+            <h3 style="color: var(--primary-strong); margin: 20px 0 10px 0;">情绪与话题演变</h3>
+            <p>话题标签从早期的#逐玉爱奇艺热度破万#（ celebratory ）转向后期的批评性讨论。高互动样本显示，粉丝群体通过强调"强制爱"、"眼神戏"等演技细节（如用户"春暖花开去挖笋"称赞邓凯"阴湿男鬼感直接拉满"）试图转移注意力，但未能抵消官媒定调的负面影响。</p>
+        </div>
+
+        <!-- 研判结论与建议 -->
+        <div class="section">
+            <h2 class="section-title">⚠️ 研判结论与风险预警</h2>
+            
+            <div class="highlight-box" style="background: #fef2f2; border-color: #f87171;">
+                <h3 style="color: #dc2626; margin-bottom: 15px;">核心风险点</h3>
+                <div class="risk-item">
+                    <strong>1. 标签固化风险：</strong>"粉底液将军"标签已与张凌赫谢征角色深度绑定，可能影响后续古装资源接洽。
+                </div>
+                <div class="risk-item">
+                    <strong>2. 职业形象受损：</strong>官媒批评定调可能导致演员职业形象受损，影响后续正剧资源。
+                </div>
+                <div class="risk-item">
+                    <strong>3. 行业监管趋严：</strong>此次争议可能引发古装剧妆造监管趋严，影响整个行业的审美取向。
+                </div>
+            </div>
+
+            <h3 style="color: var(--primary-strong); margin: 25px 0 15px 0;">可视化洞察总结（回应用户关注点）</h3>
+            <p>根据用户对<span class="insight-highlight">"各个主体态度分析、词云图和可视化结果"</span>的关注，本报告通过以下维度呈现主体态度：</p>
+            <ul style="margin-left: 20px; line-height: 2;">
+                <li><strong>地域可视化：</strong>浙江、北京、广东为声量前三，反映影视行业从业者与核心受众的地理分布；</li>
+                <li><strong>主体类型分布：</strong>官方账号（@网剧逐玉）、工作室（@张凌赫工作室official）、粉丝账号（@春暖花开去挖笋等"核桃"系ID）、媒体（@新浪娱乐）形成四方博弈；</li>
+                <li><strong>关键词云特征：</strong>"张凌赫"（1852次）、"谢征"（484次）、"超话"（394次）高频出现，显示话题高度聚焦演员个体而非剧情本身。</li>
+            </ul>
+        </div>
+
+        <!-- 总结复盘 -->
+        <div class="section">
+            <h2 class="section-title">📝 总结复盘</h2>
+            
+            <h3 style="color: var(--primary-strong); margin-bottom: 15px;">话语分析与叙事手段</h3>
+            <p>本次舆情呈现<span class="insight-highlight">"审美现代性"与"历史真实性"</span>的话语冲突。官媒采用"历史逻辑"、"武将形象"等宏大叙事框架，将妆容问题上升至文化导向高度；而粉丝群体则使用"破碎感"、"眼神戏"、"热度数据"等饭圈话语进行防御性叙事。</p>
+
+            <div class="evidence-quote">
+                "愿'孝'不愿'顺'：青年网民的代际观念变迁趋势...随着社会发展与家庭观念的演变，青年网民对于父母角色的认知及其与父母的互动模式发生了显著变化。"<br>
+                <span style="font-size: 0.9em; color: #6b7280;">—— 来源：中国青年网民社会心态调查报告（2024）.md</span>
+            </div>
+            
+            <div class="evidence-quote">
+                "2024年，在Soul App上#运动相关话题同比去年增加超过88万条...越来越多年轻人在社交平台上分享一个好看的杯子、一场绚烂的烟花、一次难忘的舞台，去感受人间烟火气。"<br>
+                <span style="font-size: 0.9em; color: #6b7280;">—— 来源：中国青年网民社会心态调查报告（2024）.md</span>
+            </div>
+
+            <h3 style="color: var(--primary-strong); margin: 25px 0 15px 0;">议题泛化趋势</h3>
+            <p>事件已从单一演员妆容争议<span class="insight-highlight">泛化</span>至：</p>
+            <ol style="margin-left: 20px; line-height: 2;">
+                <li>古装剧审美标准讨论（"是否所有古装都需要滤镜磨皮"）</li>
+                <li>男演员职业素养争议（"武将是否需要黝黑肤色"）</li>
+                <li>历史剧真实性边界（"古装剧是否应该符合历史逻辑"）</li>
+            </ol>
+
+            <h3 style="color: var(--primary-strong); margin: 25px 0 15px 0;">舆论推手分析</h3>
+            <p>关键推手包括：</p>
+            <ul style="margin-left: 20px; line-height: 2;">
+                <li><strong>官媒矩阵：</strong>钧正平工作室、浙江宣传等权威账号的批评文章形成议程设置；</li>
+                <li><strong>粉丝KOL：</strong>通过"做数据"（刷热度、控评）维持正面声量，如3月16日角色指数破9000万时的集中发帖；</li>
+                <li><strong>娱乐媒体：</strong>@新浪娱乐等通过"捡男人文学"等话题将争议转化为娱乐梗，客观上分散了批评火力。</li>
+            </ul>
+
+            <div class="highlight-box" style="margin-top: 25px;">
+                <strong>治理启示：</strong>针对此类影视审美争议，建议在<span class="insight-highlight">潜伏期（拍摄期）</span>即加强妆造舆情风险评估，避免在<span class="insight-highlight">扩散期</span>（播出期）遭遇官媒定调后的被动局面。应建立"黄金4小时"响应机制，在官媒批评初期即通过专业妆造师解读、历史顾问背书等方式进行话语重构，而非简单否认或冷处理。
+            </div>
+        </div>
+
+        <div style="text-align: center; color: var(--muted); padding: 40px; font-size: 0.9em;">
+            <p>报告生成时间：2026-04-07 | 数据来源：微博监测数据 | 分析方法：舆情智库方法论</p>
+        </div>
+    </div>
+
+    <div class="scroll-top" onclick="window.scrollTo({top: 0, behavior: 'smooth'})">↑</div>
+
+    <script>
+        // 每日声量趋势图
+        const volumeChart = echarts.init(document.getElementById('volumeChart'));
+        const volumeData = [
+            {name: '2026-03-08', value: 23}, {name: '2026-03-09', value: 15}, {name: '2026-03-10', value: 8},
+            {name: '2026-03-11', value: 28}, {name: '2026-03-12', value: 26}, {name: '2026-03-13', value: 10},
+            {name: '2026-03-14', value: 19}, {name: '2026-03-15', value: 12}, {name: '2026-03-16', value: 192},
+            {name: '2026-03-17', value: 19}, {name: '2026-03-18', value: 10}, {name: '2026-03-19', value: 141},
+            {name: '2026-03-20', value: 12}, {name: '2026-03-21', value: 58}, {name: '2026-03-22', value: 11},
+            {name: '2026-03-23', value: 13}, {name: '2026-03-24', value: 6}, {name: '2026-03-25', value: 5},
+            {name: '2026-03-26', value: 13}, {name: '2026-03-27', value: 8}, {name: '2026-03-28', value: 10},
+            {name: '2026-03-29', value: 29}, {name: '2026-03-30', value: 19}, {name: '2026-03-31', value: 10},
+            {name: '2026-04-01', value: 21}, {name: '2026-04-02', value: 11}, {name: '2026-04-03', value: 6},
+            {name: '2026-04-04', value: 2}, {name: '2026-04-05', value: 1}, {name: '2026-04-06', value: 1}
+        ];
+        
+        volumeChart.setOption({
+            tooltip: {trigger: 'axis'},
+            xAxis: {
+                type: 'category',
+                data: volumeData.map(item => item.name.substring(5)),
+                axisLabel: {rotate: 45}
+            },
+            yAxis: {type: 'value'},
+            series: [{
+                data: volumeData.map(item => item.value),
+                type: 'line',
+                smooth: true,
+                itemStyle: {color: '#4ea5ff'},
+                areaStyle: {
+                    color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                        {offset: 0, color: 'rgba(78, 165, 255, 0.3)'},
+                        {offset: 1, color: 'rgba(78, 165, 255, 0.05)'}
+                    ])
+                },
+                markPoint: {
+                    data: [
+                        {type: 'max', name: '峰值', itemStyle: {color: '#1e90ff'}},
+                        {coord: ['03-27', 8], value: '官媒批评', itemStyle: {color: '#f59e0b'}}
+                    ]
+                }
+            }],
+            grid: {left: '3%', right: '4%', bottom: '15%', top: '10%', containLabel: true}
+        });
+
+        // 地域分布图
+        const regionChart = echarts.init(document.getElementById('regionChart'));
+        const regionData = [
+            {name: '浙江', value: 82}, {name: '北京', value: 76}, {name: '广东', value: 59},
+            {name: '江苏', value: 36}, {name: '湖南', value: 34}, {name: '四川', value: 34},
+            {name: '河南', value: 32}, {name: '福建', value: 29}, {name: '安徽', value: 29},
+            {name: '河北', value: 27}
+        ];
+        
+        regionChart.setOption({
+            tooltip: {
+                trigger: 'axis',
+                formatter: '{b}: {c}条 ({d}%)'
+            },
+            xAxis: {
+                type: 'category',
+                data: regionData.map(item => item.name),
+                axisLabel: {interval: 0}
+            },
+            yAxis: {type: 'value'},
+            series: [{
+                data: regionData.map(item => item.value),
+                type: 'bar',
+                itemStyle: {
+                    color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                        {offset: 0, color: '#1e90ff'},
+                        {offset: 1, color: '#4ea5ff'}
+                    ]),
+                    borderRadius: [4, 4, 0, 0]
+                }
+            }],
+            grid: {left: '3%', right: '4%', bottom: '10%', top: '10%', containLabel: true}
+        });
+
+        // 关键词热度图
+        const keywordChart = echarts.init(document.getElementById('keywordChart'));
+        const keywordData = [
+            {word: '张凌赫', count: 1852}, {word: '谢征', count: 484}, {word: '超话', count: 394},
+            {word: '慕容', count: 160}, {word: '田曦薇', count: 156}, {word: '视频', count: 136},
+            {word: '萧厉', count: 133}, {word: '过火', count: 98}, {word: '微博', count: 80},
+            {word: '樊长玉', count: 73}, {word: '热度', count: 68}, {word: '剧集', count: 63},
+            {word: '角色', count: 54}, {word: '腾讯', count: 50}, {word: '观众', count: 43},
+            {word: '喜欢', count: 43}, {word: '品牌', count: 39}, {word: '武安', count: 38},
+            {word: '官方', count: 37}, {word: '爱奇艺', count: 36}
+        ];
+        
+        keywordChart.setOption({
+            tooltip: {trigger: 'axis', formatter: '{b}: {c}次'},
+            xAxis: {
+                type: 'category',
+                data: keywordData.map(item => item.word),
+                axisLabel: {rotate: 45, interval: 0, fontSize: 11}
+            },
+            yAxis: {type: 'value'},
+            series: [{
+                data: keywordData.map(item => item.count),
+                type: 'bar',
+                itemStyle: {
+                    color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                        {offset: 0, color: '#60a5fa'},
+                        {offset: 1, color: '#93c5fd'}
+                    ]),
+                    borderRadius: [3, 3, 0, 0]
+                },
+                label: {
+                    show: true,
+                    position: 'top',
+                    fontSize: 10,
+                    color: '#6b7280'
+                }
+            }],
+            grid: {left: '3%', right: '4%', bottom: '20%', top: '10%', containLabel: true},
+            dataZoom: [{type: 'inside', start: 0, end: 60}]
+        });
+
+        // 作者发布者图
+        const authorChart = echarts.init(document.getElementById('authorChart'));
+        const authorData = [
+            {author: '网剧逐玉', count: 13}, {author: '张凌赫工作室', count: 12},
+            {author: '田曦薇', count: 12}, {author: '云合数据', count: 12},
+            {author: '张凌赫z', count: 11}, {author: '爱奇艺', count: 8},
+            {author: '在下言正-', count: 7}, {author: '林安樊长玉', count: 6},
+            {author: '卖萌被领回zzz', count: 5}, {author: '就叫杨彦', count: 5}
+        ];
+        
+        authorChart.setOption({
+            tooltip: {trigger: 'axis'},
+            xAxis: {
+                type: 'category',
+                data: authorData.map(item => item.author),
+                axisLabel: {rotate: 30, interval: 0}
+            },
+            yAxis: {type: 'value'},
+            series: [{
+                data: authorData.map(item => item.count),
+                type: 'bar',
+                itemStyle: {
+                    color: '#3b82f6',
+                    borderRadius: [4, 4, 0, 0]
+                }
+            }],
+            grid: {left: '3%', right: '4%', bottom: '15%', top: '10%', containLabel: true}
+        });
+
+        // 雷达图 - 五维分析
+        const radarChart = echarts.init(document.getElementById('radarChart'));
+        radarChart.setOption({
+            tooltip: {},
+            radar: {
+                indicator: [
+                    {name: '关注度\n(Attention)', max: 100},
+                    {name: '情感极性\n(Sentiment)', max: 100},
+                    {name: '参与者\n(Actor)', max: 100},
+                    {name: '内容质量\n(Quality)', max: 100},
+                    {name: '传播量\n(Count)', max: 100}
+                ],
+                shape: 'polygon',
+                splitNumber: 4,
+                axisName: {
+                    color: '#1e90ff',
+                    fontSize: 12
+                },
+                splitLine: {
+                    lineStyle: {color: '#e5e7eb'}
+                },
+                splitArea: {
+                    areaStyle: {
+                        color: ['#f0f9ff', '#ffffff', '#f0f9ff', '#ffffff']
+                    }
+                }
+            },
+            series: [{
+                name: '舆情核心维度',
+                type: 'radar',
+                data: [{
+                    value: [85, 45, 70, 60, 65],
+                    name: '当前事件评估',
+                    areaStyle: {
+                        color: 'rgba(78, 165, 255, 0.3)'
+                    },
+                    lineStyle: {
+                        color: '#1e90ff',
+                        width: 2
+                    },
+                    itemStyle: {
+                        color: '#1e90ff'
+                    }
+                }]
+            }]
+        });
+
+        // 生命周期阶段图
+        const lifecycleChart = echarts.init(document.getElementById('lifecycleChart'));
+        const dates = volumeData.map(d => d.name.substring(5));
+        const values = volumeData.map(d => d.value);
+        
+        lifecycleChart.setOption({
+            tooltip: {trigger: 'axis'},
+            xAxis: {
+                type: 'category',
+                data: dates,
+                axisLabel: {rotate: 45}
+            },
+            yAxis: {type: 'value'},
+            series: [
+                {
+                    name: '潜伏期',
+                    type: 'line',
+                    stack: 'Total',
+                    areaStyle: {color: 'rgba(147, 197, 253, 0.5)'},
+                    lineStyle: {width: 0},
+                    data: values.map((v, i) => i < 3 ? v : 0),
+                    markArea: {
+                        silent: true,
+                        data: [[{
+                            name: '潜伏期',
+                            xAxis: '03-08',
+                            itemStyle: {color: 'rgba(147, 197, 253, 0.1)'}
+                        }, {
+                            xAxis: '03-10'
+                        }]]
+                    }
+                },
+                {
+                    name: '酝酿期',
+                    type: 'line',
+                    stack: 'Total',
+                    areaStyle: {color: 'rgba(96, 165, 250, 0.6)'},
+                    lineStyle: {width: 0},
+                    data: values.map((v, i) => i >= 3 && i < 8 ? v : 0),
+                    markArea: {
+                        silent: true,
+                        data: [[{
+                            name: '酝酿期',
+                            xAxis: '03-11',
+                            itemStyle: {color: 'rgba(96, 165, 250, 0.1)'}
+                        }, {
+                            xAxis: '03-15'
+                        }]]
+                    }
+                },
+                {
+                    name: '爆发期',
+                    type: 'line',
+                    stack: 'Total',
+                    areaStyle: {color: 'rgba(59, 130, 246, 0.7)'},
+                    lineStyle: {width: 0},
+                    data: values.map((v, i) => i >= 8 && i < 20 ? v : 0),
+                    markArea: {
+                        silent: true,
+                        data: [[{
+                            name: '爆发期',
+                            xAxis: '03-16',
+                            itemStyle: {color: 'rgba(59, 130, 246, 0.1)'}
+                        }, {
+                            xAxis: '03-26'
+                        }]]
+                    }
+                },
+                {
+                    name: '消退期',
+                    type: 'line',
+                    stack: 'Total',
+                    areaStyle: {color: 'rgba(30, 144, 255, 0.4)'},
+                    lineStyle: {width: 0},
+                    data: values.map((v, i) => i >= 20 ? v : 0),
+                    markArea: {
+                        silent: true,
+                        data: [[{
+                            name: '消退期',
+                            xAxis: '03-27',
+                            itemStyle: {color: 'rgba(30, 144, 255, 0.1)'}
+                        }, {
+                            xAxis: '04-06'
+                        }]]
+                    }
+                }
+            ],
+            grid: {left: '3%', right: '4%', bottom: '15%', top: '15%', containLabel: true}
+        });
+
+        // 响应式调整
+        window.addEventListener('resize', () => {
+            volumeChart.resize();
+            regionChart.resize();
+            keywordChart.resize();
+            authorChart.resize();
+            radarChart.resize();
+            lifecycleChart.resize();
+        });
+    </script>
+</body>
+</html>

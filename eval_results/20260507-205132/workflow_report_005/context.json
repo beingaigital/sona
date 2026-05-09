@@ -1,0 +1,65 @@
+{
+  "run_id": "20260507-205132",
+  "task_id": null,
+  "query": "生成一份关于粉底液将军事件的简版舆情报告。",
+  "mode": "replay",
+  "diagnostics": {
+    "case_id": "workflow_report_005",
+    "target": "workflow",
+    "stage": "report"
+  },
+  "policy": {},
+  "artifacts": {
+    "output": {
+      "status": "warning",
+      "message": "workflow report replay stub loaded",
+      "report": {
+        "title": "粉底液将军事件简版舆情报告",
+        "sections": [
+          "事件概述",
+          "情绪观察",
+          "风险提示"
+        ]
+      }
+    }
+  },
+  "budget": {
+    "token_budget": null,
+    "latency_budget_ms": 30000,
+    "retry_budget": null,
+    "triggers": {
+      "latency_budget_exceeded": 0
+    },
+    "actions": []
+  },
+  "errors": [],
+  "stage_outputs": {
+    "report": {
+      "stage": "report",
+      "status": "success",
+      "metrics": {
+        "latency_ms": 0.0,
+        "traceability_score": 0.0,
+        "relevance_score": 0.0,
+        "structure_completeness": 1.0,
+        "fallback_rate": 0.0
+      },
+      "artifacts": {
+        "output": {
+          "status": "warning",
+          "message": "workflow report replay stub loaded",
+          "report": {
+            "title": "粉底液将军事件简版舆情报告",
+            "sections": [
+              "事件概述",
+              "情绪观察",
+              "风险提示"
+            ]
+          }
+        }
+      },
+      "fallback_used": false,
+      "error": null
+    }
+  }
+}

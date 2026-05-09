@@ -1,0 +1,15 @@
+{
+  "type": "Case",
+  "title": "中央广播电视总台",
+  "source_file": "涓ぎ骞挎挱鐢佃鎬诲彴.md",
+  "confidence": "medium",
+  "keywords": [
+    "自动生成",
+    "增量更新"
+  ],
+  "domain": "",
+  "actors": [],
+  "risk_patterns": [],
+  "response_tactics": [],
+  "summary": ""
+}

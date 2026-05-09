@@ -1,0 +1,69 @@
+{
+  "run_id": "day4-missing-fixture",
+  "task_id": null,
+  "query": "测试缺失fixture",
+  "mode": "replay",
+  "diagnostics": {
+    "case_id": "day4_missing_fixture_999",
+    "target": "wiki",
+    "stage": null
+  },
+  "policy": {},
+  "artifacts": {
+    "output": {
+      "status": "fail",
+      "message": "Replay fixture not found: /Users/walk/Downloads/sona-main/tests/fixtures/not_exists/tools.json",
+      "error": {
+        "error_code": "E_REPLAY_FIXTURE_NOT_FOUND",
+        "error_message": "Replay fixture not found: /Users/walk/Downloads/sona-main/tests/fixtures/not_exists/tools.json",
+        "retryable": false
+      }
+    }
+  },
+  "budget": {
+    "token_budget": null,
+    "latency_budget_ms": null,
+    "retry_budget": null,
+    "triggers": {},
+    "actions": []
+  },
+  "errors": [
+    {
+      "error_code": "E_REPLAY_FIXTURE_NOT_FOUND",
+      "error_message": "Replay fixture not found: /Users/walk/Downloads/sona-main/tests/fixtures/not_exists/tools.json",
+      "retryable": false,
+      "result_file_path": null
+    }
+  ],
+  "stage_outputs": {
+    "wiki": {
+      "stage": "wiki",
+      "status": "failed",
+      "metrics": {
+        "latency_ms": 0.0,
+        "traceability_score": 0.0,
+        "relevance_score": 0.0,
+        "structure_completeness": 0.0,
+        "fallback_rate": 0.0
+      },
+      "artifacts": {
+        "output": {
+          "status": "fail",
+          "message": "Replay fixture not found: /Users/walk/Downloads/sona-main/tests/fixtures/not_exists/tools.json",
+          "error": {
+            "error_code": "E_REPLAY_FIXTURE_NOT_FOUND",
+            "error_message": "Replay fixture not found: /Users/walk/Downloads/sona-main/tests/fixtures/not_exists/tools.json",
+            "retryable": false
+          }
+        }
+      },
+      "fallback_used": false,
+      "error": {
+        "error_code": "E_REPLAY_FIXTURE_NOT_FOUND",
+        "error_message": "Replay fixture not found: /Users/walk/Downloads/sona-main/tests/fixtures/not_exists/tools.json",
+        "retryable": false,
+        "result_file_path": null
+      }
+    }
+  }
+}

@@ -1,0 +1,4 @@
+{
+  "status": "warning",
+  "message": "Target 'workflow' execution not wired in Day1. Use replay fixtures or wiki target first."
+}

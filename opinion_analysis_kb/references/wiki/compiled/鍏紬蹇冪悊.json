@@ -1,0 +1,15 @@
+{
+  "type": "Case",
+  "title": "公众心理",
+  "source_file": "鍏紬蹇冪悊.md",
+  "confidence": "medium",
+  "keywords": [
+    "自动生成",
+    "增量更新"
+  ],
+  "domain": "",
+  "actors": [],
+  "risk_patterns": [],
+  "response_tactics": [],
+  "summary": ""
+}

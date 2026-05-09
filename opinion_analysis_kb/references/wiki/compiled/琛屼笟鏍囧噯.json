@@ -1,0 +1,15 @@
+{
+  "type": "Case",
+  "title": "行业标准",
+  "source_file": "琛屼笟鏍囧噯.md",
+  "confidence": "medium",
+  "keywords": [
+    "自动生成",
+    "增量更新"
+  ],
+  "domain": "",
+  "actors": [],
+  "risk_patterns": [],
+  "response_tactics": [],
+  "summary": ""
+}

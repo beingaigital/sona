@@ -1,0 +1,133 @@
+{
+  "version": "1.0",
+  "description": "Graph RAG relationship design for the opinion analysis knowledge base. This file defines the schema-level relationship contract for Neo4j ingestion and query implementation.",
+  "nodes": [
+    "Case",
+    "Actor",
+    "RiskPattern",
+    "ResponseTactic",
+    "Methodology",
+    "DomainPlaybook",
+    "Evidence",
+    "Scenario"
+  ],
+  "common_relation_properties": {
+    "confidence": {
+      "type": "float",
+      "range": [0.0, 1.0],
+      "description": "Confidence of the extracted relationship. Low-confidence relations should not be used as core report evidence."
+    },
+    "evidence_refs": {
+      "type": "array[string]",
+      "description": "Evidence IDs or source chunk IDs supporting this relationship."
+    },
+    "source_path": {
+      "type": "string",
+      "description": "Original markdown path from which the relationship was extracted."
+    },
+    "status": {
+      "type": "enum",
+      "values": ["raw", "candidate", "approved", "deprecated"],
+      "description": "Review status of the relationship."
+    },
+    "extracted_by": {
+      "type": "string",
+      "description": "Extractor name, script name, or human annotator."
+    }
+  },
+  "relations": [
+    {
+      "name": "INVOLVES",
+      "from": "Case",
+      "to": "Actor",
+      "source_fields": ["Case.actors"],
+      "description": "Connects a public opinion case to involved organizations, media, KOLs, people, or groups.",
+      "properties": {
+        "role_in_case": "responsible_party | regulator | media_amplifier | affected_group | observer | other",
+        "stance": "supportive | opposing | neutral | questioning | responding | unknown",
+        "actions": "array[string]",
+        "influence_on_event": "low | medium | high"
+      }
+    },
+    {
+      "name": "HAS_RISK_PATTERN",
+      "from": "Case",
+      "to": "RiskPattern",
+      "source_fields": ["Case.risk_patterns"],
+      "description": "Connects a case to detected or manually annotated risk patterns."
+    },
+    {
+      "name": "USED_TACTIC",
+      "from": "Case",
+      "to": "ResponseTactic",
+      "source_fields": ["Case.response_tactics"],
+      "description": "Connects a case to response tactics used or recommended in the case."
+    },
+    {
+      "name": "SUPPORTED_BY",
+      "from": "Case",
+      "to": "Evidence",
+      "source_fields": ["Case.evidence_refs"],
+      "description": "Links a case to evidence chunks used for traceability."
+    },
+    {
+      "name": "MATCHES_SCENARIO",
+      "from": "Case",
+      "to": "Scenario",
+      "source_fields": ["Case.scenario", "Case.event_type", "Case.subdomain"],
+      "description": "Connects a case to the scenario it belongs to."
+    },
+    {
+      "name": "SIMILAR_TO",
+      "from": "Case",
+      "to": "Case",
+      "source_fields": ["Case.domain", "Case.subdomain", "Case.event_type", "Case.key_claims", "Case.risk_patterns", "Case.response_tactics"],
+      "description": "Connects similar cases for Graph RAG case matching and experience reuse.",
+      "properties": {
+        "similarity_score": "float",
+        "similarity_basis": "array[string]"
+      }
+    },
+    {
+      "name": "MITIGATED_BY",
+      "from": "RiskPattern",
+      "to": "ResponseTactic",
+      "source_fields": ["RiskPattern.recommended_tactics", "ResponseTactic.applicable_risk_patterns"],
+      "description": "Connects a risk pattern to tactics that can mitigate it."
+    },
+    {
+      "name": "EXPLAINED_BY",
+      "from": "RiskPattern",
+      "to": "Methodology",
+      "source_fields": ["Methodology.keywords", "RiskPattern.risk_category"],
+      "description": "Connects risk patterns to theories or methodologies that explain them."
+    },
+    {
+      "name": "GUIDES",
+      "from": "Methodology",
+      "to": "ResponseTactic",
+      "source_fields": ["Methodology.keywords", "ResponseTactic.tactic_type"],
+      "description": "Connects methodologies to response tactics they can guide."
+    },
+    {
+      "name": "RECOMMENDS",
+      "from": "DomainPlaybook",
+      "to": "ResponseTactic",
+      "source_fields": ["DomainPlaybook.recommended_tactics"],
+      "description": "Connects a domain playbook to recommended response tactics."
+    },
+    {
+      "name": "REFERENCES",
+      "from": "DomainPlaybook",
+      "to": "Case",
+      "source_fields": ["DomainPlaybook.example_cases", "DomainPlaybook.references"],
+      "description": "Connects a domain playbook to example cases or references."
+    }
+  ],
+  "implementation_notes": [
+    "Task 05 only defines the relationship contract. Neo4j write/query implementation belongs to Task 06.",
+    "All relationships should keep confidence and evidence_refs when available.",
+    "Relations with status=raw or low confidence should be treated as reference material, not as core report conclusions.",
+    "SIMILAR_TO can be computed later by combining domain, subdomain, event_type, key_claims, risk_patterns, and response_tactics."
+  ]
+}

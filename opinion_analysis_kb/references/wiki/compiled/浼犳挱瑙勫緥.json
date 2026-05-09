@@ -1,0 +1,15 @@
+{
+  "type": "Case",
+  "title": "传播规律",
+  "source_file": "浼犳挱瑙勫緥.md",
+  "confidence": "medium",
+  "keywords": [
+    "自动生成",
+    "增量更新"
+  ],
+  "domain": "",
+  "actors": [],
+  "risk_patterns": [],
+  "response_tactics": [],
+  "summary": ""
+}

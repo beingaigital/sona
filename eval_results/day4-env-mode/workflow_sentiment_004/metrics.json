@@ -1,0 +1,21 @@
+{
+  "run_id": "day4-env-mode",
+  "case_id": "workflow_sentiment_004",
+  "target": "workflow",
+  "stage": "sentiment",
+  "status": "pass",
+  "metrics": {
+    "latency_ms": 0.0,
+    "traceability_score": 0.0,
+    "relevance_score": 0.0,
+    "structure_completeness": 1.0,
+    "fallback_rate": 0.0
+  },
+  "artifacts": {
+    "trace": "eval_results/day4-env-mode/workflow_sentiment_004/trace.jsonl",
+    "output": "eval_results/day4-env-mode/workflow_sentiment_004/artifacts/output.json",
+    "context": "eval_results/day4-env-mode/workflow_sentiment_004/context.json"
+  },
+  "reasons": [],
+  "fail_reasons": []
+}

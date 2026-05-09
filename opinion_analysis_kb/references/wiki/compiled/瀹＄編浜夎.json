@@ -1,0 +1,15 @@
+{
+  "type": "Case",
+  "title": "审美争议",
+  "source_file": "瀹＄編浜夎.md",
+  "confidence": "medium",
+  "keywords": [
+    "自动生成",
+    "增量更新"
+  ],
+  "domain": "",
+  "actors": [],
+  "risk_patterns": [],
+  "response_tactics": [],
+  "summary": ""
+}

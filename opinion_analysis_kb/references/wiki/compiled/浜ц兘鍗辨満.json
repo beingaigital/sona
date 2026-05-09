@@ -1,0 +1,15 @@
+{
+  "type": "Case",
+  "title": "产能危机",
+  "source_file": "浜ц兘鍗辨満.md",
+  "confidence": "medium",
+  "keywords": [
+    "自动生成",
+    "增量更新"
+  ],
+  "domain": "",
+  "actors": [],
+  "risk_patterns": [],
+  "response_tactics": [],
+  "summary": ""
+}

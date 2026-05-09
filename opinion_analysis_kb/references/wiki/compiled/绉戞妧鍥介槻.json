@@ -1,0 +1,15 @@
+{
+  "type": "Case",
+  "title": "科技国防",
+  "source_file": "绉戞妧鍥介槻.md",
+  "confidence": "medium",
+  "keywords": [
+    "自动生成",
+    "增量更新"
+  ],
+  "domain": "",
+  "actors": [],
+  "risk_patterns": [],
+  "response_tactics": [],
+  "summary": ""
+}

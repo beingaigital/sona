@@ -1,0 +1,144 @@
+{
+  "runs": [
+    {
+      "run_id": "20260420-091645",
+      "timestamp": "2026-04-20T01:16:45+00:00",
+      "total_cases": 2,
+      "pass_rate": 1.0,
+      "fallback_rate": 0.0,
+      "p50_latency_ms": 0,
+      "p95_latency_ms": 0,
+      "budget_trigger_count": 0
+    },
+    {
+      "run_id": "20260420-091654",
+      "timestamp": "2026-04-20T01:16:54+00:00",
+      "total_cases": 1,
+      "pass_rate": 1.0,
+      "fallback_rate": 0.0,
+      "p50_latency_ms": 0,
+      "p95_latency_ms": 0,
+      "budget_trigger_count": 0
+    },
+    {
+      "run_id": "20260421-002651",
+      "timestamp": "2026-04-20T16:26:51+00:00",
+      "total_cases": 2,
+      "pass_rate": 1.0,
+      "fallback_rate": 0.0,
+      "p50_latency_ms": 0,
+      "p95_latency_ms": 0,
+      "budget_trigger_count": 0
+    },
+    {
+      "run_id": "20260421-002903",
+      "timestamp": "2026-04-20T16:29:03+00:00",
+      "total_cases": 2,
+      "pass_rate": 1.0,
+      "fallback_rate": 0.0,
+      "p50_latency_ms": 0,
+      "p95_latency_ms": 0,
+      "budget_trigger_count": 0
+    },
+    {
+      "run_id": "20260421-002953",
+      "timestamp": "2026-04-20T16:29:53+00:00",
+      "total_cases": 3,
+      "pass_rate": 0.0,
+      "fallback_rate": 0.0,
+      "p50_latency_ms": 0,
+      "p95_latency_ms": 0,
+      "budget_trigger_count": 0
+    },
+    {
+      "run_id": "20260421-011329",
+      "timestamp": "2026-04-20T17:13:29+00:00",
+      "total_cases": 2,
+      "pass_rate": 1.0,
+      "fallback_rate": 0.0,
+      "p50_latency_ms": 0,
+      "p95_latency_ms": 0,
+      "budget_trigger_count": 0
+    },
+    {
+      "run_id": "day4-env-mode",
+      "timestamp": "2026-01-01T00:00:00+00:00",
+      "total_cases": 2,
+      "pass_rate": 1.0,
+      "fallback_rate": 0.0,
+      "p50_latency_ms": 0,
+      "p95_latency_ms": 0,
+      "budget_trigger_count": 0
+    },
+    {
+      "run_id": "day4-missing-fixture",
+      "timestamp": "2026-01-01T00:00:00+00:00",
+      "total_cases": 1,
+      "pass_rate": 0.0,
+      "fallback_rate": 0.0,
+      "p50_latency_ms": 0,
+      "p95_latency_ms": 0,
+      "budget_trigger_count": 0
+    },
+    {
+      "run_id": "day4-wiki-a",
+      "timestamp": "2026-01-01T00:00:00+00:00",
+      "total_cases": 1,
+      "pass_rate": 0.0,
+      "fallback_rate": 0.0,
+      "p50_latency_ms": 0,
+      "p95_latency_ms": 0,
+      "budget_trigger_count": 0
+    },
+    {
+      "run_id": "day4-wiki-b",
+      "timestamp": "2026-01-01T00:00:00+00:00",
+      "total_cases": 1,
+      "pass_rate": 0.0,
+      "fallback_rate": 0.0,
+      "p50_latency_ms": 0,
+      "p95_latency_ms": 0,
+      "budget_trigger_count": 0
+    },
+    {
+      "run_id": "day4-wiki-c",
+      "timestamp": "2026-01-01T00:00:00+00:00",
+      "total_cases": 1,
+      "pass_rate": 0.0,
+      "fallback_rate": 0.0,
+      "p50_latency_ms": 0,
+      "p95_latency_ms": 0,
+      "budget_trigger_count": 0
+    },
+    {
+      "run_id": "day4-workflow-a",
+      "timestamp": "2026-01-01T00:00:00+00:00",
+      "total_cases": 2,
+      "pass_rate": 1.0,
+      "fallback_rate": 0.0,
+      "p50_latency_ms": 0,
+      "p95_latency_ms": 0,
+      "budget_trigger_count": 0
+    },
+    {
+      "run_id": "day4-workflow-b",
+      "timestamp": "2026-01-01T00:00:00+00:00",
+      "total_cases": 2,
+      "pass_rate": 1.0,
+      "fallback_rate": 0.0,
+      "p50_latency_ms": 0,
+      "p95_latency_ms": 0,
+      "budget_trigger_count": 0
+    },
+    {
+      "run_id": "day7-day8-check",
+      "timestamp": "2026-04-21T13:34:41+00:00",
+      "total_cases": 1,
+      "pass_rate": 0.0,
+      "fallback_rate": 1.0,
+      "p50_latency_ms": 0,
+      "p95_latency_ms": 0,
+      "budget_trigger_count": 0
+    }
+  ]
+}

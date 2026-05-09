@@ -1,6 +1,9 @@
 {
   "id": "tool_data_num_platform_001",
   "suite": "netinsight-smoke",
+  "suites": [
+    "ci-gate"
+  ],
   "target": "tool",
   "stage": "data_num",
   "input": {

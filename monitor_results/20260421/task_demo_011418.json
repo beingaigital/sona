@@ -1,0 +1,15 @@
+{
+  "task_id": "task_demo",
+  "task_name": "粉底液将军专题监测",
+  "timestamp": "2026-04-21T01:14:18.351672+08:00",
+  "metrics": {
+    "volume_total": 0.0,
+    "new_topic_count": 0.0,
+    "negative_ratio": 0.0,
+    "volume_spike_ratio": 0.0,
+    "velocity_ratio": 0.0
+  },
+  "alerts": [],
+  "new_items_preview": [],
+  "sample_size": 0
+}

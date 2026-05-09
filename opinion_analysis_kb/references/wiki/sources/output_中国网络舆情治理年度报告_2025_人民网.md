@@ -1,6 +1,6 @@
 ---
 title: 中国网络舆情治理年度报告（2025）
-source_file: /Users/biaowenhuang/Documents/sona-master/opinion_analysis_kb/references/wiki/output/中国网络舆情治理年度报告_2025_人民网.md
+source_file: /Users/walk/Downloads/sona-main/opinion_analysis_kb/references/wiki/output/中国网络舆情治理年度报告_2025_人民网.md
 updated_at: 2025-01-03 15:00:00
 tags:
   - 舆情治理

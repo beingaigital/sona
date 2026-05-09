@@ -2,16 +2,16 @@
 
 from __future__ import annotations
 
+import csv
 import re
 import json as json_module
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Sequence
 
 from datetime import datetime
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.tools import tool
 
-from tools._csv_io import read_csv_rows_all
 from model.factory import get_tools_model
 from utils.path import ensure_task_dirs
 from utils.prompt_loader import get_analysis_timeline_prompt
@@ -19,6 +19,37 @@ from utils.task_context import get_task_id
 from utils.path import get_task_process_dir
 
 # 时间相关词表（用于初步筛选包含时间信息的内容）
+def _filter_by_event_relevance(
+    rows: List[Dict[str, Any]],
+    content_key: str,
+    query_text: str,
+    min_hits: int = 1,
+) -> List[Dict[str, Any]]:
+    """
+    按查询与正文相关性过滤行（无模型）。
+    查询按空白切分为片段；统计有多少片段在正文中以子串形式出现，
+    保留「命中数 >= max(min_hits, 1)」的行。
+    """
+    if not rows:
+        return []
+    q = (query_text or "").strip()
+    if not q:
+        return list(rows)
+    parts = [p.strip() for p in re.split(r"\s+", q) if p.strip()]
+    if not parts:
+        return list(rows)
+    need = max(min_hits, 1)
+    out: List[Dict[str, Any]] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        text = str(row.get(content_key, "") or "")
+        hits = sum(1 for p in parts if p in text)
+        if hits >= need:
+            out.append(row)
+    return out
+
+
 TIME_KEYWORDS = [
     "年", "月", "日", "时", "分", "秒",
     "今天", "昨天", "前天", "明天", "后天",
@@ -59,6 +90,34 @@ TIME_PATTERNS = [
     # 时间描述：X日上午、X日下午、X日晚上
     r'\d{1,2}日(上午|下午|晚上|凌晨|中午)',
 ]
+
+
+def _read_csv_data(file_path: str) -> List[Dict[str, Any]]:
+    """读取CSV文件数据（自适应常见编码，避免表头乱码）。"""
+    file = Path(file_path)
+    if not file.exists():
+        raise FileNotFoundError(f"数据文件不存在: {file_path}")
+
+    rows: List[Dict[str, Any]] = []
+    encodings_to_try: Sequence[str] = ("utf-8-sig", "utf-8", "gb18030", "gbk")
+    last_error: Optional[Exception] = None
+    for enc in encodings_to_try:
+        try:
+            with open(file, "r", encoding=enc, errors="strict") as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    rows.append(row)
+            break
+        except Exception as e:
+            rows = []
+            last_error = e
+            continue
+    if not rows and last_error is not None:
+        with open(file, "r", encoding="utf-8-sig", errors="replace") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                rows.append(row)
+    return rows
 
 
 def _identify_columns(data: List[Dict[str, Any]]) -> tuple[Optional[str], Optional[str]]:
@@ -130,52 +189,6 @@ def _extract_time_descriptions(data: List[Dict[str, Any]], content_col: str) -> 
     return extracted
 
 
-def _event_anchor_tokens(event_introduction: str) -> List[str]:
-    stop_words = {
-        "舆情", "事件", "分析", "报告", "回应", "相关", "网络", "近日", "今日", "情况", "问题",
-    }
-    raw = re.findall(r"[\u4e00-\u9fffA-Za-z0-9]{2,18}", str(event_introduction or ""))
-    out: List[str] = []
-    seen: set[str] = set()
-    for t in raw:
-        s = str(t).strip()
-        if not s or s in stop_words:
-            continue
-        if s in seen:
-            continue
-        seen.add(s)
-        out.append(s)
-        if len(out) >= 12:
-            break
-    return out
-
-
-def _filter_by_event_relevance(
-    data: List[Dict[str, Any]],
-    content_col: str,
-    event_introduction: str,
-    min_hits: int = 1,
-) -> List[Dict[str, Any]]:
-    if not data or not content_col:
-        return data
-    anchors = _event_anchor_tokens(event_introduction)
-    if not anchors:
-        return data
-    out: List[Dict[str, Any]] = []
-    for row in data:
-        content = str(row.get(content_col, "")).strip()
-        if not content:
-            continue
-        hit = 0
-        for a in anchors:
-            if a in content:
-                hit += 1
-                if hit >= min_hits:
-                    out.append(row)
-                    break
-    return out
-
-
 def _prepare_reference_materials(
     data: List[Dict[str, Any]],
     content_col: str,
@@ -199,70 +212,6 @@ def _prepare_reference_materials(
         materials.append(material)
     
     return "\n\n".join(materials)
-
-
-def _safe_parse_datetime(value: str) -> Optional[datetime]:
-    s = str(value or "").strip()
-    if not s:
-        return None
-    # Common formats: "2026-04-27 22:11:00", "2026/04/27 22:11", "2026-04-27"
-    for fmt in (
-        "%Y-%m-%d %H:%M:%S",
-        "%Y-%m-%d %H:%M",
-        "%Y/%m/%d %H:%M:%S",
-        "%Y/%m/%d %H:%M",
-        "%Y.%m.%d %H:%M:%S",
-        "%Y.%m.%d %H:%M",
-        "%Y-%m-%d",
-        "%Y/%m/%d",
-        "%Y.%m.%d",
-    ):
-        try:
-            return datetime.strptime(s, fmt)
-        except Exception:
-            continue
-    # try iso-ish
-    try:
-        return datetime.fromisoformat(s.replace("Z", "+00:00"))
-    except Exception:
-        return None
-
-
-def _build_time_sorted_digest(
-    *,
-    rows: List[Dict[str, Any]],
-    content_col: str,
-    time_col: Optional[str],
-    limit: int = 180,
-) -> str:
-    """
-    Build a compact digest sorted by publish time (preferred) to steer LLM timeline.
-    This helps capture "前导类似事件" even when正文里不包含显式时间表达。
-    """
-    if not rows or not content_col:
-        return ""
-    if not time_col:
-        return ""
-    enriched: List[tuple[datetime, str]] = []
-    for r in rows:
-        dt = _safe_parse_datetime(str(r.get(time_col, "")).strip())
-        if not dt:
-            continue
-        content = str(r.get(content_col, "")).strip()
-        if not content:
-            continue
-        content = content.replace("\n", " ").strip()
-        if len(content) > 180:
-            content = content[:179].rstrip() + "…"
-        enriched.append((dt, content))
-    if not enriched:
-        return ""
-    enriched.sort(key=lambda x: x[0])
-    items = enriched[: max(40, min(limit, len(enriched)))]
-    lines = []
-    for dt, content in items:
-        lines.append(f"{dt.strftime('%Y-%m-%d %H:%M')}｜{content}")
-    return "\n".join(lines)
 
 
 def _generate_result_filename(retryContext: Optional[str] = None) -> str:
@@ -305,7 +254,6 @@ def analysis_timeline(
     retryContext: Optional[str] = None,
     contentColumn: Optional[str] = None,
     timeColumn: Optional[str] = None,
-    eventAnchorTerms: Optional[List[str]] = None,
 ) -> str:
     """
     描述：分析事件时间线。根据提供的事件基础介绍和数据文件，从舆情数据中提取时间相关信息，生成事件时间线。只有当热点事件可能包含时间线（跨度比较长）时才使用本工具。
@@ -334,7 +282,7 @@ def analysis_timeline(
     
     # 读取数据文件
     try:
-        all_data = read_csv_rows_all(dataFilePath)
+        all_data = _read_csv_data(dataFilePath)
     except Exception as e:
         return json_module.dumps({
             "error": f"读取数据文件失败: {str(e)}",
@@ -374,57 +322,21 @@ def analysis_timeline(
             "result_file_path": ""
         }, ensure_ascii=False)
     
-    # 先做事件相关性过滤，减少无关热点进入时间线
-    # - 默认使用 eventIntroduction 派生 anchors
-    # - 若外部传入 eventAnchorTerms，则以其为优先（更“硬”的事件锚点）
-    relevant_data = _filter_by_event_relevance(all_data, content_col, eventIntroduction, min_hits=1)
-    if eventAnchorTerms:
-        anchors = [str(x).strip() for x in eventAnchorTerms if str(x).strip()]
-        if anchors:
-            filtered: List[Dict[str, Any]] = []
-            for row in all_data:
-                content = str(row.get(content_col, "")).strip()
-                if not content:
-                    continue
-                # 至少命中 1 个较长锚词，或命中 2 个短锚词（<=3）以降低误命中
-                short_hits = 0
-                ok = False
-                for a in anchors[:10]:
-                    if a in content:
-                        if len(a) <= 3:
-                            short_hits += 1
-                        else:
-                            ok = True
-                            break
-                if ok or short_hits >= 2:
-                    filtered.append(row)
-            if filtered:
-                relevant_data = filtered
-
     # 使用词表筛选包含时间信息的内容
-    time_keyword_data = _filter_by_time_keywords(relevant_data if relevant_data else all_data, content_col)
+    time_keyword_data = _filter_by_time_keywords(all_data, content_col)
     
     # 使用正则表达式进一步提取包含时间描述的内容
     time_pattern_data = _extract_time_descriptions(time_keyword_data, content_col)
     
-    # 如果没有匹配到时间信息，使用所有数据（但优先仍取 relevant_data，避免退化到全量热点）
+    # 如果没有匹配到时间信息，使用所有数据
     if not time_pattern_data:
-        fallback_pool = relevant_data if relevant_data else all_data
-        time_pattern_data = time_keyword_data if time_keyword_data else fallback_pool[:100]  # 限制数量
+        time_pattern_data = time_keyword_data if time_keyword_data else all_data[:100]  # 限制数量
     
     # 准备参考资料
     reference_materials = _prepare_reference_materials(
         time_pattern_data,
         content_col,
         time_col or ""
-    )
-
-    # 额外：按“发布时间”排序的摘要（用于捕捉前导/类似事件）
-    time_sorted_digest = _build_time_sorted_digest(
-        rows=relevant_data if relevant_data else all_data,
-        content_col=content_col,
-        time_col=time_col,
-        limit=200,
     )
     
     # 获取分析模型和prompt
@@ -450,13 +362,6 @@ def analysis_timeline(
         previous_result=retry_section,
         suggestions=suggestions_section
     )
-
-    if time_sorted_digest:
-        prompt = (
-            prompt
-            + "\n\n【按发布时间排序的高相关样本摘要（用于补全前导节点）】\n"
-            + time_sorted_digest[:9000]
-        )
     
     # 调用模型进行分析
     try:

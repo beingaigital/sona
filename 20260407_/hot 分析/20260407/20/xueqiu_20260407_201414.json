@@ -1,0 +1,107 @@
+{
+  "platform_id": "xueqiu",
+  "platform_name": "雪球",
+  "timestamp": "2026-04-07T20:14:14.792510+08:00",
+  "items": [
+    {
+      "source_id": "xueqiu",
+      "source": "雪球",
+      "source_name": "雪球",
+      "title": "神火股份",
+      "rank": 1,
+      "url": "https://xueqiu.com/s/SZ000933",
+      "mobile_url": "",
+      "hot_value": 0
+    },
+    {
+      "source_id": "xueqiu",
+      "source": "雪球",
+      "source_name": "雪球",
+      "title": "东山精密",
+      "rank": 2,
+      "url": "https://xueqiu.com/s/SZ002384",
+      "mobile_url": "",
+      "hot_value": 0
+    },
+    {
+      "source_id": "xueqiu",
+      "source": "雪球",
+      "source_name": "雪球",
+      "title": "国晟科技",
+      "rank": 3,
+      "url": "https://xueqiu.com/s/SH603778",
+      "mobile_url": "",
+      "hot_value": 0
+    },
+    {
+      "source_id": "xueqiu",
+      "source": "雪球",
+      "source_name": "雪球",
+      "title": "香农芯创",
+      "rank": 4,
+      "url": "https://xueqiu.com/s/SZ300475",
+      "mobile_url": "",
+      "hot_value": 0
+    },
+    {
+      "source_id": "xueqiu",
+      "source": "雪球",
+      "source_name": "雪球",
+      "title": "美诺华",
+      "rank": 5,
+      "url": "https://xueqiu.com/s/SH603538",
+      "mobile_url": "",
+      "hot_value": 0
+    },
+    {
+      "source_id": "xueqiu",
+      "source": "雪球",
+      "source_name": "雪球",
+      "title": "天孚通信",
+      "rank": 6,
+      "url": "https://xueqiu.com/s/SZ300394",
+      "mobile_url": "",
+      "hot_value": 0
+    },
+    {
+      "source_id": "xueqiu",
+      "source": "雪球",
+      "source_name": "雪球",
+      "title": "万华化学",
+      "rank": 7,
+      "url": "https://xueqiu.com/s/SH600309",
+      "mobile_url": "",
+      "hot_value": 0
+    },
+    {
+      "source_id": "xueqiu",
+      "source": "雪球",
+      "source_name": "雪球",
+      "title": "泡泡玛特",
+      "rank": 8,
+      "url": "https://xueqiu.com/s/09992",
+      "mobile_url": "",
+      "hot_value": 0
+    },
+    {
+      "source_id": "xueqiu",
+      "source": "雪球",
+      "source_name": "雪球",
+      "title": "海尔智家",
+      "rank": 9,
+      "url": "https://xueqiu.com/s/SH600690",
+      "mobile_url": "",
+      "hot_value": 0
+    },
+    {
+      "source_id": "xueqiu",
+      "source": "雪球",
+      "source_name": "雪球",
+      "title": "法尔胜",
+      "rank": 10,
+      "url": "https://xueqiu.com/s/SZ000890",
+      "mobile_url": "",
+      "hot_value": 0
+    }
+  ]
+}

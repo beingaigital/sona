@@ -1,0 +1,15 @@
+{
+  "type": "Case",
+  "title": "国家烟草专卖局",
+  "source_file": "鍥藉鐑熻崏涓撳崠灞€.md",
+  "confidence": "medium",
+  "keywords": [
+    "自动生成",
+    "增量更新"
+  ],
+  "domain": "",
+  "actors": [],
+  "risk_patterns": [],
+  "response_tactics": [],
+  "summary": ""
+}

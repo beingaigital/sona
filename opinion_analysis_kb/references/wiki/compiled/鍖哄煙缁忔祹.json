@@ -1,0 +1,15 @@
+{
+  "type": "Case",
+  "title": "区域经济",
+  "source_file": "鍖哄煙缁忔祹.md",
+  "confidence": "medium",
+  "keywords": [
+    "自动生成",
+    "增量更新"
+  ],
+  "domain": "",
+  "actors": [],
+  "risk_patterns": [],
+  "response_tactics": [],
+  "summary": ""
+}

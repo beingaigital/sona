@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import html
 import json
-import os
 import re
 from datetime import datetime
 from pathlib import Path
@@ -19,6 +18,20 @@ from utils.prompt_loader import get_prompt_config, get_report_html_template_base
 # 模板内 JSON 锚点（整段合法 JSON 对象字面量）
 REPORT_CONFIG_ANCHOR = "__REPORT_CONFIG_JSON__"
 REPORT_DATA_ANCHOR = "__REPORT_JSON_DATA__"
+
+
+def normalize_report_length(value: Optional[str]) -> str:
+    """将用户/配置中的篇幅偏好规范为 short|medium|long（未知则回退 medium）。"""
+    if value is None or not str(value).strip():
+        return "medium"
+    v = str(value).strip().lower()
+    if v in {"短", "短篇", "short", "brief"}:
+        return "short"
+    if v in {"长", "长篇", "long", "full"}:
+        return "long"
+    if v in {"中", "中篇", "medium", "standard", "normal"}:
+        return "medium"
+    return v
 
 # 情感色：正面蓝 / 中立(中性)绿 / 负面红
 _SENTIMENT_COLORS = {
@@ -73,7 +86,6 @@ _PLACEHOLDER_KEYS = frozenset(
         "CHART_REGION_ANALYSIS",
         "CHART_AUTHOR_ANALYSIS",
         "CHART_KEYWORD_ANALYSIS",
-        "CHART_CHANNEL_ANALYSIS",
         "CHART_RADAR_ANALYSIS",
         "CHART_LIFECYCLE_ANALYSIS",
         "THEORY_BUTTERFLY",
@@ -93,7 +105,6 @@ _LIST_PLACEHOLDER_KEYS: Set[str] = {
     "CHART_REGION_ANALYSIS",
     "CHART_AUTHOR_ANALYSIS",
     "CHART_KEYWORD_ANALYSIS",
-    "CHART_CHANNEL_ANALYSIS",
     "CHART_RADAR_ANALYSIS",
     "CHART_LIFECYCLE_ANALYSIS",
     "RESPONSE_ANALYSIS_BULLETS",
@@ -153,107 +164,6 @@ def _find_timeline_json(json_files: List[Dict[str, Any]]) -> Optional[Dict[str, 
 
 def _find_author_json(json_files: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
     return _get_json_by_name(json_files, "author_stats.json")
-
-
-def _find_channel_distribution_json(json_files: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
-    """
-    读取渠道分布 JSON（优先 channel_distribution.json）。
-
-    兼容 shape：
-    - {"distribution": [{"channel": "...", "count": 1}, ...]}
-    - {"channels": [{"name": "...", "value": 1}, ...]}
-    - {"weibo": 10, "zhihu": 2, ...}  # 顶层 key->count
-    - {"distribution": {"weibo": 10, ...}}
-    """
-    # 1) 精确命中
-    hit = _get_json_by_name(json_files, "channel_distribution.json")
-    if hit:
-        return hit
-    # 2) 模糊兜底（文件名包含 channel & dist）
-    for item in json_files:
-        fn = str(item.get("filename", "") or "").strip().lower()
-        if "channel" in fn and ("dist" in fn or "distribution" in fn) and fn.endswith(".json"):
-            c = item.get("content")
-            if isinstance(c, dict):
-                return c
-    return None
-
-
-def _build_channel_pie_data(channel_obj: Optional[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """
-    将 channel_distribution.json 转为 ECharts pie 所需的 [{name, value}]。
-    """
-    if not isinstance(channel_obj, dict) or not channel_obj:
-        return []
-
-    candidates: List[Tuple[str, int]] = []
-
-    # list-shaped
-    for key in ("distribution", "channels", "data", "items", "results"):
-        rows = channel_obj.get(key)
-        if isinstance(rows, list) and rows:
-            for r in rows:
-                if not isinstance(r, dict):
-                    continue
-                name = str(
-                    r.get("channel")
-                    or r.get("platform")
-                    or r.get("name")
-                    or r.get("source")
-                    or ""
-                ).strip()
-                val = r.get("count", r.get("value", r.get("num", 0)))
-                if not name:
-                    continue
-                candidates.append((name, _safe_int(val, 0)))
-            break
-
-    # dict-shaped mapping
-    if not candidates:
-        mapping = channel_obj.get("distribution")
-        if isinstance(mapping, dict) and mapping:
-            for k, v in mapping.items():
-                name = str(k or "").strip()
-                if not name:
-                    continue
-                candidates.append((name, _safe_int(v, 0)))
-        else:
-            # top-level mapping: filter out obviously non-channel keys
-            for k, v in channel_obj.items():
-                name = str(k or "").strip()
-                if not name or name.startswith("_"):
-                    continue
-                if name.lower() in {
-                    "status",
-                    "meta",
-                    "total",
-                    "summary",
-                    "date_range",
-                    "total_count",
-                    "items",
-                    "chart_type",
-                    "mermaid_pie",
-                    "created_at",
-                    "calculation_source",
-                }:
-                    continue
-                if isinstance(v, (int, float, str)):
-                    candidates.append((name, _safe_int(v, 0)))
-
-    # clean + sort
-    cleaned = [(n, c) for n, c in candidates if n and c > 0]
-    if not cleaned:
-        return []
-    cleaned.sort(key=lambda x: x[1], reverse=True)
-
-    # 聚合长尾，避免图例过长
-    top = cleaned[:10]
-    rest = cleaned[10:]
-    rest_sum = sum(v for _, v in rest)
-    out = [{"name": n, "value": v} for n, v in top]
-    if rest_sum > 0:
-        out.append({"name": "其他", "value": rest_sum})
-    return out
 
 
 def build_report_config_from_json_files(json_files: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -422,45 +332,74 @@ def _build_radar_values(report_config: Dict[str, Any]) -> List[int]:
     ]
 
 
-def _extract_volume_series(vol: Optional[Dict[str, Any]]) -> Tuple[List[str], List[int], List[int], Dict[str, Any]]:
-    """
-    从 volume_stats.json 中抽取趋势序列。
+def _build_channel_pie_data(channel: Optional[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """将 channel_distribution JSON 转为饼图数据（排除 total_count 等聚合键）。"""
+    if not isinstance(channel, dict):
+        return []
+    items = channel.get("items")
+    if not isinstance(items, list):
+        return []
+    pie: List[Dict[str, Any]] = []
+    for it in items:
+        if not isinstance(it, dict):
+            continue
+        name = str(it.get("platform", "") or "").strip()
+        if not name or name.lower() == "total_count":
+            continue
+        pie.append({"name": name, "value": _safe_int(it.get("count", 0), 0)})
+    pie.sort(key=lambda x: x["value"], reverse=True)
+    return pie
 
-    Returns:
-        dates: x 轴日期
-        post_counts: 发文量（条数）
-        heat_norm: 热度（0-100，若缺失则用 0 填充）
-        raw: 原始 volume_stats 对象（用于其他元信息）
-    """
+
+def _extract_volume_series(
+    vol: Optional[Dict[str, Any]],
+) -> Tuple[List[str], List[int], List[float], Dict[str, Any]]:
+    """从 volume_stats.json 抽取日期、发帖量、归一化热度(0–100) 与原始对象。"""
     if not isinstance(vol, dict):
-        return ["—"], [0], [0], {}
+        return ["—"], [0], [0.0], {}
 
-    post_series = vol.get("post_count_series") or vol.get("data")
-    dates: List[str] = []
-    post_counts: List[int] = []
-    if isinstance(post_series, list) and post_series:
-        dates = [str(x.get("name", "—")) for x in post_series if isinstance(x, dict)]
-        post_counts = [_safe_int(x.get("value", 0), 0) for x in post_series if isinstance(x, dict)]
+    posts = vol.get("post_count_series")
+    if isinstance(posts, list) and posts:
+        dates = [str(x.get("name", "—")) for x in posts if isinstance(x, dict)]
+        post_counts = [_safe_int(x.get("value", 0), 0) for x in posts if isinstance(x, dict)]
+        heat_norm: List[float] = []
+        heat_pct = vol.get("heat_percentage_series")
+        heat_idx = vol.get("heat_index_series")
+        if isinstance(heat_pct, list) and len(heat_pct) == len(posts):
+            heat_norm = [
+                min(100.0, max(0.0, float(x.get("value", 0)) * 100.0))
+                for x in heat_pct
+                if isinstance(x, dict)
+            ]
+        elif isinstance(heat_idx, list) and len(heat_idx) == len(posts):
+            raw_h = [_safe_int(x.get("value", 0), 0) for x in heat_idx if isinstance(x, dict)]
+            mx = max(raw_h, default=1) or 1
+            heat_norm = [min(100.0, max(0.0, 100.0 * h / float(mx))) for h in raw_h]
+        else:
+            mx = max(post_counts, default=1) or 1
+            heat_norm = [min(100.0, max(0.0, 100.0 * c / float(mx))) for c in post_counts]
+        if dates and post_counts and len(dates) == len(post_counts) == len(heat_norm):
+            return dates, post_counts, heat_norm, vol
 
-    heat_series = vol.get("heat_percentage_series") or vol.get("heat_percentage_smoothed")
-    heat_norm: List[int] = []
-    if isinstance(heat_series, list) and heat_series:
-        heat_dates = [str(x.get("name", "—")) for x in heat_series if isinstance(x, dict)]
-        heat_vals = [_safe_int(x.get("value", 0), 0) for x in heat_series if isinstance(x, dict)]
-        if heat_dates and heat_vals and dates and heat_dates == dates:
-            heat_norm = heat_vals
-        elif heat_dates and heat_vals and not dates:
-            dates = heat_dates
-            heat_norm = heat_vals
+    heat_smoothed = vol.get("heat_percentage_smoothed")
+    if isinstance(heat_smoothed, list) and heat_smoothed:
+        dates = [str(x.get("name", "—")) for x in heat_smoothed if isinstance(x, dict)]
+        values = [_safe_int(x.get("value", 0), 0) for x in heat_smoothed if isinstance(x, dict)]
+        if dates and values:
+            mx = max(values, default=1) or 1
+            heat_norm = [min(100.0, max(0.0, 100.0 * v / float(mx))) for v in values]
+            return dates, values, heat_norm, vol
 
-    if not dates or not post_counts:
-        return ["—"], [0], [0], vol
+    data = vol.get("data")
+    if isinstance(data, list) and data:
+        dates = [str(x.get("name", "—")) for x in data if isinstance(x, dict)]
+        values = [_safe_int(x.get("value", 0), 0) for x in data if isinstance(x, dict)]
+        if dates and values:
+            mx = max(values, default=1) or 1
+            heat_norm = [min(100.0, max(0.0, 100.0 * v / float(mx))) for v in values]
+            return dates, values, heat_norm, vol
 
-    if not heat_norm:
-        heat_norm = [0 for _ in dates]
-    if len(heat_norm) != len(dates):
-        heat_norm = (heat_norm + [0 for _ in dates])[: len(dates)]
-    return dates, post_counts, heat_norm, vol
+    return ["—"], [0], [0.0], vol
 
 
 def _classify_lifecycle_stage(values: List[int]) -> List[str]:
@@ -618,11 +557,10 @@ def build_report_data_from_json_files(json_files: List[Dict[str, Any]]) -> Dict[
             author_values.append(_safe_int(row.get("count", 0), 0))
 
     vol = _get_json_by_name(json_files, "volume_stats.json")
-    trend_dates, post_counts, heat_norm, _ = _extract_volume_series(vol)
-    if trend_dates == ["—"] and post_counts == [0]:
+    trend_dates, trend_values, _, _ = _extract_volume_series(vol)
+    if trend_dates == ["—"] and trend_values == [0]:
         trend_dates = list(cfg.get("trend", {}).get("dates", []) or [])
-        post_counts = [_safe_int(v, 0) for v in (cfg.get("trend", {}).get("values", []) or [])]
-        heat_norm = [0 for _ in post_counts]
+        trend_values = [_safe_int(v, 0) for v in (cfg.get("trend", {}).get("values", []) or [])]
 
     # 关键词词云：输出 name/value/pos 列表供前端 DOM 词云渲染
     keyword_cloud = [
@@ -634,25 +572,18 @@ def build_report_data_from_json_files(json_files: List[Dict[str, Any]]) -> Dict[
         for x in (cfg.get("keywords", []) or [])
         if isinstance(x, dict) and str(x.get("word", "") or "").strip()
     ][:120]
-    lifecycle = _build_lifecycle_series(trend_dates, post_counts)
-    channel_obj = _find_channel_distribution_json(json_files)
-    channel_pie = _build_channel_pie_data(channel_obj)
+    lifecycle = _build_lifecycle_series(trend_dates, trend_values)
 
     return {
         "charts": {
             "sentiment": cfg.get("sentiment", []),
-            "volume": {
-                "dates": trend_dates or ["—"],
-                "postCounts": post_counts or [0],
-                "heat": heat_norm or [0],
-            },
+            "volume": {"dates": trend_dates or ["—"], "values": trend_values or [0]},
             "region": {
                 "names": list(cfg.get("regions", {}).get("names", []) or ["—"]),
                 "values": list(cfg.get("regions", {}).get("counts", []) or [0]),
             },
             "author": {"names": author_names or ["证据不足"], "values": author_values or [0]},
             "keyword": keyword_cloud or [{"name": "证据不足", "value": 0}],
-            "channel": channel_pie,
             "radarValues": _build_radar_values(cfg),
             "lifecycle": lifecycle,
         },
@@ -709,38 +640,6 @@ def _load_template_fill_prompt() -> str:
     return ""
 
 
-def _report_template_analysis_char_budget() -> int:
-    raw = str(os.environ.get("SONA_REPORT_TEMPLATE_ANALYSIS_BUDGET_CHARS", "") or "").strip()
-    try:
-        n = int(raw)
-    except Exception:
-        n = 72_000
-    return max(24_000, min(n, 220_000))
-
-
-def _merge_kb_priority_and_analysis_budget(kb_priority_text: str, analysis_results_text: str) -> str:
-    """
-    叙事模型输入预算：优先完整保留 Wiki/微博/OPRAG 等「优先区」，再截断后续过程 JSON。
-    修复原先仅取 analysis 前 14k 导致 wiki/微博从未进入模型上下文的缺陷。
-    """
-    kb = (kb_priority_text or "").strip()
-    body = (analysis_results_text or "").strip()
-    max_total = _report_template_analysis_char_budget()
-    if not kb:
-        return body[:max_total] + ("..." if len(body) > max_total else "")
-    if len(kb) >= max_total:
-        return kb[:max_total] + "\n...[KB 优先区过长已截断]..."
-    room = max_total - len(kb) - 32
-    if len(body) <= room:
-        return kb + "\n\n" + body
-    return (
-        kb
-        + "\n\n"
-        + body[:room]
-        + "\n\n...[后续过程文件 JSON 已截断；完整内容仍在任务「过程文件」目录]..."
-    )
-
-
 def _parse_llm_json_object(text: str) -> Optional[Dict[str, Any]]:
     if not text:
         return None
@@ -758,75 +657,23 @@ def _parse_llm_json_object(text: str) -> Optional[Dict[str, Any]]:
         return None
 
 
-def normalize_report_length(value: Optional[str]) -> str:
-    """将用户/路由配置中的篇幅偏好归一为 短篇|中篇|长篇。"""
-    s = str(value or "").strip()
-    if s in ("短篇", "中篇", "长篇"):
-        return s
-    low = s.lower()
-    if low in ("short", "brief", "s"):
-        return "短篇"
-    if low in ("long", "full", "l"):
-        return "长篇"
-    if low in ("medium", "mid", "m", "normal"):
-        return "中篇"
-    default_length = str(os.environ.get("SONA_DEFAULT_REPORT_LENGTH", "") or "").strip()
-    if default_length in ("短篇", "中篇", "长篇"):
-        return default_length
-    default_length_low = default_length.lower()
-    if default_length_low in ("short", "brief", "s"):
-        return "短篇"
-    if default_length_low in ("medium", "mid", "m", "normal"):
-        return "中篇"
-    if default_length_low in ("long", "full", "l"):
-        return "长篇"
-    return "长篇"
-
-
-def format_report_length_instruction(report_length: str) -> str:
-    """供模板叙事与非模板 HTML 生成共用的篇幅指令（追加到模型提示词末尾）。"""
-    key = normalize_report_length(report_length)
-    guides = {
-        "短篇": (
-            "【篇幅目标：短篇】\n"
-            "可见正文总篇幅控制在约 1200～1800 字当量；可合并小节、删减重复图表解读；"
-            "每个核心小节至多 3～4 条要点，结论优先，避免堆砌套话。"
-        ),
-        "中篇": (
-            "【篇幅目标：中篇】\n"
-            "各核心维度均衡展开，可见正文约 2500～4000 字当量；"
-            "图表/数据后的结论各 2～3 条要点即可，勿为凑字数空泛扩写。"
-        ),
-        "长篇": (
-            "【篇幅目标：长篇】\n"
-            "允许充分展开研判、机制解释与处置建议，可见正文约 4500～7000 字当量；"
-            "仍须严格依据输入材料，禁止编造；明显重复段落应合并。"
-        ),
-    }
-    return guides.get(key, guides["中篇"])
-
-
 def call_llm_for_template_narrative(
     *,
     event_introduction: str,
     analysis_results_text: str,
     methodology_text: str,
     meta_json: str,
-    kb_priority_text: str = "",
-    report_length: str = "中篇",
 ) -> Dict[str, Any]:
     """调用模型，仅返回叙事占位符 JSON。"""
     tpl = _load_template_fill_prompt()
     if not tpl:
         return {}
-    merged_analysis = _merge_kb_priority_and_analysis_budget(kb_priority_text, analysis_results_text)
     prompt = (
         tpl.replace("{event_introduction}", event_introduction or "")
-        .replace("{analysis_results}", merged_analysis or "")
+        .replace("{analysis_results}", analysis_results_text or "")
         .replace("{methodology}", methodology_text or "")
         .replace("{meta_json}", meta_json or "{}")
     )
-    prompt += "\n\n" + format_report_length_instruction(report_length)
     model = get_report_model()
     messages = [
         SystemMessage(
@@ -946,128 +793,6 @@ def _sanitize_narrative_language(text_map: Dict[str, Any], defaults: Dict[str, s
     return sanitized
 
 
-def _has_placeholder_text(value: Any) -> bool:
-    s = str(value or "").strip()
-    if not s:
-        return True
-    marks = ("证据不足", "待补充", "placeholder", "todo", "请补充分析", "—", "-", "－")
-    return any(m in s.lower() for m in [x.lower() for x in marks])
-
-
-def _fill_missing_narrative_sections(text_map: Dict[str, Any], report_data: Dict[str, Any]) -> Dict[str, Any]:
-    """Use structured report_data to fill weak placeholder sections."""
-    out: Dict[str, Any] = dict(text_map)
-    charts = report_data.get("charts") if isinstance(report_data.get("charts"), dict) else {}
-    lifecycle = charts.get("lifecycle") if isinstance(charts.get("lifecycle"), dict) else {}
-    stages = lifecycle.get("stages") if isinstance(lifecycle.get("stages"), list) else []
-    values = lifecycle.get("values") if isinstance(lifecycle.get("values"), list) else []
-    boundaries = lifecycle.get("boundaries") if isinstance(lifecycle.get("boundaries"), list) else []
-
-    # Lifecycle chart analysis fallback
-    if _has_placeholder_text(out.get("CHART_LIFECYCLE_ANALYSIS")):
-        peak = max([_safe_int(v, 0) for v in values], default=0)
-        latest = str(stages[-1] if stages else "衰退")
-        trans = "、".join(str(b.get("name", "")).strip() for b in boundaries[:3] if isinstance(b, dict) and str(b.get("name", "")).strip())
-        out["CHART_LIFECYCLE_ANALYSIS"] = [
-            f"当前阶段判定为{latest}期，近期声量峰值约为{peak}，整体节奏已从高位回落。",
-            f"阶段迁移链路为：{trans or '潜伏→扩散→爆发→衰退'}，与常见公共议题生命周期基本一致。",
-            "后续可重点观察是否出现二次抬升信号（新素材传播、关键账号再发声、媒体再聚焦）。",
-        ]
-
-    # Channel distribution fallback (when JSON exists but narrative missing)
-    if _has_placeholder_text(out.get("CHART_CHANNEL_ANALYSIS")):
-        channel = list(charts.get("channel", []) or [])
-        channel = [x for x in channel if isinstance(x, dict) and str(x.get("name", "")).strip()]
-        channel.sort(key=lambda x: _safe_int(x.get("value", 0), 0), reverse=True)
-        if channel:
-            top = channel[:3]
-            total = sum(_safe_int(x.get("value", 0), 0) for x in channel) or 1
-            top_sum = sum(_safe_int(x.get("value", 0), 0) for x in top)
-            share = round(100.0 * top_sum / total, 1)
-            top_names = [str(x.get("name", "")).strip() for x in top if str(x.get("name", "")).strip()]
-            top_desc = "、".join(top_names) if top_names else "主要平台"
-            out["CHART_CHANNEL_ANALYSIS"] = [
-                f"渠道声量主要集中在「{top_desc}」（Top{len(top)} 合计约{share}%），呈现一定渠道集中度。",
-                "建议结合不同渠道的内容形态差异（短视频/问答/资讯）调整回应载体与节奏，避免单点渠道失守引发跨平台扩散。",
-                "如需精细化处置，可进一步下钻到各渠道的高互动样本与核心发布者，识别传播链关键节点。",
-            ]
-
-    # Theory slots fallback：避免长期出现“证据不足”与固定三件套复读
-    def _pick_distinct_theory_texts() -> Dict[str, str]:
-        sent_items = list(charts.get("sentiment", []) or [])
-        sent_map = {str(x.get("name", "")): _safe_int(x.get("value", 0), 0) for x in sent_items if isinstance(x, dict)}
-        pos = sent_map.get("正面", 0)
-        neg = sent_map.get("负面", 0)
-        neu = sent_map.get("中立", sent_map.get("中性", 0))
-        total = max(1, pos + neg + neu)
-        neg_ratio = round(100.0 * neg / total, 1)
-        pos_ratio = round(100.0 * pos / total, 1)
-
-        region_names = list(charts.get("region", {}).get("names", []) or [])
-        region_vals = list(charts.get("region", {}).get("values", []) or [])
-        region_pairs = [(str(n), _safe_int(v, 0)) for n, v in zip(region_names, region_vals) if str(n).strip() and str(n).strip() != "—"]
-        region_pairs.sort(key=lambda x: x[1], reverse=True)
-        region_hint = "、".join([n for n, _ in region_pairs[:2]]) if region_pairs else "部分地区"
-
-        channel = list(charts.get("channel", []) or [])
-        channel = [x for x in channel if isinstance(x, dict) and str(x.get("name", "")).strip()]
-        channel.sort(key=lambda x: _safe_int(x.get("value", 0), 0), reverse=True)
-        top_channel = str(channel[0].get("name", "")).strip() if channel else "头部渠道"
-
-        lifecycle = charts.get("lifecycle") if isinstance(charts.get("lifecycle"), dict) else {}
-        stage = str((lifecycle.get("stages") or ["衰退"])[-1]) if isinstance(lifecycle.get("stages"), list) else "衰退"
-
-        candidates: List[tuple[str, str]] = [
-            (
-                "THEORY_SILENCE",
-                f"情绪感染与群体极化：当前负面占比约{neg_ratio}%（正面约{pos_ratio}%），讨论容易在高互动样本中形成同温层放大；"
-                "建议用“可执行信息 + 明确规则边界 + 同理表达”组合，降低对立叙事的情绪黏性。",
-            ),
-            (
-                "THEORY_AGENDA",
-                f"框架竞争与议程迁移：议题往往在“秩序维护/公共规则”与“个体权益/服务体验”之间来回切换；"
-                f"当讨论进入{stage}期，更需要用稳定口径把争议点收敛到可复核的事实与处理标准，避免被二次切片带节奏。",
-            ),
-            (
-                "THEORY_BUTTERFLY",
-                f"风险感知放大（社会放大框架）：单点冲突经{top_channel}等平台二次传播后，容易被上升为公共治理/服务能力的象征性争论；"
-                f"可结合{region_hint}等活跃地区的高互动样本做针对性解释与服务补位，降低次生扩散概率。",
-            ),
-        ]
-
-        # 去重：避免三个槽位在关键词上高度重复
-        picked: Dict[str, str] = {}
-        used_signatures: set[str] = set()
-        for k, txt in candidates:
-            sig = "|".join(sorted(set(re.findall(r"[\u4e00-\u9fff]{2,6}", txt)))[0:10])
-            if sig in used_signatures:
-                continue
-            used_signatures.add(sig)
-            picked[k] = txt
-        return picked
-
-    theory_texts = _pick_distinct_theory_texts()
-    if _has_placeholder_text(out.get("THEORY_SILENCE")):
-        out["THEORY_SILENCE"] = theory_texts.get("THEORY_SILENCE", out.get("THEORY_SILENCE", ""))
-    if _has_placeholder_text(out.get("THEORY_AGENDA")):
-        out["THEORY_AGENDA"] = theory_texts.get("THEORY_AGENDA", out.get("THEORY_AGENDA", ""))
-    if _has_placeholder_text(out.get("THEORY_BUTTERFLY")):
-        out["THEORY_BUTTERFLY"] = theory_texts.get("THEORY_BUTTERFLY", out.get("THEORY_BUTTERFLY", ""))
-
-    # Intro trigger fallback
-    if _has_placeholder_text(out.get("INTRO_TRIGGERS")):
-        out["INTRO_TRIGGERS"] = "高热触发通常来自“规则执行争议 + 视频化传播 + 媒体再放大”的叠加效应。"
-
-    # Recap fallback
-    if _has_placeholder_text(out.get("RECAP_DISCOURSE")):
-        out["RECAP_DISCOURSE"] = "该议题的核心不是单点事实，而是公众对“规则执行是否一致、是否可感知”的持续关注。"
-    if _has_placeholder_text(out.get("RECAP_TRENDS")):
-        latest = str(stages[-1] if stages else "衰退")
-        out["RECAP_TRENDS"] = f"当前整体处于{latest}期，建议将策略重心从灭火转为复盘和预防，降低同类事件复发概率。"
-
-    return out
-
-
 def merge_morandi_template(
     template_html: str,
     text_map: Dict[str, str],
@@ -1086,8 +811,6 @@ def merge_morandi_template(
             out = out.replace(token, _to_bulleted_list_html(val))
         else:
             out = out.replace(token, html.escape(str(val), quote=True))
-    # 轻量措辞清洗：避免“知识库建议”类前缀污染主报告叙事（引用应在脚注/来源区体现）
-    out = out.replace("知识库建议", "").replace("知识库提示", "")
     return out
 
 
@@ -1098,8 +821,6 @@ def build_html_from_morandi_template(
     event_introduction: str,
     analysis_results_text: str,
     methodology_text: str,
-    kb_priority_text: str = "",
-    report_length: str = "中篇",
 ) -> str:
     """读取模板、抽取数据、调用叙事模型、合并输出。"""
     template_html = template_path.read_text(encoding="utf-8")
@@ -1108,17 +829,15 @@ def build_html_from_morandi_template(
     meta = build_meta_placeholders(json_files, event_introduction)
     meta_json = json.dumps(meta, ensure_ascii=False, indent=2)
 
-    meth_budget = int(str(os.environ.get("SONA_REPORT_TEMPLATE_METHODOLOGY_CHARS", "20000") or "20000"))
-    meth_budget = max(8000, min(meth_budget, 64_000))
-    meth_trunc = (methodology_text or "")[:meth_budget]
+    # 控制上下文长度
+    ar_trunc = (analysis_results_text or "")[:14000]
+    meth_trunc = (methodology_text or "")[:6000]
 
     narrative = call_llm_for_template_narrative(
         event_introduction=event_introduction or "",
-        analysis_results_text=analysis_results_text or "",
+        analysis_results_text=ar_trunc,
         methodology_text=meth_trunc,
         meta_json=meta_json,
-        kb_priority_text=kb_priority_text or "",
-        report_length=normalize_report_length(report_length),
     )
 
     # 合并：默认 → 模型叙事 → 程序元信息（后者覆盖数字类字段）
@@ -1133,8 +852,6 @@ def build_html_from_morandi_template(
                 else:
                     text_map[ks] = str(v).strip()
     text_map.update(meta)
-    # 明确口径：地域分析来自 IP 属地统计（region_stats），用于约束模型不要输出“未提取明确地域分布”类误导文案
-    text_map.setdefault("REGION_SOURCE", "IP属地")
     sample = text_map.get("SAMPLE_SIZE", "—")
     effective = text_map.get("EFFECTIVE_VOLUME", "—")
     sample_int = _safe_int_from_text(sample, 0)
@@ -1172,7 +889,6 @@ def build_html_from_morandi_template(
     text_map["KPI_EFFECTIVE"] = str(impact_index)
 
     text_map = _sanitize_narrative_language(text_map, defaults)
-    text_map = _fill_missing_narrative_sections(text_map, report_data)
     intro_val = str(text_map.get("INTRO_BACKGROUND", "") or "").strip()
     if len(intro_val) > 600:
         text_map["INTRO_BACKGROUND"] = intro_val[:600] + "..."
@@ -1187,16 +903,6 @@ def build_html_from_morandi_template(
         weak_hits = sum(1 for x in items if "证据不足" in x or "未提供" in x)
         return weak_hits >= max(1, len(items) // 2)
 
-    region_text_raw = str(text_map.get("CHART_REGION_ANALYSIS", "") or "")
-    # 若模型输出了误导句，且 region_stats 实际有结果，则强制清空并走程序兜底生成
-    if "数据未提取明确地域分布统计，仅显示IP属地字段存在" in region_text_raw:
-        names_probe = list(report_data.get("charts", {}).get("region", {}).get("names", []) or [])
-        vals_probe = list(report_data.get("charts", {}).get("region", {}).get("values", []) or [])
-        has_region_stats = any(str(n).strip() and str(n).strip() != "—" for n in names_probe) and any(
-            _safe_int(v, 0) > 0 for v in vals_probe
-        )
-        if has_region_stats:
-            text_map["CHART_REGION_ANALYSIS"] = []
     if _is_weak_list(text_map.get("CHART_REGION_ANALYSIS")):
         names = list(report_data.get("charts", {}).get("region", {}).get("names", []) or [])
         vals = list(report_data.get("charts", {}).get("region", {}).get("values", []) or [])
@@ -1208,12 +914,10 @@ def build_html_from_morandi_template(
             total = sum(v for _, v in pairs) or 1
             top_sum = sum(v for _, v in top)
             share = round(100.0 * top_sum / total, 1)
-            top_names = [n for n, _ in top if n]
-            top_desc = "、".join(top_names) if top_names else "主要地区"
             text_map["CHART_REGION_ANALYSIS"] = [
-                f"主要声量集中在「{top_desc}」等地（Top{len(top)}合计约{share}%），呈现明显区域聚集特征。",
-                "地域分布显示讨论在部分省市更活跃，说明传播与本地社会经验、平台用户结构存在关联。",
-                "若需进一步验证地域差异来源，可补充同城高互动样本与地方媒体链路进行交叉核验。",
+                f"主要声量集中在「{top[0][0]}、{top[1][0]}、{top[2][0]}」等地（Top3合计约{share}%），呈现区域性聚集特征；建议优先在这些地区的重点账号/媒体做信息澄清与议题引导。",
+                "地域分布的集中意味着讨论更可能由本地社会经验/群体情绪驱动扩散；建议结合地域高发话题（如公共秩序、育儿冲突）做针对性回应话术。",
+                "若需进一步研判“线下影响”，建议补采集地域维度的高互动样本，核验是否存在同城号、地方媒体或本地KOL带节奏。",
             ]
 
     if _is_weak_list(text_map.get("CHART_KEYWORD_ANALYSIS")):
@@ -1223,9 +927,9 @@ def build_html_from_morandi_template(
         if kws:
             topw = [str(x["name"]) for x in kws[:8]]
             text_map["CHART_KEYWORD_ANALYSIS"] = [
-                f"高频关键词集中在「{'、'.join(topw[:5])}」等，讨论焦点更偏向冲突场景与规则认知，而非单一事实复述。",
-                "关键词结构中情绪词和评价词占比较高时，通常意味着讨论正在从事实层向立场层迁移。",
-                "可持续跟踪 Top200 热词的主题簇变化，观察议题是否出现外溢和泛化。",
+                f"高频关键词集中在「{'、'.join(topw[:5])}」等，讨论焦点更偏向“行为冲突/公共秩序/育儿争议”而非单一事实本身；建议回应时先对齐公众最关心的冲突点。",
+                "关键词结构呈现明显的情绪化与道德评判取向时，舆情更易二次发酵；建议用“规则共识 + 体验共情”的组合话术降低对立。",
+                "建议持续监测 Top200 热词的主题簇变化（是否从事件细节转向群体对立/标签化），一旦出现泛化趋势及时介入议题边界管理。",
             ]
 
     recap_discourse = str(text_map.get("RECAP_DISCOURSE", "") or "").strip()

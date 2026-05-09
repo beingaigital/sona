@@ -1,6 +1,6 @@
 ---
 title: 舆情管理不得不懂的“群氓的时代”
-source_file: /Users/biaowenhuang/Documents/sona-master/opinion_analysis_kb/references/expert_notes/舆情分析的相关理论/舆情管理不得不懂的“群氓的时代”.md
+source_file: /Users/walk/Downloads/sona-main/opinion_analysis_kb/references/expert_notes/舆情分析的相关理论/舆情管理不得不懂的“群氓的时代”.md
 updated_at: 2026-04-22 20:36:00
 tags:
   - 群氓

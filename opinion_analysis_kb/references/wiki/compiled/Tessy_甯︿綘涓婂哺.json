@@ -1,0 +1,15 @@
+{
+  "type": "Case",
+  "title": "Tessy 带你上岸",
+  "source_file": "Tessy_甯︿綘涓婂哺.md",
+  "confidence": "medium",
+  "keywords": [
+    "自动生成",
+    "增量更新"
+  ],
+  "domain": "",
+  "actors": [],
+  "risk_patterns": [],
+  "response_tactics": [],
+  "summary": ""
+}

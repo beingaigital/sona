@@ -19,7 +19,7 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.prompt import Prompt
 
 from agent.reactagent import stream
-from utils.path import ensure_task_dirs
+from utils.path import ensure_task_dirs, get_task_dir
 from utils.session_manager import get_session_manager
 from utils.token_tracker import TokenUsageTracker
 from cli.display import (
@@ -36,68 +36,48 @@ from utils.message_utils import messages_from_session_data
 from cli.event_analysis_workflow import run_event_analysis_workflow
 from cli.router import route_query, get_router
 from cli.hot_ui import run_hot_command
-from cli.wiki_ui import run_wiki_command, run_wiki_approve_command
-from tools.extract_search_terms import extract_search_terms
 from rich.prompt import Confirm
 
 LOG_PATH = "/Users/biaowenhuang/Documents/sona-master/.cursor/debug.log"
 
 
-def _full_report_workflow_options(
-    route_policy: Optional[Dict[str, Any]] = None,
-    *,
-    existing_data_path: Optional[str] = None,
-    skip_data_collect: bool = False,
-    force_fresh_start: Optional[bool] = False,
-) -> Dict[str, Any]:
-    """合并路由策略中的 report_length，并传递数据复用相关选项到 full_report 模式。"""
-    rl = ""
-    if isinstance(route_policy, dict):
-        rl = str(route_policy.get("report_length") or "").strip()
-    if not rl:
-        rl = str(get_router().policy_loader.get_policy().report_length or "").strip()
-    return {
-        "existing_data_path": existing_data_path,
-        "skip_data_collect": skip_data_collect,
-        "force_fresh_start": force_fresh_start,
-        "report_length": rl or "中篇",
-    }
+def _should_show_traceback() -> bool:
+    return os.environ.get("SONA_SHOW_TRACEBACK", "").strip().lower() in ("1", "true", "yes", "y")
 
 
-_PT_SESSION = None
-
-
-def _should_use_prompt_toolkit() -> bool:
-    v = os.environ.get("SONA_CLI_PROMPT_TOOLKIT", "true").strip().lower()
-    if v in ("0", "false", "no", "n", "off"):
-        return False
-    try:
-        return bool(sys.stdin.isatty() and sys.stdout.isatty())
-    except Exception:
-        return False
-
-
-def _ask_user(prompt_text: str) -> str:
+def _is_openai_insufficient_balance_error(err: BaseException) -> bool:
     """
-    统一用户输入读取：
-    - 优先 prompt-toolkit：支持左右移动/历史/编辑
-    - 失败回退 rich Prompt.ask
+    识别 OpenAI 侧因余额不足/账单问题导致的 429（非“请求过快”）。
+    常见特征：
+    - suspended due to insufficient balance
+    - exceeded_current_quota_error
     """
-    global _PT_SESSION
+    msg = str(err).lower()
+    return (
+        "insufficient balance" in msg
+        or "exceeded_current_quota_error" in msg
+        or ("suspended" in msg and "insufficient" in msg)
+    )
 
-    if _should_use_prompt_toolkit():
-        try:
-            from prompt_toolkit import PromptSession
-            from prompt_toolkit.formatted_text import ANSI
 
-            if _PT_SESSION is None:
-                _PT_SESSION = PromptSession()
-            return str(_PT_SESSION.prompt(ANSI(prompt_text))).strip()
-        except Exception:
-            pass
-
-    plain = re.sub(r"\[[^\]]+\]", "", str(prompt_text))
-    return str(Prompt.ask(plain)).strip()
+def _print_openai_billing_help() -> None:
+    console.print()
+    console.print("[bold red]OpenAI 账户余额不足 / 账单异常[/bold red]")
+    console.print(
+        "\n".join(
+            [
+                "",
+                "- 这不是代码问题，也不是限流；是 OpenAI 侧提示该组织账号被暂停（余额不足）。",
+                "- 处理方式：",
+                "  1) 到 OpenAI 控制台充值/恢复账单（Billing / Usage）",
+                "  2) 确认你使用的 `OPENAI_API_KEY` 属于有余额的组织/项目",
+                "  3) 若你有多个组织，检查当前 key 绑定的组织是否正确（必要时切换组织）",
+                "",
+                "控制台入口：`https://platform.openai.com/account/billing`",
+            ]
+        )
+    )
+    console.print()
 
 
 def _append_ndjson_log(
@@ -125,114 +105,11 @@ def _append_ndjson_log(
         return
 
 
-def _run_event_brief_workflow(query: str, task_id: str) -> None:
-    """
-    轻量事件概述流程：
-    - 仅调用 extract_search_terms
-    - 输出事件简介 / 关键词 / 时间范围
-    """
-    session_manager = get_session_manager()
-    session_manager.add_message(task_id, "user", query)
-    try:
-        raw = extract_search_terms.invoke({"query": query})
-        if not isinstance(raw, str):
-            raw = str(raw)
-        data = json.loads(raw)
-    except Exception as e:
-        msg = f"轻量概述流程失败：{str(e)}"
-        console.print(f"[red]{msg}[/red]")
-        session_manager.add_message(task_id, "assistant", msg)
-        return
-
-    event_intro = str(data.get("eventIntroduction", "") or "").strip() or "证据不足"
-    words = data.get("searchWords")
-    if isinstance(words, list):
-        keywords = [str(x).strip() for x in words if str(x).strip()]
-    else:
-        keywords = []
-    time_range = str(data.get("timeRange", "") or "").strip() or "证据不足"
-
-    lines = [
-        "### 事件经过概述（轻量模式）",
-        f"- 事件简介：{event_intro}",
-        f"- 关键词：{'、'.join(keywords[:12]) if keywords else '证据不足'}",
-        f"- 建议时间范围：{time_range}",
-        "",
-        "如需完整报告（采集+多维分析+HTML），请继续输入同一事件并强调“舆情分析/生成报告”，或直接使用 `/event`。",
-    ]
-    output = "\n".join(lines)
-    console.print(Markdown(output))
-    session_manager.add_message(task_id, "assistant", output)
-
-
-def _build_execution_plan(route_decision: str, route_data: Dict[str, Any]) -> List[str]:
-    """
-    根据路由结果给出可解释执行计划（仅用于展示，不影响真实执行）。
-    """
-    intent_result = route_data.get("intent_result")
-    data_result = route_data.get("data_result")
-    has_data = bool(getattr(data_result, "has_data", False)) if data_result is not None else False
-
-    steps: List[str] = []
-    if route_decision in ("event_analysis_workflow", "event_analysis_with_existing_data"):
-        if has_data and route_decision == "event_analysis_with_existing_data":
-            steps = [
-                "extract_search_terms（确认事件与关键词）",
-                "复用已有数据（跳过 data_collect）",
-                "analysis_timeline（时间线）",
-                "analysis_sentiment（情感）",
-                "keyword/region/author/volume 统计",
-                "report_html（生成报告）",
-            ]
-        else:
-            steps = [
-                "extract_search_terms（提取事件与检索参数）",
-                "data_num（关键词数量分配）",
-                "data_collect（采集数据）",
-                "analysis_timeline（时间线）",
-                "analysis_sentiment（情感）",
-                "keyword/region/author/volume 统计",
-                "report_html（生成报告）",
-            ]
-    elif route_decision == "event_brief_workflow":
-        steps = [
-            "extract_search_terms（提取事件简介/关键词/时间范围）",
-            "输出轻量事件概述（不采集、不生成长报告）",
-        ]
-    elif route_decision == "hottopics_workflow":
-        steps = [
-            "run_hot_command（热点聚合与态势感知）",
-            "输出热点分析结果",
-        ]
-    else:
-        steps = [
-            "reactagent（按 ReAct 决策按需调用工具）",
-            "返回问答结果",
-        ]
-
-    # 若有意图说明，放在第一行便于理解“为什么走这条路”
-    reason = str(getattr(intent_result, "reasoning", "") or "").strip()
-    if reason:
-        steps.insert(0, f"路由依据：{reason}")
-    return steps
-
-
-def _print_execution_plan(route_decision: str, route_data: Dict[str, Any]) -> None:
-    plan = _build_execution_plan(route_decision, route_data)
-    if not plan:
-        return
-    console.print("[blue]🧩 本次执行计划[/blue]")
-    for idx, step in enumerate(plan, start=1):
-        console.print(f"[dim]  {idx}. {step}[/dim]")
-
-
 def run_session_query(
     query: str,
     task_id: str,
     previous_messages: Optional[List[BaseMessage]] = None,
-    show_spinner: bool = False,
-    task_mode: str = "qa",
-    workflow_options: Optional[Dict[str, Any]] = None,
+    show_spinner: bool = False
 ) -> dict[str, Any]:
     """
     在会话中运行查询，支持 token 追踪
@@ -253,9 +130,7 @@ def run_session_query(
         "total_tokens": 0,
     }
     
-    # full_report 模式由事件工作流内部写入用户消息，避免重复
-    if str(task_mode or "qa").strip().lower() != "full_report":
-        session_manager.add_message(task_id, "user", query)
+    session_manager.add_message(task_id, "user", query)
     
     final_state = None
     processed_message_ids = set()
@@ -320,14 +195,7 @@ def run_session_query(
         token_tracker.set_step("agent_processing")
         
         has_output = False
-        for chunk in stream(
-            query,
-            task_id=task_id,
-            previous_messages=previous_messages,
-            token_tracker=token_tracker,
-            task_mode=task_mode,
-            workflow_options=workflow_options,
-        ):
+        for chunk in stream(query, task_id=task_id, previous_messages=previous_messages, token_tracker=token_tracker):
             
             # 处理 token 级别的流式输出
             if isinstance(chunk, dict) and "type" in chunk:
@@ -833,6 +701,13 @@ def run_session_query(
             # 保存已生成的内容
             if current_content:
                 session_manager.add_message(task_id, "assistant", current_content)
+        if _is_openai_insufficient_balance_error(e):
+            print_status("执行失败：OpenAI 账户余额不足或账单异常（账号被暂停）", "error")
+            _print_openai_billing_help()
+            if _should_show_traceback():
+                traceback.print_exc()
+            return {"error": "openai_insufficient_balance"}
+
         print_status(f"执行出错: {str(e)}", "error")
         
         for tc in pending_tool_calls:
@@ -846,7 +721,8 @@ def run_session_query(
                     tool_name=tool_name,
                     tool_call_id=tool_call_id
                 )
-        traceback.print_exc()
+        if _should_show_traceback():
+            traceback.print_exc()
         raise
     
     # 确保每次回复结束后至少打印一次 token
@@ -919,7 +795,7 @@ def run_session_loop(
         else:
             # 在 user 提示前添加绿色横线作为对话区隔
             console.print("[green]────────────────────────────────────────────────────────────[/green]")
-            initial_query = _ask_user(f"\x1b[36m({task_id_display}) user>\x1b[0m ")
+            initial_query = Prompt.ask(f"[bold cyan]({task_id_display}) user[/bold cyan]")
         if not initial_query:
             console.print("[yellow]未输入查询，退出。[/yellow]")
             return
@@ -942,7 +818,7 @@ def run_session_loop(
             # #endregion debug_log_H21_runtime_env_set_in_initial_assignment
             console.print("[yellow]参数已生效，请继续输入分析 query。[/yellow]")
             console.print("[green]────────────────────────────────────────────────────────────[/green]")
-            initial_query = _ask_user(f"\x1b[36m({task_id_display}) user>\x1b[0m ")
+            initial_query = Prompt.ask(f"[bold cyan]({task_id_display}) user[/bold cyan]")
             if not initial_query:
                 console.print("[yellow]未输入查询，退出。[/yellow]")
                 return
@@ -966,7 +842,7 @@ def run_session_loop(
                 # #endregion debug_log_H22_runtime_env_set_in_initial_set_command
                 console.print("[yellow]参数已生效，请继续输入分析 query。[/yellow]")
                 console.print("[green]────────────────────────────────────────────────────────────[/green]")
-                initial_query = _ask_user(f"\x1b[36m({task_id_display}) user>\x1b[0m ")
+                initial_query = Prompt.ask(f"[bold cyan]({task_id_display}) user[/bold cyan]")
                 if not initial_query:
                     console.print("[yellow]未输入查询，退出。[/yellow]")
                     return
@@ -979,7 +855,7 @@ def run_session_loop(
             parts = initial_query_stripped.split(maxsplit=1)
             event_query = parts[1] if len(parts) > 1 else ""
             if not event_query:
-                event_query = _ask_user("请输入要执行事件分析的 query> ")
+                event_query = Prompt.ask("请输入要执行事件分析的 query")
             initial_query_stripped = event_query.strip()
 
         # 意图路由决策：使用路由器分析用户 Query
@@ -993,14 +869,12 @@ def run_session_loop(
         
         console.print()
         console.print(f"[cyan]🎯 路由决策: {route_decision}[/cyan]")
-        _print_execution_plan(route_decision, route_data)
         
         use_event_workflow = force_event_workflow or route_decision in (
             "event_analysis_workflow",
             "event_analysis_with_existing_data",
         )
         use_hot_workflow = (not force_event_workflow) and route_decision == "hottopics_workflow"
-        use_event_brief_workflow = (not force_event_workflow) and route_decision == "event_brief_workflow"
         route_policy = route_data.get("route_policy", {}) or {}
         prefer_confirm = bool(route_policy.get("prefer_confirm", True))
         
@@ -1049,16 +923,13 @@ def run_session_loop(
             parts = initial_query_stripped.split(maxsplit=1)
             event_query = parts[1] if len(parts) > 1 else ""
             if not event_query:
-                event_query = _ask_user("请输入要执行事件分析的 query> ")
+                event_query = Prompt.ask("请输入要执行事件分析的 query")
             use_event_workflow = True
             use_hot_workflow = False
 
-        # 更新会话的初始查询
-        session_data = session_manager.load_session(task_id)
-        if session_data:
-            session_data["initial_query"] = event_query
-            # 关键修复：必须立即保存，否则会话列表/恢复时仍显示 create_session("新会话") 的占位描述
-            session_manager.save_session(task_id, session_data, final_query=event_query)
+        # 更新会话的初始查询，并按最终查询重命名任务目录
+        task_id = session_manager.rename_session_task(task_id, event_query)
+        ensure_task_dirs(task_id)
         
         # 立即执行初始查询（带转圈动效）
         try:
@@ -1082,33 +953,20 @@ def run_session_loop(
                         existing_data_path = data_result.data_paths[0]
                         skip_data_collect = True
                 
-                # 由 Agent 执行 full_report 模式（内部复用 event workflow）
-                run_session_query(
-                    event_query,
-                    task_id,
-                    previous_messages,
-                    show_spinner=True,
-                    task_mode="full_report",
-                    workflow_options=_full_report_workflow_options(
-                        route_policy,
-                        existing_data_path=existing_data_path,
-                        skip_data_collect=skip_data_collect,
-                        force_fresh_start=False,
-                    ),
-                )
-            elif use_event_brief_workflow:
-                run_session_query(
-                    event_query,
-                    task_id,
-                    previous_messages,
-                    show_spinner=True,
-                    task_mode="brief",
+                # 调用事件分析工作流
+                run_event_analysis_workflow(
+                    event_query, 
+                    task_id, 
+                    session_manager, 
+                    debug=True,
+                    existing_data_path=existing_data_path,
+                    skip_data_collect=skip_data_collect
                 )
             elif use_hot_workflow:
                 run_hot_command()
                 session_manager.add_message(task_id, "assistant", "已执行热点发现流程（/hot）。")
             else:
-                run_session_query(event_query, task_id, previous_messages, show_spinner=True, task_mode="qa")
+                run_session_query(event_query, task_id, previous_messages, show_spinner=True)
             # 执行完后更新 previous_messages
             session_data = session_manager.load_session(task_id)
             if session_data:
@@ -1138,7 +996,7 @@ def run_session_loop(
             task_id_display = task_id[:8] if task_id and len(task_id) > 8 else task_id if task_id else ""
             # 在 user 提示前添加绿色横线作为对话区隔
             console.print("[green]────────────────────────────────────────────────────────────[/green]")
-            user_input = _ask_user(f"\x1b[36m({task_id_display}) user>\x1b[0m ")
+            user_input = Prompt.ask(f"[bold cyan]({task_id_display}) user[/bold cyan]")
             
             if not user_input:
                 continue
@@ -1200,7 +1058,7 @@ def run_session_loop(
                     parts = user_input.strip().split(maxsplit=1)
                     event_query = parts[1] if len(parts) > 1 else ""
                     if not event_query:
-                        event_query = _ask_user("请输入要执行事件分析的 query> ")
+                        event_query = Prompt.ask("请输入要执行事件分析的 query")
                     try:
                         # #region debug_log_H7_command_event_workflow_called
                         _append_ndjson_log(
@@ -1211,17 +1069,7 @@ def run_session_loop(
                             data={"query_len": len(event_query)},
                         )
                         # #endregion debug_log_H7_command_event_workflow_called
-                        run_session_query(
-                            event_query,
-                            task_id,
-                            previous_messages,
-                            show_spinner=True,
-                            task_mode="full_report",
-                            workflow_options=_full_report_workflow_options(
-                                None,
-                                force_fresh_start=False,
-                            ),
-                        )
+                        run_event_analysis_workflow(event_query, task_id, session_manager, debug=True)
                         session_data = session_manager.load_session(task_id)
                         if session_data:
                             previous_messages = messages_from_session_data(session_data)
@@ -1239,30 +1087,6 @@ def run_session_loop(
                         session_manager.add_message(task_id, "assistant", "已执行热点态势感知流程。")
                     except Exception as e:
                         console.print(f"[red]/hot 执行失败: {str(e)}[/red]")
-                        traceback.print_exc()
-                    continue
-
-                # 处理 /wiki-approve 命令（候选审批回流）
-                if user_input.strip().startswith("/wiki-approve"):
-                    parts = user_input.strip().split(maxsplit=1)
-                    selector = parts[1].strip() if len(parts) > 1 else None
-                    try:
-                        run_wiki_approve_command(selector)
-                        session_manager.add_message(task_id, "assistant", "已执行 /wiki-approve 候选回流。")
-                    except Exception as e:
-                        console.print(f"[red]/wiki-approve 执行失败: {str(e)}[/red]")
-                        traceback.print_exc()
-                    continue
-
-                # 处理 /wiki 命令（知识问答，与会话并行、不写长上下文）
-                if user_input.strip().startswith("/wiki"):
-                    parts = user_input.strip().split(maxsplit=1)
-                    wiki_query = parts[1].strip() if len(parts) > 1 else None
-                    try:
-                        run_wiki_command(wiki_query)
-                        session_manager.add_message(task_id, "assistant", "已执行 /wiki 知识库问答。")
-                    except Exception as e:
-                        console.print(f"[red]/wiki 执行失败: {str(e)}[/red]")
                         traceback.print_exc()
                     continue
 
@@ -1351,10 +1175,7 @@ def run_session_loop(
                     continue
                 
                 # 其他系统命令在main.py中处理，这里仅支持会话内命令
-                console.print(
-                    "[yellow]会话内可用命令: "
-                    "/exit, /set, /event, /hot, /wiki, /wiki-approve, /compress[/yellow]"
-                )
+                console.print(f"[yellow]会话内可用命令: /exit, /set, /event, /hot, /compress[/yellow]")
                 continue
 
             # 若开启事件分析 debug 开关，则把普通输入也路由到事件分析工作流
@@ -1369,14 +1190,7 @@ def run_session_loop(
                         data={"query_len": len(user_input)},
                     )
                     # #endregion debug_log_H8_auto_event_workflow_called
-                    run_session_query(
-                        user_input,
-                        task_id,
-                        previous_messages,
-                        show_spinner=True,
-                        task_mode="full_report",
-                        workflow_options=_full_report_workflow_options(None),
-                    )
+                    run_event_analysis_workflow(user_input, task_id, session_manager, debug=True)
                     session_data = session_manager.load_session(task_id)
                     if session_data:
                         previous_messages = messages_from_session_data(session_data)
@@ -1391,15 +1205,8 @@ def run_session_loop(
             data_result = route_data.get("data_result")
             route_policy = route_data.get("route_policy", {}) or {}
             confidence = float(getattr(intent_result, "confidence", 0.0) or 0.0)
-            _print_execution_plan(route_decision, route_data)
 
-            # 事件/热点类意图即使置信度中等也优先走模式化流程，避免掉回 qa 触发 ReAct 试探循环
-            should_apply_route = confidence >= 0.65 or route_decision in (
-                "event_analysis_workflow",
-                "event_analysis_with_existing_data",
-                "event_brief_workflow",
-                "hottopics_workflow",
-            )
+            should_apply_route = confidence >= 0.75
             if should_apply_route and route_decision in ("event_analysis_workflow", "event_analysis_with_existing_data"):
                 use_existing = False
                 if data_result and data_result.has_data:
@@ -1427,32 +1234,19 @@ def run_session_loop(
                     existing_data_path = data_result.data_paths[0]
                     skip_data_collect = True
 
-                run_session_query(
+                run_event_analysis_workflow(
                     user_input,
                     task_id,
-                    previous_messages,
-                    show_spinner=True,
-                    task_mode="full_report",
-                    workflow_options=_full_report_workflow_options(
-                        route_policy,
-                        existing_data_path=existing_data_path,
-                        skip_data_collect=skip_data_collect,
-                        force_fresh_start=False,
-                    ),
-                )
-            elif should_apply_route and route_decision == "event_brief_workflow":
-                run_session_query(
-                    user_input,
-                    task_id,
-                    previous_messages,
-                    show_spinner=True,
-                    task_mode="brief",
+                    session_manager,
+                    debug=True,
+                    existing_data_path=existing_data_path,
+                    skip_data_collect=skip_data_collect,
                 )
             elif should_apply_route and route_decision == "hottopics_workflow":
                 run_hot_command()
                 session_manager.add_message(task_id, "assistant", "已执行热点态势感知流程。")
             else:
-                run_session_query(user_input, task_id, previous_messages, show_spinner=True, task_mode="qa")
+                run_session_query(user_input, task_id, previous_messages, show_spinner=True)
             
             # 更新 previous_messages（查询完成后重新加载会话以获取最新消息）
             session_data = session_manager.load_session(task_id)
@@ -1473,5 +1267,12 @@ def run_session_loop(
             console.print(f"\n\n[cyan]会话已保存，感谢使用 [bold magenta]Sona[/bold magenta]！[/cyan]\n")
             sys.exit(0)
         except Exception as e:
+            if _is_openai_insufficient_balance_error(e):
+                console.print("\n[red]执行失败：OpenAI 账户余额不足或账单异常（账号被暂停）[/red]\n")
+                _print_openai_billing_help()
+                if _should_show_traceback():
+                    traceback.print_exc()
+                continue
             console.print(f"\n[red]发生错误: {str(e)}[/red]\n")
-            traceback.print_exc()
+            if _should_show_traceback():
+                traceback.print_exc()

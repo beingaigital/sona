@@ -1,0 +1,15 @@
+{
+  "type": "Case",
+  "title": "舆情回应",
+  "source_file": "鑸嗘儏鍥炲簲.md",
+  "confidence": "medium",
+  "keywords": [
+    "自动生成",
+    "增量更新"
+  ],
+  "domain": "",
+  "actors": [],
+  "risk_patterns": [],
+  "response_tactics": [],
+  "summary": ""
+}

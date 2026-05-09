@@ -1,0 +1,15 @@
+{
+  "type": "Case",
+  "title": "疫情防控",
+  "source_file": "鐤儏闃叉帶.md",
+  "confidence": "medium",
+  "keywords": [
+    "自动生成",
+    "增量更新"
+  ],
+  "domain": "",
+  "actors": [],
+  "risk_patterns": [],
+  "response_tactics": [],
+  "summary": ""
+}

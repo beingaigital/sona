@@ -1,0 +1,15 @@
+{
+  "type": "Case",
+  "title": "创业环境",
+  "source_file": "鍒涗笟鐜.md",
+  "confidence": "medium",
+  "keywords": [
+    "自动生成",
+    "增量更新"
+  ],
+  "domain": "",
+  "actors": [],
+  "risk_patterns": [],
+  "response_tactics": [],
+  "summary": ""
+}

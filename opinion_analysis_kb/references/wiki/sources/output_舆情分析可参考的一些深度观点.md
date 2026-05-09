@@ -1,6 +1,6 @@
 ---
 title: 舆情分析深度观点与方法论
-source_file: /Users/biaowenhuang/Documents/sona-master/opinion_analysis_kb/references/wiki/output/舆情分析可参考的一些深度观点.md
+source_file: /Users/walk/Downloads/sona-main/opinion_analysis_kb/references/wiki/output/舆情分析可参考的一些深度观点.md
 updated_at: 2024-05-22 15:30:00
 tags: ["舆情分析", "舆论引导", "危机公关", "传播机制", "行业监管"]
 source_type: expert_note

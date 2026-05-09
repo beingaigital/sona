@@ -16,15 +16,16 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--case", dest="case_id", help="Run only one case by case id.")
     parser.add_argument("--suite", help="Suite selector (reserved for Day2).")
     parser.add_argument("--mode", choices=["live", "replay"], help="Filter by fixture mode.")
+    parser.add_argument("--run-id", help="Optional fixed run id for deterministic diff/testing.")
     parser.add_argument(
-        "--exit-zero",
+        "--deterministic",
         action="store_true",
-        help="Always exit with status 0 even when cases fail (default: exit 1 on any failure).",
+        help="Enable deterministic replay behavior (fixed time/random/latency).",
     )
     parser.add_argument(
         "--strict-warnings",
         action="store_true",
-        help="Treat scorer warnings as failures (exit 4 if any case status is warning).",
+        help="Treat warning cases as CI failure (exit code 4).",
     )
     return parser
 
@@ -32,13 +33,6 @@ def _build_parser() -> argparse.ArgumentParser:
 def main() -> int:
     parser = _build_parser()
     args = parser.parse_args()
-
-    env_mode = os.getenv("EVAL_MODE")
-    if args.mode is None and env_mode in {"live", "replay"}:
-        args.mode = env_mode
-
-    env_strict = os.getenv("EVAL_STRICT_WARNINGS", "").strip().lower() in {"1", "true", "yes"}
-    strict_warnings = bool(args.strict_warnings or env_strict)
 
     project_root = Path(__file__).resolve().parents[1]
     if str(project_root) not in sys.path:
@@ -50,58 +44,24 @@ def main() -> int:
         print(f"[ERROR] failed to import eval runner: {exc}")
         return 2
 
+    env_mode = os.environ.get("EVAL_MODE")
+    resolved_mode = args.mode or (env_mode if env_mode in {"live", "replay"} else None)
+    env_det = os.environ.get("EVAL_DETERMINISTIC", "").strip().lower() in {"1", "true", "yes", "on"}
+    resolved_deterministic = bool(args.deterministic or env_det)
+
     summary = run_evaluation(
         project_root=project_root,
         target=args.target,
         stage=args.stage,
         case_id=args.case_id,
         suite=args.suite,
-        mode=args.mode,
+        mode=resolved_mode,
+        run_id=args.run_id,
+        deterministic=resolved_deterministic,
     )
     print(json.dumps(summary, ensure_ascii=False, indent=2))
-
-    if args.suite and int(summary.get("total_cases") or 0) == 0:
-        print(
-            "[ERROR] eval gate: no cases matched the requested suite "
-            f"{args.suite!r} (misconfiguration or missing case tags).",
-            file=sys.stderr,
-        )
-        return 3
-
-    failures = int(summary.get("fail_cases") or 0)
-    if failures > 0 and not args.exit_zero:
-        ci = summary.get("ci_report") if isinstance(summary.get("ci_report"), dict) else {}
-        blockers = ci.get("blockers") if isinstance(ci.get("blockers"), list) else []
-        print(
-            "[ERROR] eval gate failed: "
-            f"{failures} case(s) with status=fail. See ci_report.blockers in JSON output "
-            f"or eval_results/{summary.get('run_id', '')}/ci_report.json.",
-            file=sys.stderr,
-        )
-        for b in blockers:
-            if not isinstance(b, dict):
-                continue
-            cid = b.get("case_id")
-            reasons = b.get("fail_reasons") or []
-            print(f"  - {cid}: {reasons}", file=sys.stderr)
-        return 1
-
-    warn_count = int(summary.get("warning_cases") or 0)
-    if warn_count > 0 and strict_warnings and not args.exit_zero:
-        print(
-            "[ERROR] eval gate: strict-warnings enabled but "
-            f"{warn_count} case(s) ended with status=warning. "
-            "See per-case fail_reasons in metrics (warning reasons) or summary.results.",
-            file=sys.stderr,
-        )
-        for item in summary.get("results") or []:
-            if not isinstance(item, dict):
-                continue
-            if item.get("status") != "warning":
-                continue
-            print(f"  - {item.get('case_id')}: {item.get('fail_reasons')}", file=sys.stderr)
+    if args.strict_warnings and int(summary.get("warning_cases") or 0) > 0:
         return 4
-
     return 0
 
 

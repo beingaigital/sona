@@ -1,0 +1,15 @@
+{
+  "type": "Case",
+  "title": "招生公平",
+  "source_file": "鎷涚敓鍏钩.md",
+  "confidence": "medium",
+  "keywords": [
+    "自动生成",
+    "增量更新"
+  ],
+  "domain": "",
+  "actors": [],
+  "risk_patterns": [],
+  "response_tactics": [],
+  "summary": ""
+}

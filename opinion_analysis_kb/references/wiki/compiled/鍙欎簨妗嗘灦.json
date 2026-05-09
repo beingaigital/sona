@@ -1,0 +1,15 @@
+{
+  "type": "Case",
+  "title": "叙事框架",
+  "source_file": "鍙欎簨妗嗘灦.md",
+  "confidence": "medium",
+  "keywords": [
+    "自动生成",
+    "增量更新"
+  ],
+  "domain": "",
+  "actors": [],
+  "risk_patterns": [],
+  "response_tactics": [],
+  "summary": ""
+}

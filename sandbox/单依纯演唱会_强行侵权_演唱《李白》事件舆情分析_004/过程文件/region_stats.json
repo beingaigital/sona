@@ -1,0 +1,103 @@
+{
+  "ip_location_column_detected": "IP属地",
+  "total_rows": 694,
+  "valid_rows_count": 683,
+  "unknown_filtered_count": 8,
+  "non_province_filtered_count": 3,
+  "top_provinces": [
+    {
+      "province": "广东",
+      "count": 83,
+      "ratio_of_valid": 0.121523,
+      "ratio_of_total": 0.119597
+    },
+    {
+      "province": "江苏",
+      "count": 62,
+      "ratio_of_valid": 0.090776,
+      "ratio_of_total": 0.089337
+    },
+    {
+      "province": "河南",
+      "count": 58,
+      "ratio_of_valid": 0.084919,
+      "ratio_of_total": 0.083573
+    },
+    {
+      "province": "山东",
+      "count": 49,
+      "ratio_of_valid": 0.071742,
+      "ratio_of_total": 0.070605
+    },
+    {
+      "province": "福建",
+      "count": 47,
+      "ratio_of_valid": 0.068814,
+      "ratio_of_total": 0.067723
+    },
+    {
+      "province": "浙江",
+      "count": 46,
+      "ratio_of_valid": 0.06735,
+      "ratio_of_total": 0.066282
+    },
+    {
+      "province": "河北",
+      "count": 43,
+      "ratio_of_valid": 0.062958,
+      "ratio_of_total": 0.06196
+    },
+    {
+      "province": "四川",
+      "count": 39,
+      "ratio_of_valid": 0.057101,
+      "ratio_of_total": 0.056196
+    },
+    {
+      "province": "湖南",
+      "count": 35,
+      "ratio_of_valid": 0.051245,
+      "ratio_of_total": 0.050432
+    },
+    {
+      "province": "江西",
+      "count": 31,
+      "ratio_of_valid": 0.045388,
+      "ratio_of_total": 0.044669
+    }
+  ],
+  "province_counts": {
+    "广东": 83,
+    "北京": 20,
+    "陕西": 14,
+    "山东": 49,
+    "浙江": 46,
+    "江苏": 62,
+    "四川": 39,
+    "福建": 47,
+    "云南": 6,
+    "新疆维吾尔": 9,
+    "安徽": 19,
+    "天津": 10,
+    "海南": 5,
+    "河北": 43,
+    "山西": 6,
+    "辽宁": 15,
+    "河南": 58,
+    "湖南": 35,
+    "上海": 10,
+    "江西": 31,
+    "重庆": 7,
+    "黑龙江": 13,
+    "广西壮族": 11,
+    "台湾": 3,
+    "贵州": 5,
+    "吉林": 8,
+    "甘肃": 4,
+    "宁夏回族": 1,
+    "湖北": 15,
+    "内蒙古": 8,
+    "青海": 1
+  },
+  "top_n": 10
+}

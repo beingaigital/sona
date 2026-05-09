@@ -1,0 +1,15 @@
+{
+  "type": "Case",
+  "title": "粉丝行为边界",
+  "source_file": "绮変笣琛屼负杈圭晫.md",
+  "confidence": "medium",
+  "keywords": [
+    "自动生成",
+    "增量更新"
+  ],
+  "domain": "",
+  "actors": [],
+  "risk_patterns": [],
+  "response_tactics": [],
+  "summary": ""
+}

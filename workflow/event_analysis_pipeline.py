@@ -54,7 +54,8 @@ from workflow.netinsight_collect import merge_netinsight_csv_by_content
 from workflow.search_plan import coerce_search_plan_v1
 from workflow.runtime_harness import RuntimeHarness
 from tools.oprag import OPRAG_KNOWLEDGE_SNAPSHOT_FILENAME, OPRAG_RECALL_PREVIEW_FILENAME
-from workflow.wiki_cli import answer_wiki_query
+from workflow.wiki_kb_snapshot import write_wiki_kb_snapshot
+from workflow.runner import invoke_tool_to_json as _runner_invoke_tool_to_json
 from tools.report_html_template import normalize_report_length
 
 
@@ -313,24 +314,14 @@ class ToolJsonResult:
     data: Dict[str, Any]
 
 
-def _parse_tool_json(raw: str) -> Dict[str, Any]:
-    try:
-        parsed = json.loads(raw)
-    except Exception as e:
-        raise ValueError(f"工具返回不是合法 JSON：{str(e)}") from e
-    if not isinstance(parsed, dict):
-        raise ValueError("工具返回 JSON 不是对象")
-    return parsed
-
-
 def _invoke_tool_to_json(tool_obj: Any, payload: Dict[str, Any]) -> Dict[str, Any]:
     """
     统一调用 LangChain StructuredTool，并把字符串 JSON 结果解析为 dict。
+    与 cli/event_analysis_workflow 一致：经 workflow.runner 做契约校验与 extract_search_terms 时间范围规整。
     """
-    raw = tool_obj.invoke(payload)
-    if not isinstance(raw, str):
-        raw = str(raw)
-    return _parse_tool_json(raw)
+    tool_name = str(getattr(tool_obj, "name", "") or "")
+    contract_name = tool_name if tool_name in {"extract_search_terms", "analysis_sentiment", "report_html"} else None
+    return _runner_invoke_tool_to_json(tool_obj, payload, contract_name=contract_name)
 
 
 def _invoke_tool_with_timing(tool_obj: Any, payload: Dict[str, Any]) -> tuple[Dict[str, Any], float]:
@@ -2363,16 +2354,20 @@ def _save_experience_item(
 def _is_graph_rag_enabled() -> bool:
     """
     Graph RAG 开关：
-    - 显式 false/off -> 关闭
-    - 显式 true/on -> 开启
-    - 未设置时默认开启（避免“Step10 存在但常被静默跳过”）
+    - 环境变量显式 false/off -> 关闭；true/on -> 开启
+    - SONA_ENABLE_GRAPH_RAG=auto 或未设置 -> 跟随 config.yaml 的 graph_rag.enabled
     """
     v = os.environ.get("SONA_ENABLE_GRAPH_RAG", "auto").strip().lower()
     if v in ("0", "false", "no", "n", "off"):
         return False
     if v in ("1", "true", "yes", "y", "on"):
         return True
-    return True
+    try:
+        from tools.graph_rag_query import graph_rag_enabled_in_config
+
+        return graph_rag_enabled_in_config()
+    except Exception:
+        return True
 
 
 def run_event_analysis_pipeline(
@@ -4321,75 +4316,15 @@ def run_event_analysis_pipeline(
     with open(out_path, "w", encoding="utf-8", errors="replace") as f:
         json.dump(graph_rag_enrichment, f, ensure_ascii=False, indent=2)
 
-    # ============ 10.2) Wiki KB 召回快照（可选） ============
-    if debug:
-        console.print("[bold]Step10.2: wiki_snapshot (optional)[/bold]")
-    try:
-        wiki_query = _build_reference_query(user_query=user_query, search_plan=search_plan)
-        wiki_query = wiki_query or (f"{search_plan.get('eventIntroduction', user_query)}".strip() or str(user_query or "").strip())
-        wiki_out = answer_wiki_query(
-            wiki_query,
-            topk=6,
-            style="teach",
-            project_root=_ROOT,
-        )
-        weak_wiki = False
-        if isinstance(wiki_out, dict):
-            _src = wiki_out.get("sources")
-            if not isinstance(_src, list) or len(_src) < 3:
-                weak_wiki = True
-        if weak_wiki:
-            fallback_out = answer_wiki_query(
-                str(user_query or "").strip(),
-                topk=10,
-                style="teach",
-                project_root=_ROOT,
-            )
-            if isinstance(fallback_out, dict):
-                fallback_sources = fallback_out.get("sources")
-                old_sources = wiki_out.get("sources") if isinstance(wiki_out, dict) else []
-                if isinstance(fallback_sources, list) and len(fallback_sources) > (len(old_sources) if isinstance(old_sources, list) else 0):
-                    wiki_out = fallback_out
-        wiki_snapshot_path = process_dir / "wiki_qa_snapshot.json"
-        with open(wiki_snapshot_path, "w", encoding="utf-8", errors="replace") as f:
-            json.dump(wiki_out, f, ensure_ascii=False, indent=2)
-        try:
-            sources = wiki_out.get("sources") if isinstance(wiki_out, dict) else []
-            meta = wiki_out.get("_wiki_meta") if isinstance(wiki_out, dict) else {}
-            retrieved_count = (
-                int(meta.get("retrieved_count", 0))
-                if isinstance(meta, dict)
-                else (len(sources) if isinstance(sources, list) else 0)
-            )
-            llm_used = bool(meta.get("llm_used")) if isinstance(meta, dict) else False
-            preview_lines = [
-                f"wiki_query: {wiki_query[:160]}",
-                f"retrieved_count: {retrieved_count}",
-                f"llm_used: {llm_used}",
-            ]
-            if isinstance(sources, list) and sources:
-                preview_lines.append("top_sources:")
-                for row in sources[:4]:
-                    if not isinstance(row, dict):
-                        continue
-                    title = str(row.get("title", "") or "").strip()
-                    path = str(row.get("path", "") or "").strip()
-                    score = row.get("score", 0)
-                    preview_lines.append(f"- {title} (score={score}) | {path}")
-            _write_text_file(process_dir / "wiki_recall_preview.txt", "\n".join(preview_lines))
-            if debug:
-                console.print("[dim]Wiki KB 召回预览（用于核验报告引用）[/dim]")
-                console.print(f"[dim]{chr(10).join(preview_lines)}[/dim]")
-        except Exception:
-            pass
-    except Exception as e:
-        _append_ndjson_log(
-            run_id="event_analysis_wiki_kb",
-            hypothesis_id="H44_wiki_snapshot_optional",
-            location="workflow/event_analysis_pipeline.py:wiki_snapshot",
-            message="Wiki KB 召回快照构建失败，已跳过",
-            data={"error": str(e)},
-        )
+    # ============ 10.2) Wiki KB 召回快照 ============
+    write_wiki_kb_snapshot(
+        process_dir=process_dir,
+        user_query=user_query,
+        search_plan=search_plan,
+        project_root=_ROOT,
+        debug=debug,
+        console=console,
+    )
 
     # ============ 10.3) OPRAG 知识快照（可选） ============
     if debug:

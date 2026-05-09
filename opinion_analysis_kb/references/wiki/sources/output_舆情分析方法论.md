@@ -1,6 +1,6 @@
 ---
 title: 舆情分析方法论
-source_file: /Users/biaowenhuang/Documents/sona-master/opinion_analysis_kb/references/wiki/output/舆情分析方法论.md
+source_file: /Users/walk/Downloads/sona-main/opinion_analysis_kb/references/wiki/output/舆情分析方法论.md
 updated_at: 2024-05-22 15:30:00
 tags:
   - 舆情分析

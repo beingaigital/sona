@@ -11,10 +11,10 @@ tags: [自动生成, 增量更新]
 证据不足
 
 ## 关联来源
-- [AI与人工在舆情管理中的角色与融合.md](sources/expert_59845ea9d7_AI与人工在舆情管理中的角色与融合.md) | /Users/biaowenhuang/Documents/sona-master/opinion_analysis_kb/references/expert_notes/舆情分析的相关理论/AI与人工在舆情管理中的角色与融合.md
+- [AI与人工在舆情管理中的角色与融合.md](sources/expert_59845ea9d7_AI与人工在舆情管理中的角色与融合.md) | /Users/walk/Downloads/sona-main/opinion_analysis_kb/references/expert_notes/舆情分析的相关理论/AI与人工在舆情管理中的角色与融合.md
 
 ## 近期增量
-- --- title: 偏颇吸收 source_file: /Users/biaowenhuang/Documents/sona-master/opinion_analysis_kb/references/expert_notes/舆情分析的相关理论/AI 与人工在舆情管理中的角色与融合.md updated_at: 2
+- --- title: 偏颇吸收 source_file: /Users/walk/Downloads/sona-main/opinion_analysis_kb/references/expert_notes/舆情分析的相关理论/AI 与人工在舆情管理中的角色与融合.md updated_at: 2
 
 ## 关联概念
 - [谣言治理](../concepts/谣言治理.md)、[公众认知](../concepts/公众认知.md)、[信息监管](../concepts/信息监管.md)

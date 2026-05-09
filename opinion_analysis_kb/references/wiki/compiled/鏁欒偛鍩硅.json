@@ -1,0 +1,15 @@
+{
+  "type": "Case",
+  "title": "教育培训",
+  "source_file": "鏁欒偛鍩硅.md",
+  "confidence": "medium",
+  "keywords": [
+    "自动生成",
+    "增量更新"
+  ],
+  "domain": "",
+  "actors": [],
+  "risk_patterns": [],
+  "response_tactics": [],
+  "summary": ""
+}

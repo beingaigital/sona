@@ -1,0 +1,15 @@
+{
+  "type": "Case",
+  "title": "美国国家安全局（NSA）",
+  "source_file": "缇庡浗鍥藉瀹夊叏灞€_NSA.md",
+  "confidence": "medium",
+  "keywords": [
+    "自动生成",
+    "增量更新"
+  ],
+  "domain": "",
+  "actors": [],
+  "risk_patterns": [],
+  "response_tactics": [],
+  "summary": ""
+}

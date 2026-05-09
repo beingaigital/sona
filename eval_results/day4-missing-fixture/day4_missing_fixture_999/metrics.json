@@ -1,0 +1,29 @@
+{
+  "run_id": "day4-missing-fixture",
+  "case_id": "day4_missing_fixture_999",
+  "target": "wiki",
+  "stage": null,
+  "status": "fail",
+  "metrics": {
+    "latency_ms": 0.0,
+    "traceability_score": 0.0,
+    "relevance_score": 0.0,
+    "structure_completeness": 0.0,
+    "fallback_rate": 0.0
+  },
+  "artifacts": {
+    "trace": "eval_results/day4-missing-fixture/day4_missing_fixture_999/trace.jsonl",
+    "output": "eval_results/day4-missing-fixture/day4_missing_fixture_999/artifacts/output.json",
+    "context": "eval_results/day4-missing-fixture/day4_missing_fixture_999/context.json"
+  },
+  "reasons": [
+    "structure_completeness below threshold: 0.000 < 1.000",
+    "traceability_score below threshold: 0.000 < 0.100",
+    "required fields missing from output"
+  ],
+  "fail_reasons": [
+    "structure_completeness below threshold: 0.000 < 1.000",
+    "traceability_score below threshold: 0.000 < 0.100",
+    "required fields missing from output"
+  ]
+}

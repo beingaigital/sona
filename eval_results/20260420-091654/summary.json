@@ -1,0 +1,29 @@
+{
+  "run_id": "20260420-091654",
+  "timestamp": "2026-04-20T01:16:54+00:00",
+  "total_cases": 1,
+  "pass_cases": 1,
+  "pass_rate": 1.0,
+  "results": [
+    {
+      "run_id": "20260420-091654",
+      "case_id": "wiki_case_002",
+      "target": "wiki",
+      "stage": null,
+      "status": "pass",
+      "metrics": {
+        "latency_ms": 0.0,
+        "traceability_score": 1.0,
+        "relevance_score": 0.16666666666666666,
+        "structure_completeness": 1.0,
+        "fallback_rate": 0.0
+      },
+      "artifacts": {
+        "trace": "eval_results/20260420-091654/wiki_case_002/trace.jsonl",
+        "output": "eval_results/20260420-091654/wiki_case_002/artifacts/output.json",
+        "context": "eval_results/20260420-091654/wiki_case_002/context.json"
+      },
+      "fail_reasons": []
+    }
+  ]
+}

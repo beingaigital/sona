@@ -1,0 +1,79 @@
+{
+  "run_id": "20260507-224953",
+  "task_id": null,
+  "query": "weibo_aisearch 契约校验",
+  "mode": "replay",
+  "diagnostics": {
+    "case_id": "tool_weibo_aisearch_001",
+    "target": "tool",
+    "stage": "weibo_aisearch"
+  },
+  "policy": {},
+  "artifacts": {
+    "output": {
+      "topic": "大学生高铁骂熊孩子",
+      "url": "https://s.weibo.com/aisearch?q=%E5%A4%A7%E5%AD%A6%E7%94%9F%E9%AB%98%E9%93%81%E9%AA%82%E7%86%8A%E5%AD%A9%E5%AD%90&Refer=weibo_aisearch",
+      "count": 2,
+      "results": [
+        {
+          "snippet": "【极目锐评| #大学生高铁怒吼熊孩子到底是谁错了# 】 #大学生高铁怒吼熊孩子算反应过度吗# ..."
+        },
+        {
+          "snippet": "#高铁上孩童吵闹大学生怒吼瞬间安静# 不是大学生凶，是有些家长太没数 ..."
+        }
+      ],
+      "error": "",
+      "fallback_used": true,
+      "source": "playwright",
+      "authenticated": true,
+      "cookie_path_used": false,
+      "fetched_at": "2026-04-18 18:48:44.570845"
+    }
+  },
+  "budget": {
+    "token_budget": null,
+    "latency_budget_ms": 30000,
+    "retry_budget": null,
+    "triggers": {
+      "latency_budget_exceeded": 0
+    },
+    "actions": []
+  },
+  "errors": [],
+  "stage_outputs": {
+    "weibo_aisearch": {
+      "stage": "weibo_aisearch",
+      "status": "success",
+      "metrics": {
+        "latency_ms": 0.0,
+        "traceability_score": 0.0,
+        "relevance_score": 0.0,
+        "structure_completeness": 1.0,
+        "fallback_rate": 0.0
+      },
+      "artifacts": {
+        "output": {
+          "topic": "大学生高铁骂熊孩子",
+          "url": "https://s.weibo.com/aisearch?q=%E5%A4%A7%E5%AD%A6%E7%94%9F%E9%AB%98%E9%93%81%E9%AA%82%E7%86%8A%E5%AD%A9%E5%AD%90&Refer=weibo_aisearch",
+          "count": 2,
+          "results": [
+            {
+              "snippet": "【极目锐评| #大学生高铁怒吼熊孩子到底是谁错了# 】 #大学生高铁怒吼熊孩子算反应过度吗# ..."
+            },
+            {
+              "snippet": "#高铁上孩童吵闹大学生怒吼瞬间安静# 不是大学生凶，是有些家长太没数 ..."
+            }
+          ],
+          "error": "",
+          "fallback_used": true,
+          "source": "playwright",
+          "authenticated": true,
+          "cookie_path_used": false,
+          "fetched_at": "2026-04-18 18:48:44.570845"
+        }
+      },
+      "fallback_used": false,
+      "error": null
+    }
+  }
+}

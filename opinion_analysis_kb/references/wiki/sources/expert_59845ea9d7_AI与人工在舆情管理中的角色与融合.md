@@ -1,6 +1,6 @@
 ---
 title: 偏颇吸收
-source_file: /Users/biaowenhuang/Documents/sona-master/opinion_analysis_kb/references/expert_notes/舆情分析的相关理论/AI 与人工在舆情管理中的角色与融合.md
+source_file: /Users/walk/Downloads/sona-main/opinion_analysis_kb/references/expert_notes/舆情分析的相关理论/AI 与人工在舆情管理中的角色与融合.md
 updated_at: 2025-04-24 22:33:00
 tags:
   - 舆情理论

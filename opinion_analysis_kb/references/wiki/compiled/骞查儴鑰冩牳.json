@@ -1,0 +1,15 @@
+{
+  "type": "Case",
+  "title": "干部考核",
+  "source_file": "骞查儴鑰冩牳.md",
+  "confidence": "medium",
+  "keywords": [
+    "自动生成",
+    "增量更新"
+  ],
+  "domain": "",
+  "actors": [],
+  "risk_patterns": [],
+  "response_tactics": [],
+  "summary": ""
+}

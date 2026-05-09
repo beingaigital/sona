@@ -1,0 +1,225 @@
+{
+  "run_id": "20260507-193531",
+  "timestamp": "2026-01-01T00:00:00+00:00",
+  "total_cases": 9,
+  "pass_cases": 6,
+  "warning_cases": 3,
+  "fail_cases": 0,
+  "pass_rate": 0.6666666666666666,
+  "fallback_rate": 0.3333333333333333,
+  "budget_summary": {
+    "max_latency_ms": 30000,
+    "max_fallback_rate": 0.2,
+    "trigger_count": 0,
+    "actions": [],
+    "fallback_rate_exceeded": true
+  },
+  "results": [
+    {
+      "run_id": "20260507-193531",
+      "case_id": "tool_data_collect_001",
+      "target": "tool",
+      "stage": "data_collect",
+      "status": "pass",
+      "metrics": {
+        "latency_ms": 0.0,
+        "traceability_score": 0.0,
+        "relevance_score": 0.0,
+        "structure_completeness": 1.0,
+        "fallback_rate": 0.0
+      },
+      "artifacts": {
+        "trace": "eval_results/20260507-193531/tool_data_collect_001/trace.jsonl",
+        "output": "eval_results/20260507-193531/tool_data_collect_001/artifacts/output.json",
+        "context": "eval_results/20260507-193531/tool_data_collect_001/context.json"
+      },
+      "reasons": [],
+      "fail_reasons": []
+    },
+    {
+      "run_id": "20260507-193531",
+      "case_id": "tool_data_num_platform_001",
+      "target": "tool",
+      "stage": "data_num",
+      "status": "pass",
+      "metrics": {
+        "latency_ms": 0.0,
+        "traceability_score": 0.0,
+        "relevance_score": 0.0,
+        "structure_completeness": 1.0,
+        "fallback_rate": 0.0
+      },
+      "artifacts": {
+        "trace": "eval_results/20260507-193531/tool_data_num_platform_001/trace.jsonl",
+        "output": "eval_results/20260507-193531/tool_data_num_platform_001/artifacts/output.json",
+        "context": "eval_results/20260507-193531/tool_data_num_platform_001/context.json"
+      },
+      "reasons": [],
+      "fail_reasons": []
+    },
+    {
+      "run_id": "20260507-193531",
+      "case_id": "tool_weibo_aisearch_001",
+      "target": "tool",
+      "stage": "weibo_aisearch",
+      "status": "pass",
+      "metrics": {
+        "latency_ms": 0.0,
+        "traceability_score": 0.0,
+        "relevance_score": 0.0,
+        "structure_completeness": 1.0,
+        "fallback_rate": 0.0
+      },
+      "artifacts": {
+        "trace": "eval_results/20260507-193531/tool_weibo_aisearch_001/trace.jsonl",
+        "output": "eval_results/20260507-193531/tool_weibo_aisearch_001/artifacts/output.json",
+        "context": "eval_results/20260507-193531/tool_weibo_aisearch_001/context.json"
+      },
+      "reasons": [],
+      "fail_reasons": []
+    },
+    {
+      "run_id": "20260507-193531",
+      "case_id": "wiki_case_002",
+      "target": "wiki",
+      "stage": null,
+      "status": "warning",
+      "metrics": {
+        "latency_ms": 0.0,
+        "traceability_score": 1.0,
+        "relevance_score": 0.16666666666666666,
+        "structure_completeness": 1.0,
+        "fallback_rate": 0.0
+      },
+      "artifacts": {
+        "trace": "eval_results/20260507-193531/wiki_case_002/trace.jsonl",
+        "output": "eval_results/20260507-193531/wiki_case_002/artifacts/output.json",
+        "context": "eval_results/20260507-193531/wiki_case_002/context.json"
+      },
+      "reasons": [
+        "relevance_score below soft threshold: 0.167 < 0.400"
+      ],
+      "fail_reasons": [
+        "relevance_score below soft threshold: 0.167 < 0.400"
+      ]
+    },
+    {
+      "run_id": "20260507-193531",
+      "case_id": "wiki_compare_003",
+      "target": "wiki",
+      "stage": null,
+      "status": "warning",
+      "metrics": {
+        "latency_ms": 0.0,
+        "traceability_score": 1.0,
+        "relevance_score": 0.16666666666666666,
+        "structure_completeness": 1.0,
+        "fallback_rate": 0.0
+      },
+      "artifacts": {
+        "trace": "eval_results/20260507-193531/wiki_compare_003/trace.jsonl",
+        "output": "eval_results/20260507-193531/wiki_compare_003/artifacts/output.json",
+        "context": "eval_results/20260507-193531/wiki_compare_003/context.json"
+      },
+      "reasons": [
+        "relevance_score below soft threshold: 0.167 < 0.350"
+      ],
+      "fail_reasons": [
+        "relevance_score below soft threshold: 0.167 < 0.350"
+      ]
+    },
+    {
+      "run_id": "20260507-193531",
+      "case_id": "wiki_concept_001",
+      "target": "wiki",
+      "stage": null,
+      "status": "warning",
+      "metrics": {
+        "latency_ms": 0.0,
+        "traceability_score": 1.0,
+        "relevance_score": 0.3125,
+        "structure_completeness": 1.0,
+        "fallback_rate": 0.0
+      },
+      "artifacts": {
+        "trace": "eval_results/20260507-193531/wiki_concept_001/trace.jsonl",
+        "output": "eval_results/20260507-193531/wiki_concept_001/artifacts/output.json",
+        "context": "eval_results/20260507-193531/wiki_concept_001/context.json"
+      },
+      "reasons": [
+        "relevance_score below soft threshold: 0.312 < 0.750"
+      ],
+      "fail_reasons": [
+        "relevance_score below soft threshold: 0.312 < 0.750"
+      ]
+    },
+    {
+      "run_id": "20260507-193531",
+      "case_id": "wiki_event_overview_004",
+      "target": "wiki",
+      "stage": null,
+      "status": "pass",
+      "metrics": {
+        "latency_ms": 0.0,
+        "traceability_score": 1.0,
+        "relevance_score": 1.0,
+        "structure_completeness": 1.0,
+        "fallback_rate": 0.0
+      },
+      "artifacts": {
+        "trace": "eval_results/20260507-193531/wiki_event_overview_004/trace.jsonl",
+        "output": "eval_results/20260507-193531/wiki_event_overview_004/artifacts/output.json",
+        "context": "eval_results/20260507-193531/wiki_event_overview_004/context.json"
+      },
+      "reasons": [],
+      "fail_reasons": []
+    },
+    {
+      "run_id": "20260507-193531",
+      "case_id": "workflow_report_005",
+      "target": "workflow",
+      "stage": "report",
+      "status": "pass",
+      "metrics": {
+        "latency_ms": 0.0,
+        "traceability_score": 0.0,
+        "relevance_score": 0.0,
+        "structure_completeness": 1.0,
+        "fallback_rate": 0.0
+      },
+      "artifacts": {
+        "trace": "eval_results/20260507-193531/workflow_report_005/trace.jsonl",
+        "output": "eval_results/20260507-193531/workflow_report_005/artifacts/output.json",
+        "context": "eval_results/20260507-193531/workflow_report_005/context.json"
+      },
+      "reasons": [],
+      "fail_reasons": []
+    },
+    {
+      "run_id": "20260507-193531",
+      "case_id": "workflow_sentiment_004",
+      "target": "workflow",
+      "stage": "sentiment",
+      "status": "pass",
+      "metrics": {
+        "latency_ms": 0.0,
+        "traceability_score": 0.0,
+        "relevance_score": 0.0,
+        "structure_completeness": 1.0,
+        "fallback_rate": 0.0
+      },
+      "artifacts": {
+        "trace": "eval_results/20260507-193531/workflow_sentiment_004/trace.jsonl",
+        "output": "eval_results/20260507-193531/workflow_sentiment_004/artifacts/output.json",
+        "context": "eval_results/20260507-193531/workflow_sentiment_004/context.json"
+      },
+      "reasons": [],
+      "fail_reasons": []
+    }
+  ],
+  "ci_report": {
+    "run_id": "20260507-193531",
+    "status": "passed",
+    "blockers": []
+  }
+}

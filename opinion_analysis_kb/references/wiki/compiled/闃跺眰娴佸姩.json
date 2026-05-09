@@ -1,0 +1,15 @@
+{
+  "type": "Case",
+  "title": "阶层流动",
+  "source_file": "闃跺眰娴佸姩.md",
+  "confidence": "medium",
+  "keywords": [
+    "自动生成",
+    "增量更新"
+  ],
+  "domain": "",
+  "actors": [],
+  "risk_patterns": [],
+  "response_tactics": [],
+  "summary": ""
+}

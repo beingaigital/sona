@@ -1,4 +1,5 @@
 # coding=utf-8
+import csv
 import json
 import os
 import time
@@ -179,14 +180,20 @@ def get_beijing_time():
     return datetime.now(pytz.timezone("Asia/Shanghai"))
 
 
+def get_hot_date_folder_name(timestamp: Optional[datetime] = None) -> str:
+    """返回热点流程当日目录名（北京时间，YYYY-MM-DD）。"""
+    current_time = timestamp or get_beijing_time()
+    return current_time.strftime("%Y-%m-%d")
+
+
 def ensure_directory_exists(directory: str):
     Path(directory).mkdir(parents=True, exist_ok=True)
 
 
 # === 数据存储和加载工具函数 ===
-def get_hourly_data_dir() -> Path:
-    """获取按小时存储数据的目录"""
-    data_dir = Path("data_langgraph_hourly")
+def get_hourly_data_dir(timestamp: Optional[datetime] = None) -> Path:
+    """获取按小时存储数据的目录。"""
+    data_dir = Path("data_langgraph_hourly") / get_hot_date_folder_name(timestamp)
     ensure_directory_exists(str(data_dir))
     return data_dir
 
@@ -201,7 +208,7 @@ def save_hourly_data(
     if timestamp is None:
         timestamp = get_beijing_time()
 
-    data_dir = get_hourly_data_dir()
+    data_dir = get_hourly_data_dir(timestamp)
     # 按日期和小时组织目录结构：YYYYMMDD/HH/
     date_str = timestamp.strftime("%Y%m%d")
     hour_str = timestamp.strftime("%H")
@@ -273,6 +280,56 @@ def load_past_hours_data(lookback_hours: int = 12) -> List[Dict[str, Any]]:
                     print(f"加载文件失败 {json_file}: {e}")
 
     return all_items
+
+
+def save_hot_run_dataset(
+    news_list: List[Dict[str, Any]],
+    timestamp: Optional[datetime] = None,
+) -> Dict[str, str]:
+    """保存 /hot 每次运行的数据集（JSON + CSV），供后续分析复用。"""
+    ts = timestamp or get_beijing_time()
+    date_folder = get_hot_date_folder_name(ts)
+    dataset_dir = Path("hot_datasets") / date_folder
+    ensure_directory_exists(str(dataset_dir))
+
+    stamp = ts.strftime("%Y%m%d_%H%M%S")
+    json_path = dataset_dir / f"hot_dataset_{stamp}.json"
+    csv_path = dataset_dir / f"hot_dataset_{stamp}.csv"
+
+    with open(json_path, "w", encoding="utf-8") as f:
+        json.dump(
+            {
+                "generated_at": ts.isoformat(),
+                "total_records": len(news_list),
+                "items": news_list,
+            },
+            f,
+            ensure_ascii=False,
+            indent=2,
+        )
+
+    csv_columns = [
+        "source_id",
+        "source",
+        "source_name",
+        "title",
+        "rank",
+        "url",
+        "mobile_url",
+        "hot_value",
+        "trend",
+        "days_on_list",
+    ]
+    with open(csv_path, "w", encoding="utf-8-sig", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=csv_columns)
+        writer.writeheader()
+        for item in news_list:
+            writer.writerow({key: item.get(key, "") for key in csv_columns})
+
+    return {
+        "json_path": str(json_path.resolve()),
+        "csv_path": str(csv_path.resolve()),
+    }
 
 
 def load_historical_ranks(lookback_hours: int = 24) -> Dict[tuple, Dict[str, Any]]:
@@ -718,9 +775,9 @@ class SpiderNode:
 
         # 将本次抓取结果保存为快照，并合并最近 24 小时内的历史快照，扩大样本量
         try:
-            snapshot_dir = Path("data_langgraph")
-            ensure_directory_exists(str(snapshot_dir))
             timestamp = get_beijing_time()
+            snapshot_dir = Path("data_langgraph") / get_hot_date_folder_name(timestamp)
+            ensure_directory_exists(str(snapshot_dir))
             snapshot_name = f"snapshot_{timestamp.strftime('%Y%m%d_%H%M%S')}.json"
             snapshot_path = snapshot_dir / snapshot_name
             with open(snapshot_path, "w", encoding="utf-8") as f:
@@ -2120,10 +2177,21 @@ def run(config_path: Optional[str] = None) -> str:
         raise
 
     report_path = ""
+    news_list = final_state.get("news_data", {}).get("news_list", [])
+    if isinstance(news_list, list):
+        try:
+            dataset_paths = save_hot_run_dataset(news_list, get_beijing_time())
+            print(
+                f"📦 本次 /hot 数据集已保存: JSON={dataset_paths['json_path']} | CSV={dataset_paths['csv_path']}"
+            )
+        except Exception as e:
+            print(f"⚠️  保存 /hot 数据集失败: {e}")
+
     if final_state.get("html_report"):
-        output_dir = Path("output_langgraph")
+        report_timestamp = get_beijing_time()
+        output_dir = Path("output_langgraph") / get_hot_date_folder_name(report_timestamp)
         ensure_directory_exists(str(output_dir))
-        filename = f"bjtupubclaw_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html"
+        filename = f"bjtupubclaw_report_{report_timestamp.strftime('%Y%m%d_%H%M%S')}.html"
         output_path = output_dir / filename
 
         with open(output_path, "w", encoding="utf-8") as f:

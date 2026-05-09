@@ -1,6 +1,6 @@
-from __future__ import annotations
+"""Public scorer APIs for evaluation runner integration."""
 
-from tests.evals.scorers.core import evaluate_case
+from tests.evals.scorers.core import compute_metrics
+from tests.evals.scorers.rules import evaluate_case
 
-__all__ = ["evaluate_case"]
-
+__all__ = ["compute_metrics", "evaluate_case"]

@@ -11,10 +11,10 @@ tags: [自动生成, 增量更新]
 证据不足
 
 ## 关联来源
-- [35_如何把1000篇的浙江特色素材变成你自己的？让申论面试游刃有余.md](sources/35_如何把1000篇的浙江特色素材变成你自己的_让申论面试游刃有余.md) | /Users/biaowenhuang/Documents/sona-master/opinion_analysis_kb/references/raw/35_如何把1000篇的浙江特色素材变成你自己的？让申论面试游刃有余.md
+- [35_如何把1000篇的浙江特色素材变成你自己的？让申论面试游刃有余.md](sources/35_如何把1000篇的浙江特色素材变成你自己的_让申论面试游刃有余.md) | /Users/walk/Downloads/sona-main/opinion_analysis_kb/references/raw/35_如何把1000篇的浙江特色素材变成你自己的？让申论面试游刃有余.md
 
 ## 近期增量
-- --- title: 如何把 1000 篇的浙江特色素材变成你自己的？让申论面试游刃有余 source_file: /Users/biaowenhuang/Documents/sona-master/opinion_analysis_kb/references/raw/35_如何把 1000 篇的浙江特色素材变成你自己的？让申论面试游刃有余.m
+- --- title: 如何把 1000 篇的浙江特色素材变成你自己的？让申论面试游刃有余 source_file: /Users/walk/Downloads/sona-main/opinion_analysis_kb/references/raw/35_如何把 1000 篇的浙江特色素材变成你自己的？让申论面试游刃有余.m
 
 ## 关联概念
 - [公共政策传播](../concepts/公共政策传播.md)、[公务员能力建设](../concepts/公务员能力建设.md)、[政务叙事](../concepts/政务叙事.md)、[胖胖猫浙江上岸笔记](../concepts/胖胖猫浙江上岸笔记.md)

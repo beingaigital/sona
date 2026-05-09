@@ -1,0 +1,15 @@
+{
+  "type": "Case",
+  "title": "李白（歌曲）",
+  "source_file": "鏉庣櫧_姝屾洸.md",
+  "confidence": "medium",
+  "keywords": [
+    "自动生成",
+    "增量更新"
+  ],
+  "domain": "",
+  "actors": [],
+  "risk_patterns": [],
+  "response_tactics": [],
+  "summary": ""
+}

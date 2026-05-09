@@ -1,0 +1,65 @@
+{
+  "run_id": "20260421-002903",
+  "task_id": null,
+  "query": "舆情治理和舆情应对有什么区别？",
+  "mode": "replay",
+  "diagnostics": {
+    "case_id": "wiki_case_002",
+    "target": "wiki",
+    "stage": null
+  },
+  "policy": {},
+  "artifacts": {
+    "output": {
+      "answer": "舆情治理强调制度、机制与长期治理能力建设；舆情应对更偏向针对具体事件做回应、处置与沟通。前者是长期能力，后者是事件处置动作。",
+      "sources": [
+        {
+          "title": "舆情治理",
+          "snippet": "舆情治理重在建立长期机制、规则协同与治理能力。"
+        },
+        {
+          "title": "舆情应对",
+          "snippet": "舆情应对通常面向具体事件，强调回应、处置与信息发布。"
+        }
+      ]
+    }
+  },
+  "budget": {
+    "token_budget": null,
+    "latency_budget_ms": null,
+    "retry_budget": null,
+    "triggers": {},
+    "actions": []
+  },
+  "errors": [],
+  "stage_outputs": {
+    "wiki": {
+      "stage": "wiki",
+      "status": "failed",
+      "metrics": {
+        "latency_ms": 0.0,
+        "traceability_score": 1.0,
+        "relevance_score": 0.16666666666666666,
+        "structure_completeness": 1.0,
+        "fallback_rate": 0.0
+      },
+      "artifacts": {
+        "output": {
+          "answer": "舆情治理强调制度、机制与长期治理能力建设；舆情应对更偏向针对具体事件做回应、处置与沟通。前者是长期能力，后者是事件处置动作。",
+          "sources": [
+            {
+              "title": "舆情治理",
+              "snippet": "舆情治理重在建立长期机制、规则协同与治理能力。"
+            },
+            {
+              "title": "舆情应对",
+              "snippet": "舆情应对通常面向具体事件，强调回应、处置与信息发布。"
+            }
+          ]
+        }
+      },
+      "fallback_used": false,
+      "error": null
+    }
+  }
+}

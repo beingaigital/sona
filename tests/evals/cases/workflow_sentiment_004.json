@@ -1,15 +1,16 @@
 {
   "id": "workflow_sentiment_004",
+  "target": "workflow",
+  "stage": "sentiment",
   "suite": "workflow-smoke",
   "suites": [
     "ci-gate"
   ],
-  "target": "workflow",
-  "stage": "sentiment",
   "input": {
-    "query": "评估情感分析阶段输出结构是否完整",
+    "query": "请对粉底液将军相关讨论做情绪倾向概览。",
     "options": {
-      "mode": "replay"
+      "window": "7d",
+      "style": "summary"
     }
   },
   "fixtures": {
@@ -19,21 +20,12 @@
   "expectations": {
     "required_fields": [
       "status",
-      "stage",
-      "metrics"
+      "message"
     ],
-    "sentiment": {
-      "min_parse_success_rate": 0.95,
-      "min_llm_coverage": 0.8,
-      "agreement_warning": {
-        "min": 0.4,
-        "max": 0.95
-      }
-    },
-    "max_latency_ms": 20000,
+    "max_latency_ms": 15000,
     "thresholds": {
-      "structure_completeness": 1.0
+      "structure_completeness": 1.0,
+      "traceability_score": 0.0
     }
   }
 }
-

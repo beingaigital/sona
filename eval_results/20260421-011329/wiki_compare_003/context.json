@@ -1,0 +1,65 @@
+{
+  "run_id": "20260421-011329",
+  "task_id": null,
+  "query": "比较舆情反转与舆情发酵的区别。",
+  "mode": "replay",
+  "diagnostics": {
+    "case_id": "wiki_compare_003",
+    "target": "wiki",
+    "stage": null
+  },
+  "policy": {},
+  "artifacts": {
+    "output": {
+      "answer": "舆情发酵指事件热度持续扩散、讨论不断升温；舆情反转则是在新证据或权威信息出现后，公众主导判断发生明显改变。前者强调扩散过程，后者强调判断方向变化。",
+      "sources": [
+        {
+          "title": "舆情发酵",
+          "snippet": "舆情发酵表现为讨论范围扩大、情绪累积与关注度提升。"
+        },
+        {
+          "title": "舆情反转",
+          "snippet": "舆情反转通常由新增事实或权威通报触发，导致舆论立场明显变化。"
+        }
+      ]
+    }
+  },
+  "budget": {
+    "token_budget": null,
+    "latency_budget_ms": null,
+    "retry_budget": null,
+    "triggers": {},
+    "actions": []
+  },
+  "errors": [],
+  "stage_outputs": {
+    "wiki": {
+      "stage": "wiki",
+      "status": "success",
+      "metrics": {
+        "latency_ms": 0.0,
+        "traceability_score": 1.0,
+        "relevance_score": 0.16666666666666666,
+        "structure_completeness": 1.0,
+        "fallback_rate": 0.0
+      },
+      "artifacts": {
+        "output": {
+          "answer": "舆情发酵指事件热度持续扩散、讨论不断升温；舆情反转则是在新证据或权威信息出现后，公众主导判断发生明显改变。前者强调扩散过程，后者强调判断方向变化。",
+          "sources": [
+            {
+              "title": "舆情发酵",
+              "snippet": "舆情发酵表现为讨论范围扩大、情绪累积与关注度提升。"
+            },
+            {
+              "title": "舆情反转",
+              "snippet": "舆情反转通常由新增事实或权威通报触发，导致舆论立场明显变化。"
+            }
+          ]
+        }
+      },
+      "fallback_used": false,
+      "error": null
+    }
+  }
+}

@@ -5,14 +5,70 @@ from __future__ import annotations
 import json
 import os
 import re
+from functools import lru_cache
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
+import yaml
 from langchain_core.tools import tool
 
-# Neo4j 连接配置（允许通过环境变量覆盖）
-NEO4J_URI = os.environ.get("SONA_NEO4J_URI", "neo4j://127.0.0.1:7687")
-NEO4J_USER = os.environ.get("SONA_NEO4J_USER", "neo4j")
-NEO4J_PASSWORD = os.environ.get("SONA_NEO4J_PASSWORD", "bjtu1234")
+from utils.path import get_config_path
+
+
+@lru_cache(maxsize=1)
+def _load_graph_rag_config() -> Dict[str, Any]:
+    """读取 config.yaml 中的 Graph RAG 配置。"""
+    config_path = get_config_path("config.yaml")
+    if not config_path.exists():
+        return {}
+    try:
+        with open(config_path, "r", encoding="utf-8") as f:
+            config = yaml.safe_load(f) or {}
+    except Exception:
+        return {}
+    graph_rag = config.get("graph_rag")
+    return graph_rag if isinstance(graph_rag, dict) else {}
+
+
+def graph_rag_enabled_in_config() -> bool:
+    """
+    读取 config.yaml 中 graph_rag.enabled。
+    未配置 graph_rag 或缺少 enabled 时视为 True（与历史行为一致）。
+    """
+    cfg = _load_graph_rag_config()
+    if not cfg:
+        return True
+    en = cfg.get("enabled", True)
+    if isinstance(en, bool):
+        return en
+    s = str(en).strip().lower()
+    if s in ("false", "0", "no", "off", ""):
+        return False
+    return True
+
+
+def _get_neo4j_settings() -> Tuple[str, str, str]:
+    """优先环境变量，其次读取 config.yaml 中的 Graph RAG 配置。"""
+    config = _load_graph_rag_config()
+    auth = config.get("auth") if isinstance(config.get("auth"), (list, tuple)) else []
+    config_uri = str(config.get("uri", "") or "").strip()
+    config_user = str(auth[0] if len(auth) > 0 else config.get("user", "") or "").strip()
+    config_password = str(auth[1] if len(auth) > 1 else config.get("password", "") or "").strip()
+
+    uri = os.environ.get("SONA_NEO4J_URI") or config_uri or "neo4j://127.0.0.1:7687"
+    user = os.environ.get("SONA_NEO4J_USER") or config_user or "neo4j"
+    password = os.environ.get("SONA_NEO4J_PASSWORD") or config_password or "bjtu1234"
+    return uri, user, password
+
+
+def _get_neo4j_database() -> str:
+    """Neo4j 5+ 多库名，默认 neo4j。可用环境变量 SONA_NEO4J_DATABASE 覆盖。"""
+    d = (os.environ.get("SONA_NEO4J_DATABASE") or "").strip()
+    return d or "neo4j"
+
+
+# 供 scripts/sync_neo4j.py、import_to_neo4j.py 等直接复用连接参数
+NEO4J_URI, NEO4J_USER, NEO4J_PASSWORD = _get_neo4j_settings()
+NEO4J_DATABASE = _get_neo4j_database()
 
 CASE_LABEL_CANDIDATES = [
     "Case",
@@ -267,7 +323,8 @@ def _get_neo4j_driver():
     try:
         from neo4j import GraphDatabase
 
-        return GraphDatabase.driver(NEO4J_URI, auth=(NEO4J_USER, NEO4J_PASSWORD))
+        uri, user, password = _get_neo4j_settings()
+        return GraphDatabase.driver(uri, auth=(user, password))
     except ImportError:
         return None
 

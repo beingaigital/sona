@@ -1,0 +1,14 @@
+{
+  "task_id": "task_demo",
+  "last_run_at": "2026-04-21T01:14:18.267110+08:00",
+  "last_metrics": {
+    "volume_total": 0.0,
+    "new_topic_count": 0.0,
+    "negative_ratio": 0.0,
+    "volume_spike_ratio": 0.0,
+    "velocity_ratio": 0.0
+  },
+  "seen_titles": [],
+  "last_alerts": [],
+  "last_artifact_path": "monitor_results/20260421/task_demo_011418.json"
+}

@@ -1,0 +1,15 @@
+{
+  "type": "Case",
+  "title": "环境保护",
+  "source_file": "鐜淇濇姢.md",
+  "confidence": "medium",
+  "keywords": [
+    "自动生成",
+    "增量更新"
+  ],
+  "domain": "",
+  "actors": [],
+  "risk_patterns": [],
+  "response_tactics": [],
+  "summary": ""
+}

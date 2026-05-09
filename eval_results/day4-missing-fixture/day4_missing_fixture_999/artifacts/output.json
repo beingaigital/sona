@@ -1,0 +1,9 @@
+{
+  "status": "fail",
+  "message": "Replay fixture not found: /Users/walk/Downloads/sona-main/tests/fixtures/not_exists/tools.json",
+  "error": {
+    "error_code": "E_REPLAY_FIXTURE_NOT_FOUND",
+    "error_message": "Replay fixture not found: /Users/walk/Downloads/sona-main/tests/fixtures/not_exists/tools.json",
+    "retryable": false
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "type": "Case",
+  "title": "标准制定",
+  "source_file": "鏍囧噯鍒跺畾.md",
+  "confidence": "medium",
+  "keywords": [
+    "自动生成",
+    "增量更新"
+  ],
+  "domain": "",
+  "actors": [],
+  "risk_patterns": [],
+  "response_tactics": [],
+  "summary": ""
+}

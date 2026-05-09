@@ -1,0 +1,15 @@
+{
+  "type": "Case",
+  "title": "自然疗愈",
+  "source_file": "鑷劧鐤楁剤.md",
+  "confidence": "medium",
+  "keywords": [
+    "自动生成",
+    "增量更新"
+  ],
+  "domain": "",
+  "actors": [],
+  "risk_patterns": [],
+  "response_tactics": [],
+  "summary": ""
+}

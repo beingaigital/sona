@@ -1,0 +1,30 @@
+{
+  "task_id": "单依纯演唱会_强行侵权_演唱《李白》事件舆情分析_005",
+  "created_at": "2026-04-07T20:34:43.975720",
+  "updated_at": "2026-04-07T22:18:01.042967",
+  "description": "分析单依纯演唱会\"强行侵权\"演唱《李白》事件舆情分析",
+  "initial_query": "单依纯演唱会\"强行侵权\"演唱《李白》事件舆情分析",
+  "messages": [
+    {
+      "role": "user",
+      "content": "/event 单依纯演唱会\"强行侵权\"演唱《李白》事件舆情分析",
+      "timestamp": "2026-04-07T20:35:13.003635"
+    },
+    {
+      "role": "assistant",
+      "content": "已完成舆情事件分析工作流。报告：file:///Users/walk/Downloads/sona-main/sandbox/2026-04-07_%E6%96%B0%E4%BC%9A%E8%AF%9D_002/%E7%BB%93%E6%9E%9C%E6%96%87%E4%BB%B6/report_20260407_203622.html",
+      "timestamp": "2026-04-07T20:36:22.783978"
+    },
+    {
+      "role": "user",
+      "content": "各/exit",
+      "timestamp": "2026-04-07T20:41:08.624955"
+    }
+  ],
+  "token_usage": {
+    "total_tokens": 0,
+    "prompt_tokens": 0,
+    "completion_tokens": 0,
+    "steps": []
+  }
+}

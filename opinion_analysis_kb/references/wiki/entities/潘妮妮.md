@@ -11,10 +11,10 @@ tags: [自动生成, 增量更新]
 证据不足
 
 ## 关联来源
-- [71_从“跪族篮孩”到“粉底液将军”：饭圈文化的十年漂流，与一场未完成的成人礼.md](sources/71_从_跪族篮孩_到_粉底液将军_饭圈文化的十年漂流_与一场未完成的成人礼.md) | /Users/biaowenhuang/Documents/sona-master/opinion_analysis_kb/references/raw/71_从“跪族篮孩”到“粉底液将军”：饭圈文化的十年漂流，与一场未完成的成人礼.md
+- [71_从“跪族篮孩”到“粉底液将军”：饭圈文化的十年漂流，与一场未完成的成人礼.md](sources/71_从_跪族篮孩_到_粉底液将军_饭圈文化的十年漂流_与一场未完成的成人礼.md) | /Users/walk/Downloads/sona-main/opinion_analysis_kb/references/raw/71_从“跪族篮孩”到“粉底液将军”：饭圈文化的十年漂流，与一场未完成的成人礼.md
 
 ## 近期增量
-- --- title: 从“跪族篮孩”到“粉底液将军”：饭圈文化的十年漂流，与一场未完成的成人礼 source_file: /Users/biaowenhuang/Documents/sona-master/opinion_analysis_kb/references/raw/71_从“跪族篮孩”到“粉底液将军”：饭圈文化的十年漂流，与一场未完成
+- --- title: 从“跪族篮孩”到“粉底液将军”：饭圈文化的十年漂流，与一场未完成的成人礼 source_file: /Users/walk/Downloads/sona-main/opinion_analysis_kb/references/raw/71_从“跪族篮孩”到“粉底液将军”：饭圈文化的十年漂流，与一场未完成
 
 ## 关联概念
 - [公共秩序](../concepts/公共秩序.md)、[未成年人](../concepts/未成年人.md)、[平台治理](../concepts/平台治理.md)、[文化安全](../concepts/文化安全.md)、[审美导向](../concepts/审美导向.md)

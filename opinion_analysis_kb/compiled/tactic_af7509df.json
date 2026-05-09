@@ -1,0 +1,31 @@
+{
+  "id": "tactic_af7509df",
+  "type": "ResponseTactic",
+  "domain": "",
+  "tags": [
+    "自动生成",
+    "增量更新"
+  ],
+  "source_path": "opinion_analysis_kb\\opinion_analysis_kb\\references\\wiki\\concepts\\鏀垮簻鍥炲簲.md",
+  "source_url": "",
+  "evidence_refs": [],
+  "confidence": 0.6,
+  "status": "candidate",
+  "created_at": "",
+  "updated_at": "2026-04-15T18:38:06",
+  "last_verified_at": null,
+  "name": "政府回应",
+  "description": "",
+  "tactic_type": null,
+  "applicable_scenarios": [],
+  "applicable_risk_patterns": [],
+  "applicable_actors": [],
+  "stage": null,
+  "preconditions": [],
+  "actions": [],
+  "message_templates": [],
+  "do_and_dont": null,
+  "success_metrics": [],
+  "failure_modes": [],
+  "example_cases": []
+}

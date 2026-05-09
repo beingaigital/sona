@@ -1,0 +1,30 @@
+{
+  "save_path": "/Users/walk/Downloads/sona-main/sandbox/2026-04-07_新会话_006/过程文件/netinsight_微博_汇总_20260407_215740.csv",
+  "dataset_summary": {
+    "row_count": 739,
+    "fieldnames": [
+      "id",
+      "标题",
+      "内容",
+      "作者",
+      "平台",
+      "发布时间",
+      "发布时间戳",
+      "URL",
+      "情感",
+      "评论数",
+      "转发数",
+      "点赞数",
+      "来源",
+      "IP属地",
+      "命中关键词",
+      "行业类型"
+    ],
+    "time_coverage": {
+      "min_time": "2026-03-08 11:00:00",
+      "max_time": "2026-04-06 23:01:30",
+      "time_column": "发布时间"
+    }
+  },
+  "generated_at": "2026-04-07 21:57:40.255613"
+}

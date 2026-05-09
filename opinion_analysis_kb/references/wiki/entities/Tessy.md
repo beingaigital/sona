@@ -11,10 +11,10 @@ tags: [自动生成, 增量更新]
 证据不足
 
 ## 关联来源
-- [30_行测大拿省考杭州某区面试89+的面试碎碎念.md](sources/30_行测大拿省考杭州某区面试89_的面试碎碎念.md) | /Users/biaowenhuang/Documents/sona-master/opinion_analysis_kb/references/raw/30_行测大拿省考杭州某区面试89+的面试碎碎念.md
+- [30_行测大拿省考杭州某区面试89+的面试碎碎念.md](sources/30_行测大拿省考杭州某区面试89_的面试碎碎念.md) | /Users/walk/Downloads/sona-main/opinion_analysis_kb/references/raw/30_行测大拿省考杭州某区面试89+的面试碎碎念.md
 
 ## 近期增量
-- --- title: 30_行测大拿省考杭州某区面试 89+ 的面试碎碎念 source_file: /Users/biaowenhuang/Documents/sona-master/opinion_analysis_kb/references/raw/30_行测大拿省考杭州某区面试 89+ 的面试碎碎念.md updated_at: 202
+- --- title: 30_行测大拿省考杭州某区面试 89+ 的面试碎碎念 source_file: /Users/walk/Downloads/sona-main/opinion_analysis_kb/references/raw/30_行测大拿省考杭州某区面试 89+ 的面试碎碎念.md updated_at: 202
 
 ## 关联概念
 - [公共部门招聘](../concepts/公共部门招聘.md)、[面试技巧](../concepts/面试技巧.md)、[个人成长](../concepts/个人成长.md)、[教育培训](../concepts/教育培训.md)

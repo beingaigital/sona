@@ -14,9 +14,8 @@ from tools.dataset_summary import dataset_summary
 from tools.generate_interpretation import generate_interpretation
 from tools.report_html import report_html
 from tools.graph_rag_query import graph_rag_query
-from tools.weibo_aisearch import weibo_aisearch
 from tools.hottopics import run as hottopics_run
-from tools.oprag import (
+from tools.yqzk import (
     get_sentiment_analysis_framework,
     get_sentiment_theories,
     get_sentiment_case_template,
@@ -25,7 +24,6 @@ from tools.oprag import (
     search_reference_insights,
     append_expert_judgement,
     build_event_reference_links,
-    build_reference_wiki,
 )
 
 __all__ = [
@@ -43,9 +41,8 @@ __all__ = [
     "generate_interpretation",
     "report_html",
     "graph_rag_query",
-    "weibo_aisearch",
     "hottopics_run",
-    # OPRAG / 舆情知识库
+    # 舆情智库
     "get_sentiment_analysis_framework",
     "get_sentiment_theories",
     "get_sentiment_case_template",
@@ -54,5 +51,4 @@ __all__ = [
     "search_reference_insights",
     "append_expert_judgement",
     "build_event_reference_links",
-    "build_reference_wiki",
 ]

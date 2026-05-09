@@ -1,0 +1,8 @@
+{
+  "kind": "sentiment",
+  "generated_at": "2026-04-07 21:27:35.594543",
+  "statistics": {},
+  "positive_summary": [],
+  "negative_summary": [],
+  "error": "analysis_sentiment 超时（>300s），已跳过并继续流程"
+}

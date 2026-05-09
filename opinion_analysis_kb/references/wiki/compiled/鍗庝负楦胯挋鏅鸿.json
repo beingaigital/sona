@@ -1,0 +1,15 @@
+{
+  "type": "Case",
+  "title": "华为鸿蒙智行",
+  "source_file": "鍗庝负楦胯挋鏅鸿.md",
+  "confidence": "medium",
+  "keywords": [
+    "自动生成",
+    "增量更新"
+  ],
+  "domain": "",
+  "actors": [],
+  "risk_patterns": [],
+  "response_tactics": [],
+  "summary": ""
+}

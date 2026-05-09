@@ -1,0 +1,15 @@
+{
+  "type": "Case",
+  "title": "传播机制",
+  "source_file": "浼犳挱鏈哄埗.md",
+  "confidence": "medium",
+  "keywords": [
+    "自动生成",
+    "增量更新"
+  ],
+  "domain": "",
+  "actors": [],
+  "risk_patterns": [],
+  "response_tactics": [],
+  "summary": ""
+}

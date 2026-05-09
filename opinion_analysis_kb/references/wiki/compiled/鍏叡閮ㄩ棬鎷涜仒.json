@@ -1,0 +1,15 @@
+{
+  "type": "Case",
+  "title": "公共部门招聘",
+  "source_file": "鍏叡閮ㄩ棬鎷涜仒.md",
+  "confidence": "medium",
+  "keywords": [
+    "自动生成",
+    "增量更新"
+  ],
+  "domain": "",
+  "actors": [],
+  "risk_patterns": [],
+  "response_tactics": [],
+  "summary": ""
+}

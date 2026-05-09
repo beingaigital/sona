@@ -173,3 +173,28 @@ platforms:
 #     name: "自定义数据源"
 #     url: "https://example.com/api/hot"
 #     enabled: true
+
+
+# --- Graph RAG 配置（需 Neo4j；本地可 docker compose -f docker-compose.neo4j.yml up -d）---
+graph_rag:
+  enabled: true
+  uri: "bolt://127.0.0.1:7687"
+  auth: ["neo4j", "bjtu1234"]  # 与 docker-compose.neo4j.yml 中 NEO4J_AUTH 一致
+
+# --- 舆情专题监测与预警（MVP）---
+monitor:
+  enabled: true
+  state_dir: "monitor_state"
+  results_dir: "monitor_results"
+  tasks:
+    - id: "task_demo"
+      name: "粉底液将军专题监测"
+      enabled: true
+      keywords: ["粉底液将军", "反华", "张凌赫"]
+      platform_ids: ["weibo", "zhihu", "toutiao", "douyin", "baidu"]
+      interval_minutes: 60
+      thresholds:
+        volume_spike_ratio: 1.8
+        negative_ratio: 0.35
+        new_topic_count: 8
+        velocity_ratio: 0.3

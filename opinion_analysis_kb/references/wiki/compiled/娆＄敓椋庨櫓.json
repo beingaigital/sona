@@ -1,0 +1,14 @@
+{
+  "type": "RiskPattern",
+  "title": "次生风险",
+  "source_file": "娆＄敓椋庨櫓.md",
+  "confidence": "medium",
+  "keywords": [
+    "自动生成",
+    "增量更新"
+  ],
+  "domain": "",
+  "description": "",
+  "indicators": [],
+  "severity": "medium"
+}
