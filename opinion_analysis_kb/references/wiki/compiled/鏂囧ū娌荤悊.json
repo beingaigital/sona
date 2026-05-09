@@ -1,0 +1,15 @@
+{
+  "type": "Case",
+  "title": "文娱治理",
+  "source_file": "鏂囧ū娌荤悊.md",
+  "confidence": "medium",
+  "keywords": [
+    "自动生成",
+    "增量更新"
+  ],
+  "domain": "",
+  "actors": [],
+  "risk_patterns": [],
+  "response_tactics": [],
+  "summary": ""
+}

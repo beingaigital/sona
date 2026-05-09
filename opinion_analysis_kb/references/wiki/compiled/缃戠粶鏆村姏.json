@@ -1,0 +1,15 @@
+{
+  "type": "Case",
+  "title": "网络暴力",
+  "source_file": "缃戠粶鏆村姏.md",
+  "confidence": "medium",
+  "keywords": [
+    "自动生成",
+    "增量更新"
+  ],
+  "domain": "",
+  "actors": [],
+  "risk_patterns": [],
+  "response_tactics": [],
+  "summary": ""
+}

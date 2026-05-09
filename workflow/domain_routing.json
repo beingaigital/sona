@@ -52,6 +52,192 @@
         "max_seed_pages": 10,
         "max_seed_chars_for_llm": 18000
       }
+    },
+    "大熊猫": {
+      "match": {
+        "keywords": [
+          "大熊猫",
+          "熊猫基地",
+          "成都大熊猫",
+          "繁育研究基地",
+          "圈养",
+          "野放",
+          "租借熊猫",
+          "熊猫旅居",
+          "动物福利",
+          "行为富化",
+          "熊猫直播",
+          "饭圈",
+          "熊猫粉丝",
+          "文旅",
+          "熊猫谷",
+          "花花",
+          "萌兰"
+        ]
+      },
+      "must_include": {
+        "concept_pages": [
+          "opinion_analysis_kb/domains/panda/playbook_panda.md",
+          "opinion_analysis_kb/domains/panda/docs/大熊猫谣言与辟谣：全面知识库.md",
+          "opinion_analysis_kb/domains/panda/docs/【熊猫知识】行为富化 - 成都大熊猫繁育研究基地.md",
+          "opinion_analysis_kb/domains/panda/docs/【熊猫知识】生存环境 - 成都大熊猫繁育研究基地.md"
+        ],
+        "wiki_sources": [
+          "opinion_analysis_kb/domains/panda/cases/P06_文旅大客流与体验争议.md",
+          "opinion_analysis_kb/domains/panda/cases/P04_行为富化 versus 虐待指控.md"
+        ]
+      },
+      "prefer": {
+        "concept_pages": [
+          "opinion_analysis_kb/domains/panda/docs/【熊猫知识】行为特点 - 成都大熊猫繁育研究基地.md",
+          "opinion_analysis_kb/domains/panda/docs/【熊猫知识】疾病 - 成都大熊猫繁育研究基地.md"
+        ]
+      },
+      "blocklist": {
+        "path_contains": [
+          "opinion_analysis_kb/references/wiki/output/_candidates/"
+        ]
+      },
+      "injection_limits": {
+        "max_seed_pages": 10,
+        "max_seed_chars_for_llm": 18000
+      }
+    },
+    "交通": {
+      "match": {
+        "keywords": [
+          "交通舆情",
+          "铁路舆情",
+          "高铁",
+          "动车组",
+          "12306",
+          "火车票",
+          "列车晚点",
+          "霸座",
+          "客运站",
+          "民航",
+          "航班延误",
+          "机场",
+          "空难",
+          "东航",
+          "国泰航空",
+          "网约车",
+          "浦东机场",
+          "出租车",
+          "公交限速",
+          "公交车",
+          "海事",
+          "港口",
+          "集装箱船",
+          "撞船",
+          "航道",
+          "沥心沙",
+          "甬舟港",
+          "北仑港",
+          "高速公路",
+          "追尾",
+          "辅助驾驶",
+          "智驾",
+          "快递丢件",
+          "物流舆情",
+          "交通运输部",
+          "春运",
+          "浮动票价"
+        ]
+      },
+      "must_include": {
+        "concept_pages": [
+          "opinion_analysis_kb/domains/transport/playbook_transport.md",
+          "opinion_analysis_kb/domains/transport/materials/交通舆情课题摘录/29_监管与口径_事心双解与闭环.md"
+        ],
+        "wiki_sources": [
+          "opinion_analysis_kb/domains/transport/cases/T01_高铁车厢冲突与规则叙事.md",
+          "opinion_analysis_kb/domains/transport/cases/T04_浦东机场网约车限制与枢纽公平.md",
+          "opinion_analysis_kb/domains/transport/cases/T05_宁波北仑港危化爆燃与港城安全.md"
+        ]
+      },
+      "prefer": {
+        "concept_pages": [
+          "opinion_analysis_kb/domains/transport/materials/交通舆情课题摘录/06_B1_轨道交通乘客冲突与票务服务议题.md",
+          "opinion_analysis_kb/domains/transport/materials/交通舆情课题摘录/22_专题_春运预约与系统韧性叙事.md"
+        ]
+      },
+      "blocklist": {
+        "path_contains": [
+          "opinion_analysis_kb/references/wiki/output/_candidates/"
+        ]
+      },
+      "injection_limits": {
+        "max_seed_pages": 10,
+        "max_seed_chars_for_llm": 18000
+      }
+    },
+    "健康": {
+      "match": {
+        "keywords": [
+          "医患",
+          "医患关系",
+          "医疗纠纷",
+          "医疗损害",
+          "医疗事故",
+          "医院",
+          "卫健委",
+          "卫生健康",
+          "疾控",
+          "疾控中心",
+          "食品安全",
+          "食安",
+          "315",
+          "听花酒",
+          "槽头肉",
+          "预制菜",
+          "协和医学院",
+          "协和",
+          "4+4",
+          "霸王茶姬",
+          "医疗鉴定",
+          "医学鉴定",
+          "公共卫生",
+          "自来水异味",
+          "急诊",
+          "处方",
+          "小洛熙",
+          "宁波妇儿",
+          "妇女儿童医院",
+          "健康审美",
+          "广电",
+          "槽头",
+          "营养成分",
+          "成分表"
+        ]
+      },
+      "must_include": {
+        "concept_pages": [
+          "opinion_analysis_kb/domains/health/playbook_health.md",
+          "opinion_analysis_kb/references/wiki/concepts/医疗纠纷.md",
+          "opinion_analysis_kb/references/wiki/concepts/食品安全.md"
+        ],
+        "wiki_sources": [
+          "opinion_analysis_kb/domains/health/cases/H01_霸王茶姬成分与健康话语争议.md",
+          "opinion_analysis_kb/domains/health/cases/H03_宁波小洛熙医疗纠纷.md",
+          "opinion_analysis_kb/domains/health/cases/H06_315槽头肉预制菜.md"
+        ]
+      },
+      "prefer": {
+        "concept_pages": [
+          "opinion_analysis_kb/references/wiki/concepts/公共卫生.md",
+          "opinion_analysis_kb/references/wiki/entities/霸王茶姬.md"
+        ]
+      },
+      "blocklist": {
+        "path_contains": [
+          "opinion_analysis_kb/references/wiki/output/_candidates/"
+        ]
+      },
+      "injection_limits": {
+        "max_seed_pages": 10,
+        "max_seed_chars_for_llm": 18000
+      }
     }
   }
 }

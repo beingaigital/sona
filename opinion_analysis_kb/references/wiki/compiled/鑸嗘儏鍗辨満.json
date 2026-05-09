@@ -1,0 +1,15 @@
+{
+  "type": "Case",
+  "title": "舆情危机",
+  "source_file": "鑸嗘儏鍗辨満.md",
+  "confidence": "medium",
+  "keywords": [
+    "自动生成",
+    "增量更新"
+  ],
+  "domain": "",
+  "actors": [],
+  "risk_patterns": [],
+  "response_tactics": [],
+  "summary": ""
+}

@@ -1,0 +1,26 @@
+{
+  "id": "act_e139c41f",
+  "type": "Actor",
+  "domain": "",
+  "tags": [
+    "自动生成",
+    "增量更新"
+  ],
+  "source_path": "opinion_analysis_kb\\opinion_analysis_kb\\references\\wiki\\entities\\瀹樻柟鏈烘瀯.md",
+  "source_url": "",
+  "evidence_refs": [],
+  "confidence": 0.6,
+  "status": "candidate",
+  "created_at": "",
+  "updated_at": "2026-04-22T07:21:20",
+  "last_verified_at": null,
+  "name": "官方机构",
+  "aliases": [],
+  "actor_type": "organization",
+  "description": "",
+  "domain_relevance": [],
+  "region": null,
+  "platforms": [],
+  "influence_level": "medium",
+  "credibility": "medium"
+}

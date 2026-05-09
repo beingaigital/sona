@@ -1,0 +1,50 @@
+{
+  "run_id": "20260421-002903",
+  "timestamp": "2026-04-20T16:29:03+00:00",
+  "total_cases": 2,
+  "pass_cases": 2,
+  "warning_cases": 0,
+  "pass_rate": 1.0,
+  "results": [
+    {
+      "run_id": "20260421-002903",
+      "case_id": "workflow_report_005",
+      "target": "workflow",
+      "stage": "report",
+      "status": "pass",
+      "metrics": {
+        "latency_ms": 0.0,
+        "traceability_score": 0.0,
+        "relevance_score": 0.0,
+        "structure_completeness": 1.0,
+        "fallback_rate": 0.0
+      },
+      "artifacts": {
+        "trace": "eval_results/20260421-002903/workflow_report_005/trace.jsonl",
+        "output": "eval_results/20260421-002903/workflow_report_005/artifacts/output.json",
+        "context": "eval_results/20260421-002903/workflow_report_005/context.json"
+      },
+      "fail_reasons": []
+    },
+    {
+      "run_id": "20260421-002903",
+      "case_id": "workflow_sentiment_004",
+      "target": "workflow",
+      "stage": "sentiment",
+      "status": "pass",
+      "metrics": {
+        "latency_ms": 0.0,
+        "traceability_score": 0.0,
+        "relevance_score": 0.0,
+        "structure_completeness": 1.0,
+        "fallback_rate": 0.0
+      },
+      "artifacts": {
+        "trace": "eval_results/20260421-002903/workflow_sentiment_004/trace.jsonl",
+        "output": "eval_results/20260421-002903/workflow_sentiment_004/artifacts/output.json",
+        "context": "eval_results/20260421-002903/workflow_sentiment_004/context.json"
+      },
+      "fail_reasons": []
+    }
+  ]
+}

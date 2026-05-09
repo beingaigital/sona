@@ -1,0 +1,24 @@
+# 本地 Neo4j（Graph RAG 依赖 Bolt 7687）。与 config/config.yaml 中 graph_rag.auth 默认一致。
+#
+# 启动：
+#   docker compose -f docker-compose.neo4j.yml up -d
+# 浏览器控制台（可选）：http://127.0.0.1:7474
+# 停止：
+#   docker compose -f docker-compose.neo4j.yml down
+#
+# 若修改密码，请同步修改 config/config.yaml 的 graph_rag.auth 与 .env 中的 SONA_NEO4J_PASSWORD。
+
+services:
+  neo4j:
+    image: neo4j:5
+    container_name: sona-neo4j
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    environment:
+      NEO4J_AUTH: neo4j/bjtu1234
+    volumes:
+      - neo4j_data:/data
+
+volumes:
+  neo4j_data:

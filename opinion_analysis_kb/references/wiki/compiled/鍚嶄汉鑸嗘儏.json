@@ -1,0 +1,15 @@
+{
+  "type": "Case",
+  "title": "名人舆情",
+  "source_file": "鍚嶄汉鑸嗘儏.md",
+  "confidence": "medium",
+  "keywords": [
+    "自动生成",
+    "增量更新"
+  ],
+  "domain": "",
+  "actors": [],
+  "risk_patterns": [],
+  "response_tactics": [],
+  "summary": ""
+}

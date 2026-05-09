@@ -1,0 +1,15 @@
+{
+  "type": "Case",
+  "title": "公共部门人力资源",
+  "source_file": "鍏叡閮ㄩ棬浜哄姏璧勬簮.md",
+  "confidence": "medium",
+  "keywords": [
+    "自动生成",
+    "增量更新"
+  ],
+  "domain": "",
+  "actors": [],
+  "risk_patterns": [],
+  "response_tactics": [],
+  "summary": ""
+}

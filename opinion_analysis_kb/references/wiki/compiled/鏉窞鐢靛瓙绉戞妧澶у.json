@@ -1,0 +1,15 @@
+{
+  "type": "Case",
+  "title": "杭州电子科技大学",
+  "source_file": "鏉窞鐢靛瓙绉戞妧澶у.md",
+  "confidence": "medium",
+  "keywords": [
+    "自动生成",
+    "增量更新"
+  ],
+  "domain": "",
+  "actors": [],
+  "risk_patterns": [],
+  "response_tactics": [],
+  "summary": ""
+}

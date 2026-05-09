@@ -1,0 +1,15 @@
+{
+  "type": "Case",
+  "title": "医学人文",
+  "source_file": "鍖诲浜烘枃.md",
+  "confidence": "medium",
+  "keywords": [
+    "自动生成",
+    "增量更新"
+  ],
+  "domain": "",
+  "actors": [],
+  "risk_patterns": [],
+  "response_tactics": [],
+  "summary": ""
+}

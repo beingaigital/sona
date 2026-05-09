@@ -1,0 +1,11 @@
+{
+  "has_input": true,
+  "mode": "hybrid",
+  "source": "interactive",
+  "user_judgement": "各个主体态度分析 词云图和可视化结果",
+  "focus_keywords": [
+    "各个主体态度分析",
+    "词云图和可视化结果"
+  ],
+  "created_at": "2026-04-07 22:03:58.489064"
+}

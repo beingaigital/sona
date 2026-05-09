@@ -1,0 +1,15 @@
+{
+  "type": "Case",
+  "title": "讲一下语文题",
+  "source_file": "璁蹭竴涓嬭鏂囬.md",
+  "confidence": "medium",
+  "keywords": [
+    "自动生成",
+    "增量更新"
+  ],
+  "domain": "",
+  "actors": [],
+  "risk_patterns": [],
+  "response_tactics": [],
+  "summary": ""
+}

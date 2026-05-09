@@ -1,0 +1,15 @@
+{
+  "type": "Case",
+  "title": "裁员舆情",
+  "source_file": "瑁佸憳鑸嗘儏.md",
+  "confidence": "medium",
+  "keywords": [
+    "自动生成",
+    "增量更新"
+  ],
+  "domain": "",
+  "actors": [],
+  "risk_patterns": [],
+  "response_tactics": [],
+  "summary": ""
+}

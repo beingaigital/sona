@@ -1,0 +1,85 @@
+{
+  "run_id": "20260507-193531",
+  "task_id": null,
+  "query": "data_num 多平台分配与高级检索式契约",
+  "mode": "replay",
+  "diagnostics": {
+    "case_id": "tool_data_num_platform_001",
+    "target": "tool",
+    "stage": "data_num"
+  },
+  "policy": {},
+  "artifacts": {
+    "output": {
+      "search_matrix": {
+        "华为+(手机|(数据线+充电器))-小米": 2000
+      },
+      "total_count": 2000,
+      "platform": "MULTI",
+      "time_range": "2026-04-01 00:00:00;2026-04-18 23:59:59",
+      "threshold": 2000,
+      "keyword_mode": "advanced",
+      "query_string": "华为+(手机|(数据线+充电器))-小米",
+      "allocate_by_platform": true,
+      "platform_counts": {
+        "微博": 12000,
+        "微信": 8000,
+        "新闻网站": 50000
+      },
+      "platform_allocation": {
+        "微博": 320,
+        "微信": 213,
+        "新闻网站": 1467
+      }
+    }
+  },
+  "budget": {
+    "token_budget": null,
+    "latency_budget_ms": 30000,
+    "retry_budget": null,
+    "triggers": {
+      "latency_budget_exceeded": 0
+    },
+    "actions": []
+  },
+  "errors": [],
+  "stage_outputs": {
+    "data_num": {
+      "stage": "data_num",
+      "status": "success",
+      "metrics": {
+        "latency_ms": 0.0,
+        "traceability_score": 0.0,
+        "relevance_score": 0.0,
+        "structure_completeness": 1.0,
+        "fallback_rate": 0.0
+      },
+      "artifacts": {
+        "output": {
+          "search_matrix": {
+            "华为+(手机|(数据线+充电器))-小米": 2000
+          },
+          "total_count": 2000,
+          "platform": "MULTI",
+          "time_range": "2026-04-01 00:00:00;2026-04-18 23:59:59",
+          "threshold": 2000,
+          "keyword_mode": "advanced",
+          "query_string": "华为+(手机|(数据线+充电器))-小米",
+          "allocate_by_platform": true,
+          "platform_counts": {
+            "微博": 12000,
+            "微信": 8000,
+            "新闻网站": 50000
+          },
+          "platform_allocation": {
+            "微博": 320,
+            "微信": 213,
+            "新闻网站": 1467
+          }
+        }
+      },
+      "fallback_used": false,
+      "error": null
+    }
+  }
+}

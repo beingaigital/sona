@@ -1,0 +1,15 @@
+{
+  "type": "Case",
+  "title": "社会文娱",
+  "source_file": "绀句細鏂囧ū.md",
+  "confidence": "medium",
+  "keywords": [
+    "自动生成",
+    "增量更新"
+  ],
+  "domain": "",
+  "actors": [],
+  "risk_patterns": [],
+  "response_tactics": [],
+  "summary": ""
+}

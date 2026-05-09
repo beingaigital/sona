@@ -1,0 +1,29 @@
+{
+  "id": "risk_9b6790eb",
+  "type": "RiskPattern",
+  "domain": "",
+  "tags": [
+    "自动生成",
+    "增量更新"
+  ],
+  "source_path": "opinion_analysis_kb\\opinion_analysis_kb\\references\\wiki\\concepts\\鑸嗘儏椋庨櫓.md",
+  "source_url": "",
+  "evidence_refs": [],
+  "confidence": 0.6,
+  "status": "candidate",
+  "created_at": "",
+  "updated_at": "2026-04-15T18:20:11",
+  "last_verified_at": null,
+  "name": "舆情风险",
+  "description": "",
+  "risk_category": null,
+  "applicable_scenarios": [],
+  "indicators": [],
+  "trigger_conditions": [],
+  "early_warning_signals": [],
+  "typical_escalation_path": null,
+  "related_emotions": [],
+  "severity": "medium",
+  "recommended_tactics": [],
+  "example_cases": []
+}

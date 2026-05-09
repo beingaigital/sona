@@ -11,10 +11,10 @@ tags: [自动生成, 增量更新]
 证据不足
 
 ## 关联来源
-- [舆情分析方法论.md](sources/output_舆情分析方法论.md) | /Users/biaowenhuang/Documents/sona-master/opinion_analysis_kb/references/wiki/output/舆情分析方法论.md
+- [舆情分析方法论.md](sources/output_舆情分析方法论.md) | /Users/walk/Downloads/sona-main/opinion_analysis_kb/references/wiki/output/舆情分析方法论.md
 
 ## 近期增量
-- --- title: 舆情分析方法论 source_file: /Users/biaowenhuang/Documents/sona-master/opinion_analysis_kb/references/wiki/output/舆情分析方法论.md updated_at: 2024-05-22 15:30:00 tags: - 舆情分析 
+- --- title: 舆情分析方法论 source_file: /Users/walk/Downloads/sona-main/opinion_analysis_kb/references/wiki/output/舆情分析方法论.md updated_at: 2024-05-22 15:30:00 tags: - 舆情分析 
 
 ## 关联概念
 - [公共秩序](../concepts/公共秩序.md)、[平台治理](../concepts/平台治理.md)、[危机公关](../concepts/危机公关.md)、[社会心理](../concepts/社会心理.md)

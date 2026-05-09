@@ -7,72 +7,10 @@ import json
 import os
 import re
 from datetime import datetime
-from pathlib import Path
 from urllib.parse import quote
 
 import requests
 from langchain_core.tools import tool
-from utils.env_loader import get_env_config
-
-
-def _parse_cookie_header(cookie_header: str) -> dict[str, str]:
-    cookies: dict[str, str] = {}
-    for part in str(cookie_header or "").split(";"):
-        seg = part.strip()
-        if not seg or "=" not in seg:
-            continue
-        key, value = seg.split("=", 1)
-        key = key.strip()
-        value = value.strip()
-        if key:
-            cookies[key] = value
-    return cookies
-
-
-def _load_cookies_from_path(path_like: str) -> dict[str, str]:
-    """
-    从文件加载 Cookie，兼容：
-    1) Playwright storage_state.json: {"cookies":[{"name":"SUB","value":"..."}]}
-    2) Cookie 字典: {"SUB":"...","SUBP":"..."}
-    3) Cookie 列表: [{"name":"SUB","value":"..."}, ...]
-    """
-    path = Path(str(path_like or "").strip()).expanduser()
-    if not path.exists() or not path.is_file():
-        return {}
-    try:
-        content = path.read_text(encoding="utf-8", errors="replace")
-        obj = json.loads(content)
-    except Exception:
-        return {}
-
-    cookies: dict[str, str] = {}
-    if isinstance(obj, dict) and isinstance(obj.get("cookies"), list):
-        for item in obj.get("cookies", []):
-            if not isinstance(item, dict):
-                continue
-            name = str(item.get("name", "")).strip()
-            value = str(item.get("value", "")).strip()
-            if name and value:
-                cookies[name] = value
-        return cookies
-
-    if isinstance(obj, dict):
-        for k, v in obj.items():
-            name = str(k or "").strip()
-            value = str(v or "").strip()
-            if name and value:
-                cookies[name] = value
-        return cookies
-
-    if isinstance(obj, list):
-        for item in obj:
-            if not isinstance(item, dict):
-                continue
-            name = str(item.get("name", "")).strip()
-            value = str(item.get("value", "")).strip()
-            if name and value:
-                cookies[name] = value
-    return cookies
 
 
 def _extract_snippets_from_html(text: str, limit: int) -> list[dict[str, str]]:
@@ -102,35 +40,20 @@ def _is_visitor_page(text: str) -> bool:
     return ("visitor system" in low) or ("sina visitor system" in low)
 
 
-def _fetch_with_playwright(
-    url: str,
-    timeout_sec: int,
-    cookies: dict[str, str] | None = None,
-    storage_state_path: str = "",
-) -> str:
+def _fetch_with_playwright(url: str, timeout_sec: int) -> str:
     """
     Playwright 回退抓取：用于 requests 触发 Visitor System 或正文为空场景。
     """
+    from utils.playwright_env import ensure_playwright_browsers_path
+
+    ensure_playwright_browsers_path()
     from playwright.sync_api import sync_playwright
 
     timeout_ms = max(8000, min(timeout_sec * 1000, 120000))
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
         try:
-            storage_path = Path(str(storage_state_path or "").strip()).expanduser() if storage_state_path else None
-            if storage_path and storage_path.exists() and storage_path.is_file():
-                context = browser.new_context(storage_state=str(storage_path))
-            else:
-                context = browser.new_context()
-            cookie_items = cookies or {}
-            if cookie_items:
-                merged = "; ".join([f"{k}={v}" for k, v in cookie_items.items()])
-                context.set_extra_http_headers({"Cookie": merged})
-                cookie_list = []
-                for k, v in cookie_items.items():
-                    cookie_list.append({"name": k, "value": v, "domain": ".weibo.com", "path": "/"})
-                    cookie_list.append({"name": k, "value": v, "domain": "s.weibo.com", "path": "/"})
-                context.add_cookies(cookie_list)
+            context = browser.new_context()
             page = context.new_page()
             page.goto(url, wait_until="domcontentloaded", timeout=timeout_ms)
             page.wait_for_timeout(2500)
@@ -153,12 +76,9 @@ def weibo_aisearch(query: str, limit: int = 12) -> str:
       - limit: 返回片段数量上限（1~30，默认12）
     输出：JSON字符串，含 topic/url/count/results/error/fetched_at。
     """
-    # 确保 .env 已加载到进程环境变量（与项目其他工具行为一致）
-    get_env_config()
     topic = str(query or "").strip() or "舆情事件"
     k = max(1, min(int(limit or 12), 30))
-    refer = str(os.environ.get("SONA_WEIBO_AISEARCH_REFER", "weibo_aisearch")).strip() or "weibo_aisearch"
-    url = f"https://s.weibo.com/aisearch?q={quote(topic)}&Refer={quote(refer)}"
+    url = f"https://s.weibo.com/aisearch?q={quote(topic)}&Refer=aisearch_aisearch"
 
     timeout_sec = 12
     try:
@@ -173,18 +93,9 @@ def weibo_aisearch(query: str, limit: int = 12) -> str:
         ),
         "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
     }
-    cookie_header = str(os.environ.get("SONA_WEIBO_COOKIE", "") or "").strip()
-    cookie_path = str(os.environ.get("SONA_WEIBO_COOKIE_PATH", "") or "").strip()
-    cookies = _parse_cookie_header(cookie_header)
-    if not cookies and cookie_path:
-        cookies = _load_cookies_from_path(cookie_path)
-    if cookie_header and cookies:
-        headers["Cookie"] = cookie_header
-    elif cookies:
-        headers["Cookie"] = "; ".join([f"{k}={v}" for k, v in cookies.items()])
 
     try:
-        resp = requests.get(url, headers=headers, cookies=(cookies or None), timeout=timeout_sec)
+        resp = requests.get(url, headers=headers, timeout=timeout_sec)
         text = resp.text or ""
     except Exception as e:
         return json.dumps(
@@ -194,7 +105,6 @@ def weibo_aisearch(query: str, limit: int = 12) -> str:
                 "count": 0,
                 "results": [],
                 "error": f"抓取失败: {str(e)}",
-                "authenticated": bool(cookies),
                 "fetched_at": datetime.now().isoformat(sep=" "),
             },
             ensure_ascii=False,
@@ -214,12 +124,7 @@ def weibo_aisearch(query: str, limit: int = 12) -> str:
 
     if need_fallback and enable_fallback:
         try:
-            pw_html = _fetch_with_playwright(
-                url,
-                timeout_sec=timeout_sec,
-                cookies=cookies,
-                storage_state_path=cookie_path,
-            )
+            pw_html = _fetch_with_playwright(url, timeout_sec=timeout_sec)
             pw_results = _extract_snippets_from_html(pw_html, k)
             if pw_results:
                 results = pw_results
@@ -245,8 +150,6 @@ def weibo_aisearch(query: str, limit: int = 12) -> str:
             "error": error_text,
             "fallback_used": fallback_used,
             "source": "playwright" if fallback_used and results else "requests",
-            "authenticated": bool(cookies),
-            "cookie_path_used": bool(cookie_path and Path(cookie_path).expanduser().exists()),
             "fetched_at": datetime.now().isoformat(sep=" "),
         },
         ensure_ascii=False,

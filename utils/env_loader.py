@@ -14,9 +14,13 @@ def _load_dotenv() -> None:
         root = get_project_root()
         env_file = root / ".env"
         if env_file.exists():
-            load_dotenv(env_file)
+            load_dotenv(env_file, override=True)
         else:
-            load_dotenv()
+            load_dotenv(override=True)
+        # .env 加载后再默认 Playwright 缓存目录（可被 PLAYWRIGHT_BROWSERS_PATH 覆盖）
+        from utils.playwright_env import ensure_playwright_browsers_path
+
+        ensure_playwright_browsers_path()
     except ImportError:
         pass
 
@@ -51,10 +55,3 @@ def get_env_config() -> EnvConfig:
     if _env_config is None:
         _env_config = EnvConfig()
     return _env_config
-
-
-def reload_env_config() -> EnvConfig:
-    """丢弃缓存并重新从当前 ``os.environ`` 构建配置（供在 ``load_dotenv(override=True)`` 之后使用）。"""
-    global _env_config
-    _env_config = None
-    return get_env_config()

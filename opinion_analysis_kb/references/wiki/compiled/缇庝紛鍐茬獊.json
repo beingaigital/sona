@@ -1,0 +1,15 @@
+{
+  "type": "Case",
+  "title": "美伊冲突",
+  "source_file": "缇庝紛鍐茬獊.md",
+  "confidence": "medium",
+  "keywords": [
+    "自动生成",
+    "增量更新"
+  ],
+  "domain": "",
+  "actors": [],
+  "risk_patterns": [],
+  "response_tactics": [],
+  "summary": ""
+}

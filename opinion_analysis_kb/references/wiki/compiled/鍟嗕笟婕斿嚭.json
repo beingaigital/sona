@@ -1,0 +1,15 @@
+{
+  "type": "Case",
+  "title": "商业演出",
+  "source_file": "鍟嗕笟婕斿嚭.md",
+  "confidence": "medium",
+  "keywords": [
+    "自动生成",
+    "增量更新"
+  ],
+  "domain": "",
+  "actors": [],
+  "risk_patterns": [],
+  "response_tactics": [],
+  "summary": ""
+}

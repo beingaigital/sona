@@ -7,6 +7,7 @@ import json
 import os
 import re
 import html
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -15,27 +16,11 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.tools import tool
 
 from model.factory import get_report_model
-from tools.report_html_template import (
-    build_html_from_morandi_template,
-    format_report_length_instruction,
-    get_report_html_template_path,
-    normalize_report_length,
-)
-from tools.report_meta import build_report_meta_from_html
 from utils.path import ensure_task_dirs, get_task_result_dir
 from utils.prompt_loader import get_report_html_prompt
 from utils.task_context import get_task_id
 from utils.methodology_loader import load_methodology_for_report
-from tools.oprag import (
-    LEGACY_YQZK_KNOWLEDGE_SNAPSHOT_FILENAME,
-    OPRAG_KNOWLEDGE_SNAPSHOT_FILENAME,
-)
 import webbrowser
-
-
-def _is_oprag_knowledge_snapshot_filename(name: str) -> bool:
-    n = str(name or "").strip()
-    return n in (OPRAG_KNOWLEDGE_SNAPSHOT_FILENAME, LEGACY_YQZK_KNOWLEDGE_SNAPSHOT_FILENAME)
 
 
 def _read_json_files(directory: str) -> List[Dict[str, Any]]:
@@ -161,6 +146,48 @@ def _build_graph_rag_context(json_files: List[Dict[str, Any]]) -> Tuple[str, boo
     return "\n".join(lines), enabled
 
 
+def _build_wiki_kb_snapshot_context(json_files: List[Dict[str, Any]]) -> Tuple[str, bool]:
+    """
+    从 wiki_qa_snapshot.json 提炼「领域路由 + 来源路径」摘要，供报告模型写入正文举证。
+    """
+    snap: Optional[Dict[str, Any]] = None
+    for item in json_files:
+        if str(item.get("filename", "") or "").strip() == "wiki_qa_snapshot.json":
+            c = item.get("content")
+            if isinstance(c, dict):
+                snap = c
+            break
+    if not snap:
+        return "", False
+
+    meta = snap.get("_wiki_meta") if isinstance(snap.get("_wiki_meta"), dict) else {}
+    domain = str(meta.get("domain", "") or "").strip()
+    retrieved = meta.get("retrieved_count", 0)
+    llm_used = bool(meta.get("llm_used")) if isinstance(meta, dict) else False
+    answer = str(snap.get("answer", "") or "").strip()
+    sources = snap.get("sources") if isinstance(snap.get("sources"), list) else []
+
+    lines: List[str] = [
+        "领域路由（domain_routing，来自 project memory / 关键词命中）: "
+        + (domain if domain else "未命中（走通用 wiki 索引召回）"),
+        f"检索条数: {retrieved}",
+        f"是否经大模型合成答案: {'是' if llm_used else '否'}",
+    ]
+    if answer:
+        lines.append("合成答案摘录: " + answer[:450] + ("…" if len(answer) > 450 else ""))
+    if sources:
+        lines.append("Top 知识来源路径（可对照 domains/ 与 references/wiki）:")
+        for row in sources[:12]:
+            if not isinstance(row, dict):
+                continue
+            title = str(row.get("title", "") or "").strip()
+            path_s = str(row.get("path", "") or "").strip()
+            score = row.get("score", "")
+            if path_s or title:
+                lines.append(f"- {title or '（无标题）'} | path={path_s} | score={score}")
+    return "\n".join(lines), True
+
+
 def _build_reference_context(json_files: List[Dict[str, Any]]) -> Tuple[str, bool]:
     """
     从 reference_insights/reference_links 中提炼“可引用参考证据”摘要。
@@ -204,79 +231,6 @@ def _build_reference_context(json_files: List[Dict[str, Any]]) -> Tuple[str, boo
     return "\n".join(lines), bool(ref_hits)
 
 
-def _collect_theory_evidence_lines(json_files: List[Dict[str, Any]], limit: int = 8) -> List[str]:
-    """
-    收集可直接用于“理论研判”的证据行（优先来自 reference_insights / OPRAG 快照）。
-    """
-    rows: List[Dict[str, Any]] = []
-    ref_ins = _get_json_dict_by_filenames(json_files, "reference_insights.json")
-    if isinstance(ref_ins, dict):
-        rs = ref_ins.get("results")
-        if isinstance(rs, list):
-            rows.extend([x for x in rs if isinstance(x, dict)])
-
-    for fn in ("oprag_knowledge_snapshot.json", LEGACY_YQZK_KNOWLEDGE_SNAPSHOT_FILENAME):
-        snap = _get_json_dict_by_filenames(json_files, fn)
-        if not isinstance(snap, dict):
-            continue
-        refs = snap.get("references") if isinstance(snap.get("references"), dict) else {}
-        rs = refs.get("results") if isinstance(refs.get("results"), list) else []
-        rows.extend([x for x in rs if isinstance(x, dict)])
-        break
-
-    out: List[str] = []
-    seen: set[str] = set()
-    for row in rows:
-        kind = str(row.get("kind", "") or "").strip().lower()
-        title = str(row.get("title", "") or "").strip()
-        source = str(row.get("source", "") or row.get("path", "") or "").strip()
-        snippet = str(row.get("snippet", "") or "").strip()
-        name = str(row.get("name", "") or "").strip()
-        is_theory = (kind == "theory") or ("理论" in title) or ("舆情分析的相关理论" in source)
-        if not is_theory:
-            continue
-        concept = name or title or "理论条目"
-        key = f"{concept}|{source}|{snippet[:120]}"
-        if key in seen:
-            continue
-        seen.add(key)
-        line = f"- 理论: {concept}"
-        if source:
-            line += f"；来源: {source}"
-        if snippet:
-            line += f"；摘录: {snippet[:180]}" + ("..." if len(snippet) > 180 else "")
-        out.append(line)
-        if len(out) >= max(1, limit):
-            break
-    return out
-
-
-def _build_oprag_snapshot_context(json_files: List[Dict[str, Any]]) -> Tuple[str, bool]:
-    """
-    汇总 oprag_knowledge_snapshot.json（及旧名 yqzk_knowledge_snapshot.json）中的方法论/案例/指标要点。
-    """
-    snapshot: Dict[str, Any] = {}
-    for item in json_files:
-        if _is_oprag_knowledge_snapshot_filename(str(item.get("filename", "") or "")):
-            c = item.get("content")
-            if isinstance(c, dict):
-                snapshot = c
-            break
-    if not snapshot:
-        return "", False
-
-    lines: List[str] = ["舆情智库知识快照（OPRAG）:"]
-    # 兼容 load_sentiment_knowledge 返回 shape：{"keyword":...,"knowledge":...} 或检索 JSON 字符串
-    knowledge_text = str(snapshot.get("knowledge", "") or "").strip()
-    if knowledge_text:
-        lines.append(knowledge_text[:1800] + ("..." if len(knowledge_text) > 1800 else ""))
-    else:
-        # 退化：直接摘取顶层结构
-        compact = json.dumps(snapshot, ensure_ascii=False)[:1800]
-        lines.append(compact + ("..." if len(compact) >= 1800 else ""))
-    return "\n".join(lines), True
-
-
 def _build_collab_context(json_files: List[Dict[str, Any]]) -> Tuple[str, bool]:
     """
     汇总用户协同输入与外部补充参考。
@@ -304,33 +258,18 @@ def _build_collab_context(json_files: List[Dict[str, Any]]) -> Tuple[str, bool]:
     if user_judgement:
         has_any = True
         lines.append("用户研判重点:")
-        # 研判输入常包含完整结构化分析，保留更长上下文避免关键观点在注入阶段丢失
-        lines.append(user_judgement[:2600] + ("..." if len(user_judgement) > 2600 else ""))
+        lines.append(f"- {user_judgement[:220]}" + ("..." if len(user_judgement) > 220 else ""))
         focus_keywords = judgement.get("focus_keywords")
         if isinstance(focus_keywords, list) and focus_keywords:
             keys = [str(x).strip() for x in focus_keywords if str(x).strip()]
             if keys:
                 lines.append("用户关注关键词: " + "、".join(keys[:10]))
-        # 从用户文本中抽取显式要点（标题/编号/项目符号）供模型优先对齐
-        keypoints: List[str] = []
-        for raw in user_judgement.splitlines():
-            t = raw.strip().lstrip("•").lstrip("-").strip()
-            if not t:
-                continue
-            if re.match(r"^\d+[\.\、\)]\s*", t) or any(x in t for x in ("焦点", "困境", "建议", "走向", "关注点", "执法", "法律", "政策")):
-                keypoints.append(t)
-            if len(keypoints) >= 8:
-                break
-        if keypoints:
-            lines.append("用户研判关键要点（需在报告中显式回应）:")
-            for kp in keypoints:
-                lines.append(f"- {kp[:160]}" + ("..." if len(kp) > 160 else ""))
 
     expert_note = str(expert_notes.get("expert_note", "") or "").strip()
     if expert_note:
         has_any = True
         lines.append("专家补充观点:")
-        lines.append(expert_note[:2000] + ("..." if len(expert_note) > 2000 else ""))
+        lines.append(f"- {expert_note[:260]}" + ("..." if len(expert_note) > 260 else ""))
 
     weibo_results = weibo_ref.get("results") if isinstance(weibo_ref.get("results"), list) else []
     if weibo_results:
@@ -349,190 +288,117 @@ def _build_collab_context(json_files: List[Dict[str, Any]]) -> Tuple[str, bool]:
     return "\n".join(lines), has_any
 
 
-def _get_json_dict_by_filenames(json_files: List[Dict[str, Any]], *candidates: str) -> Optional[Dict[str, Any]]:
-    """按文件名（忽略大小写）查找第一个 dict content。"""
-    want = {str(c or "").strip().lower() for c in candidates if str(c or "").strip()}
+def _extract_user_judgement_payload(json_files: List[Dict[str, Any]]) -> Dict[str, Any]:
+    payload: Dict[str, Any] = {}
     for item in json_files:
-        fn = str(item.get("filename", "") or "").strip().lower()
-        if fn in want:
-            c = item.get("content")
-            if isinstance(c, dict):
-                return c
-    return None
-
-
-def _build_wiki_qa_priority_block(content: Dict[str, Any]) -> str:
-    """wiki_qa_snapshot.json → 叙事模型优先阅读的纯文本（避免被后续 14k 截断裁掉）。"""
-    lines: List[str] = [
-        "## 【优先阅读】本地 Wiki 知识库（opinion_analysis_kb / wiki_cli 召回）",
-        "",
-        "以下片段来自你编译的三层 wiki；正文与「路径」必须进入报告的理论/复盘引用（至少 2 条不同路径或标题）。",
-        "",
-    ]
-    ans = str(content.get("answer") or "").strip()
-    if ans:
-        lines.append("### 合成回答/要点摘录")
-        lines.append(ans[:10_000] + ("..." if len(ans) > 10_000 else ""))
-        lines.append("")
-    sources = content.get("sources")
-    if isinstance(sources, list) and sources:
-        lines.append("### 检索来源（须引用）")
-        for i, s in enumerate(sources[:10], 1):
-            if not isinstance(s, dict):
-                continue
-            title = str(s.get("title") or "").strip()
-            path = str(s.get("path") or "").strip()
-            snip = str(s.get("snippet") or "").strip()
-            score = s.get("score", "")
-            lines.append(f"- [{i}] **{title}**（score={score}）")
-            if path:
-                lines.append(f"  - 路径: `{path}`")
-            if snip:
-                lines.append(f"  - 摘录: {snip[:520]}" + ("..." if len(snip) > 520 else ""))
-        lines.append("")
-    meta = content.get("_wiki_meta")
-    if isinstance(meta, dict) and meta:
-        lines.append("### 召回元信息")
-        lines.append(
-            f"- retrieved_count={meta.get('retrieved_count', '')} llm_used={meta.get('llm_used', '')}"
-        )
-        lines.append("")
-    return "\n".join(line for line in lines if line is not None).strip()
-
-
-def _build_weibo_priority_block(content: Dict[str, Any]) -> str:
-    """weibo_aisearch_reference.json → 外部讨论线索（须与本地 CSV 交叉验证）。"""
-    lines: List[str] = [
-        "## 【优先阅读】微博智搜（外部线索，非事实锚点）",
-        "",
-        "以下仅作舆论场线索；`INTRO_BACKGROUND` 与「公众讨论焦点」须至少吸收 2 条摘要，并写明需与本地数据核对。",
-        "",
-    ]
-    topic = str(content.get("topic") or content.get("query") or "").strip()
-    url = str(content.get("url") or "").strip()
-    err = str(content.get("error") or "").strip()
-    if topic:
-        lines.append(f"- 检索主题: {topic}")
-    if url:
-        lines.append(f"- 入口链接: {url}")
-    if err:
-        lines.append(f"- 抓取说明: {err[:240]}")
-    lines.append("")
-    results = content.get("results")
-    if isinstance(results, list) and results:
-        lines.append("### 智搜摘要片段")
-        for i, r in enumerate(results[:14], 1):
-            if not isinstance(r, dict):
-                continue
-            snip = str(r.get("snippet") or "").strip()
-            if snip:
-                lines.append(f"- [{i}] {snip[:400]}" + ("..." if len(snip) > 400 else ""))
-    else:
-        lines.append("（无 snippet 结果；可写「证据不足」并依赖本地数据。）")
-    lines.append("")
-    return "\n".join(lines).strip()
-
-
-def _build_oprag_snapshot_priority_block(snapshot: Dict[str, Any]) -> str:
-    """压缩 OPRAG 快照：突出检索 hits，避免与 methodology 全文重复。"""
-    lines: List[str] = [
-        "## 【优先阅读】OPRAG 知识快照（与事件 query 对齐）",
-        "",
-        "说明：若命中含 `kind=theory`，对应 `expert_notes/舆情分析的相关理论` 成稿；理论研判须优先吸收，并与数据交叉验证；"
-        "三个理论槽位应写**不同概念名**，避免重复套用同一词条。",
-        "",
-    ]
-    q = str(snapshot.get("query") or "").strip()
-    if q:
-        lines.append(f"- 快照 query: {q}")
-    ref = snapshot.get("references")
-    if isinstance(ref, dict):
-        results = ref.get("results")
-        if isinstance(results, list) and results:
-            lines.append("- 检索命中（优先引用 `kind=theory` 与 `kind=wiki`，并与事件数据对齐）:")
-            for r in results[:10]:
-                if not isinstance(r, dict):
-                    continue
-                snip = str(r.get("snippet") or "").strip()
-                title = str(r.get("title") or "").strip()
-                kind = str(r.get("kind") or "").strip()
-                src = str(r.get("source") or "").strip()
-                if not snip:
-                    continue
-                tag = f" [{kind}]" if kind else ""
-                lines.append(f"  ・ {snip[:300]}{'...' if len(snip) > 300 else ''}（{title}{tag}）")
-                if src and len(src) < 200:
-                    lines.append(f"    来源文件: {src}")
-    know = snapshot.get("knowledge")
-    if isinstance(know, str) and know.strip():
-        lines.append("")
-        lines.append("- 知识工具输出（摘录，避免与下方「智库方法论」整段重复）:")
-        lines.append(know[:3500] + ("..." if len(know) > 3500 else ""))
-    lines.append("")
-    return "\n".join(lines).strip()
-
-
-def _build_reference_insights_priority_block(content: Dict[str, Any]) -> str:
-    lines: List[str] = [
-        "## 【优先阅读】本地智库检索（reference_insights.json）",
-        "",
-    ]
-    results = content.get("results")
-    if not isinstance(results, list) or not results:
-        return ""
-    for i, r in enumerate(results[:10], 1):
-        if not isinstance(r, dict):
+        name = str(item.get("filename", "") or "").strip()
+        if name != "user_judgement_input.json":
             continue
-        snip = str(r.get("snippet") or "").strip()
-        title = str(r.get("title") or "").strip()
-        kind = str(r.get("kind") or "").strip()
-        if not snip:
-            continue
-        lines.append(f"- [{i}] {snip[:420]}" + ("..." if len(snip) > 420 else "") + f"（来源: {title}{'/' + kind if kind else ''}）")
-    lines.append("")
-    return "\n".join(lines).strip()
-
-
-def build_kb_priority_context_for_report(json_files: List[Dict[str, Any]]) -> str:
-    """
-    组装「叙事模型必达」优先区：Wiki + 微博智搜 + Graph RAG + 参考检索 + OPRAG。
-    解决原先 analysis_results 前 14k 截断导致 wiki/微博从未进入模型上下文的问题。
-    """
-    parts: List[str] = []
-
-    wiki = _get_json_dict_by_filenames(json_files, "wiki_qa_snapshot.json")
-    if wiki:
-        block = _build_wiki_qa_priority_block(wiki)
-        if block:
-            parts.append(block)
-
-    weibo = _get_json_dict_by_filenames(json_files, "weibo_aisearch_reference.json")
-    if weibo:
-        block = _build_weibo_priority_block(weibo)
-        if block:
-            parts.append(block)
-
-    graph_txt, _graph_on = _build_graph_rag_context(json_files)
-    if graph_txt.strip():
-        parts.append(
-            "## 【优先阅读】Graph RAG 增强摘要\n\n"
-            + graph_txt.strip()
-            + "\n\n"
-        )
-
-    ref_ins = _get_json_dict_by_filenames(json_files, "reference_insights.json")
-    if ref_ins:
-        rb = _build_reference_insights_priority_block(ref_ins)
-        if rb:
-            parts.append(rb)
-
-    for fn in ("oprag_knowledge_snapshot.json", LEGACY_YQZK_KNOWLEDGE_SNAPSHOT_FILENAME):
-        snap = _get_json_dict_by_filenames(json_files, fn)
-        if snap:
-            parts.append(_build_oprag_snapshot_priority_block(snap))
+        content = item.get("content")
+        if isinstance(content, dict):
+            payload = content
             break
+    return payload
 
-    return "\n\n".join(p for p in parts if str(p).strip()).strip()
+
+def _inject_user_judgement_section(html_content: str, judgement_payload: Dict[str, Any]) -> str:
+    """
+    将用户在协同研判阶段输入的关注点，作为“固定可见章节”注入报告 HTML。
+    说明：即使模型在正文里已经回应，也仍展示原文，便于复核与协作。
+    """
+    if not html_content:
+        return html_content
+    user_judgement = str(judgement_payload.get("user_judgement", "") or "").strip()
+    if not user_judgement:
+        return html_content
+    focus_keywords = judgement_payload.get("focus_keywords")
+    keywords: List[str] = []
+    if isinstance(focus_keywords, list):
+        keywords = [str(x).strip() for x in focus_keywords if str(x).strip()]
+
+    block = (
+        "\n"
+        "<div class=\"section\" id=\"sona-user-judgement\">\n"
+        "  <h2 class=\"section-title\">协同研判输入（用户关注点）</h2>\n"
+        "  <div class=\"highlight-box\">\n"
+        f"    <p><span class=\"key-point\">研判重点</span>{html.escape(user_judgement)}</p>\n"
+        "  </div>\n"
+    )
+    if keywords:
+        block += (
+            "  <p style=\"margin-top: 10px; color: var(--muted); font-size: 0.95rem;\">"
+            f"<strong>关注关键词：</strong>{html.escape('、'.join(keywords[:12]))}"
+            "</p>\n"
+        )
+    block += "</div>\n"
+
+    # 优先插入在 header 后，保证靠前可见；否则插入到 body 开头
+    if "</header>" in html_content:
+        return html_content.replace("</header>", "</header>\n" + block, 1)
+    if "<body" in html_content:
+        m = re.search(r"<body[^>]*>", html_content, re.IGNORECASE)
+        if m:
+            pos = m.end()
+            return html_content[:pos] + "\n" + block + html_content[pos:]
+    return block + html_content
+
+
+def _inject_multi_perspective_section(html_content: str, judgement_payload: Dict[str, Any]) -> str:
+    """
+    兜底：当报告模型未显式生成“不同人物态度 / 多视角分析”板块时，强制注入一个可见章节。
+    注意：该注入不编造事实，仅把“分析框架 + 用户关注点”落地到报告结构中。
+    """
+    if not html_content:
+        return html_content
+    if "不同人物态度 / 多视角分析" in html_content:
+        return html_content
+
+    user_judgement = str(judgement_payload.get("user_judgement", "") or "").strip()
+    focus_keywords = judgement_payload.get("focus_keywords")
+    keywords: List[str] = []
+    if isinstance(focus_keywords, list):
+        keywords = [str(x).strip() for x in focus_keywords if str(x).strip()]
+
+    intro = ""
+    if user_judgement:
+        intro = (
+            "<div class=\"highlight-box\">"
+            f"<p><span class=\"key-point\">本次研判重点</span>{html.escape(user_judgement)}</p>"
+            + (
+                f"<p style=\"margin-top:8px;color:var(--muted);font-size:0.95rem;\"><strong>关注关键词：</strong>{html.escape('、'.join(keywords[:12]))}</p>"
+                if keywords else
+                ""
+            )
+            + "</div>"
+        )
+
+    # 兜底内容：给出可执行的“多视角框架”，并提示证据不足的处理方式
+    block = (
+        "\n"
+        "<div class=\"section\" id=\"sona-multi-perspective\">\n"
+        "  <h2 class=\"section-title\">不同人物态度 / 多视角分析</h2>\n"
+        f"  {intro}\n"
+        "  <div class=\"insight-card\">\n"
+        "    <p style=\"color: var(--muted);\">"
+        "为确保“多视角研判”在报告中可复核，本节按角色给出结构化对照。若输入材料中缺乏直接证据，将明确标注“证据不足”。"
+        "</p>\n"
+        "  </div>\n"
+        "  <div class=\"two-column\">\n"
+        "    <div class=\"insight-card\"><h4 style=\"color: var(--primary-strong); margin-bottom: 8px;\">当事人/相关个体</h4><p><strong>立场与态度：</strong>证据不足</p><p><strong>典型表达/证据：</strong>证据不足</p><p><strong>风险与建议：</strong>避免二次伤害；沟通以事实澄清与情绪安抚为先</p></div>\n"
+        "    <div class=\"insight-card\"><h4 style=\"color: var(--primary-strong); margin-bottom: 8px;\">官方机构/监管/公安</h4><p><strong>立场与态度：</strong>证据不足</p><p><strong>典型表达/证据：</strong>证据不足</p><p><strong>风险与建议：</strong>统一口径、节点发布；用程序正义压制谣言扩散</p></div>\n"
+        "    <div class=\"insight-card\"><h4 style=\"color: var(--primary-strong); margin-bottom: 8px;\">媒体/自媒体/KOL</h4><p><strong>立场与态度：</strong>证据不足</p><p><strong>典型表达/证据：</strong>证据不足</p><p><strong>风险与建议：</strong>防止标签化与煽动性标题；建议给出可核查来源链路</p></div>\n"
+        "    <div class=\"insight-card\"><h4 style=\"color: var(--primary-strong); margin-bottom: 8px;\">平台方</h4><p><strong>立场与态度：</strong>证据不足</p><p><strong>典型表达/证据：</strong>证据不足</p><p><strong>风险与建议：</strong>强化群组治理、联动处置；对未成年人保护设置更高阈值</p></div>\n"
+        "    <div class=\"insight-card\"><h4 style=\"color: var(--primary-strong); margin-bottom: 8px;\">普通网民</h4><p><strong>立场与态度：</strong>证据不足</p><p><strong>典型表达/证据：</strong>证据不足</p><p><strong>风险与建议：</strong>对立点需拆解；用“事实是否结清/情绪是否接住”组织回应</p></div>\n"
+        "    <div class=\"insight-card\"><h4 style=\"color: var(--primary-strong); margin-bottom: 8px;\">争议群体/饭圈/对立阵营</h4><p><strong>立场与态度：</strong>证据不足</p><p><strong>典型表达/证据：</strong>证据不足</p><p><strong>风险与建议：</strong>重点识别组织化动员；避免以偏概全，区分个体表达与群体操控</p></div>\n"
+        "  </div>\n"
+        "</div>\n"
+    )
+
+    if "</div>\n\n        <footer" in html_content:
+        return html_content.replace("</div>\n\n        <footer", block + "\n</div>\n\n        <footer", 1)
+    if "</body>" in html_content:
+        return html_content.replace("</body>", block + "\n</body>", 1)
+    return html_content + "\n" + block
 
 
 def _safe_int(value: Any) -> int:
@@ -540,142 +406,6 @@ def _safe_int(value: Any) -> int:
         return int(str(value).replace(",", "").strip())
     except Exception:
         return 0
-
-
-def _resolve_project_root_from_analysis_dir(analysis_results_dir: str) -> Optional[Path]:
-    """Best-effort resolve repository root from analysis results directory."""
-    candidates: List[Path] = []
-    try:
-        p = Path(str(analysis_results_dir or "")).expanduser()
-        if not p.is_absolute():
-            p = (Path.cwd() / p).resolve()
-        else:
-            p = p.resolve()
-        candidates.extend([p, *list(p.parents)])
-    except Exception:
-        pass
-    cwd = Path.cwd().resolve()
-    candidates.extend([cwd, *list(cwd.parents)])
-
-    seen: set[str] = set()
-    for c in candidates:
-        key = str(c)
-        if key in seen:
-            continue
-        seen.add(key)
-        if (c / ".git").exists() and (c / "eval_results").exists():
-            return c
-    return None
-
-
-def _extract_eval_report_feedback(*, project_root: Optional[Path], max_reasons: int = 8) -> Dict[str, Any]:
-    """
-    从最近一次评测中提取 report 阶段 warning/fail 的可执行反馈，
-    用于下一次报告生成时的反向约束提示。
-    """
-    if not project_root:
-        return {"has_feedback": False}
-    eval_root = project_root / "eval_results"
-    if not eval_root.exists():
-        return {"has_feedback": False}
-
-    summary_files = sorted(
-        [p / "summary.json" for p in eval_root.iterdir() if p.is_dir() and (p / "summary.json").exists()],
-        key=lambda x: x.stat().st_mtime,
-        reverse=True,
-    )
-    if not summary_files:
-        return {"has_feedback": False}
-
-    for summary_path in summary_files:
-        try:
-            payload = json.loads(summary_path.read_text(encoding="utf-8"))
-        except Exception:
-            continue
-        if not isinstance(payload, dict):
-            continue
-        run_id = str(payload.get("run_id", "") or "").strip()
-        results = payload.get("results")
-        if not isinstance(results, list):
-            continue
-
-        report_items = []
-        for item in results:
-            if not isinstance(item, dict):
-                continue
-            stage = str(item.get("stage", "") or "").strip().lower()
-            status = str(item.get("status", "") or "").strip().lower()
-            if stage == "report" and status in {"warning", "fail"}:
-                report_items.append(item)
-        if not report_items:
-            continue
-
-        raw_reasons: List[str] = []
-        for item in report_items:
-            reasons = item.get("fail_reasons")
-            if isinstance(reasons, list):
-                for r in reasons:
-                    s = str(r or "").strip()
-                    if s:
-                        raw_reasons.append(s)
-        dedup: List[str] = []
-        seen_reason: set[str] = set()
-        for r in raw_reasons:
-            if r in seen_reason:
-                continue
-            seen_reason.add(r)
-            dedup.append(r)
-            if len(dedup) >= max_reasons:
-                break
-
-        if not dedup:
-            continue
-
-        guidance: List[str] = []
-        lower_all = "\n".join(dedup).lower()
-        if "placeholder_leakage" in lower_all or "证据不足" in lower_all:
-            guidance.append("避免输出占位词（如“证据不足/待补充/TODO”）；若证据弱，改为明确证据边界并补充可复核引用。")
-        if "lifecycle_consistency" in lower_all:
-            guidance.append("统一 KPI 阶段与正文阶段表述，禁止出现互相冲突的当前阶段判断。")
-        if "metric_source_consistency" in lower_all:
-            guidance.append("同一指标口径保持单一百分比，避免同文内出现冲突数值。")
-        if "claim_consistency" in lower_all:
-            guidance.append("风险等级与总体态度结论在全篇保持一致，避免前后自相矛盾。")
-        if "report.required_sections" in lower_all or "required_flags" in lower_all:
-            guidance.append("确保完整覆盖摘要/时间线/分析/建议四类结构，并显式呈现关键段落标识。")
-
-        return {
-            "has_feedback": True,
-            "run_id": run_id,
-            "summary_path": str(summary_path),
-            "reasons": dedup,
-            "guidance": guidance[:5],
-        }
-
-    return {"has_feedback": False}
-
-
-def _build_eval_feedback_block(feedback: Dict[str, Any]) -> str:
-    """将最近一次评测反馈转为可注入提示词的结构化文本。"""
-    if not isinstance(feedback, dict) or not bool(feedback.get("has_feedback")):
-        return ""
-    run_id = str(feedback.get("run_id", "") or "").strip()
-    reasons = feedback.get("reasons") if isinstance(feedback.get("reasons"), list) else []
-    guidance = feedback.get("guidance") if isinstance(feedback.get("guidance"), list) else []
-
-    lines: List[str] = ["## 上次评测回灌（自动）"]
-    if run_id:
-        lines.append(f"- 来源评测 run_id: {run_id}")
-    if reasons:
-        lines.append("- 需修复问题：")
-        for r in reasons[:8]:
-            lines.append(f"  - {str(r)}")
-    if guidance:
-        lines.append("- 本次生成硬约束：")
-        for g in guidance[:5]:
-            lines.append(f"  - {str(g)}")
-    lines.append("- 要求：逐条消解上述问题，避免重复触发 warning/fail。")
-    return "\n".join(lines).strip()
 
 
 def _extract_dataset_csv_path(json_files: List[Dict[str, Any]]) -> Optional[Path]:
@@ -780,6 +510,69 @@ def _build_dataset_evidence(csv_path: Optional[Path], limit: int = 8) -> str:
     return "\n".join(lines)
 
 
+def _extract_fallback_chart_data(json_files: List[Dict[str, Any]]) -> Dict[str, List[Dict[str, Any]]]:
+    """从分析结果 JSON 中提取兜底报告可视化所需的基础图表数据。"""
+    keyword_data: List[Dict[str, Any]] = []
+    region_data: List[Dict[str, Any]] = []
+    sentiment_data: List[Dict[str, Any]] = []
+    volume_data: List[Dict[str, Any]] = []
+
+    for item in json_files:
+        filename = str(item.get("filename", "") or "").strip()
+        content = item.get("content")
+        if not isinstance(content, dict):
+            continue
+
+        if filename.startswith("keyword_stats"):
+            rows = content.get("top_keywords") if isinstance(content.get("top_keywords"), list) else []
+            for row in rows[:12]:
+                if not isinstance(row, dict):
+                    continue
+                name = str(row.get("word", "") or "").strip()
+                value = _safe_int(row.get("count", 0))
+                if name and value > 0:
+                    keyword_data.append({"name": name, "value": value})
+
+        elif filename.startswith("region_stats"):
+            rows = content.get("top_provinces") if isinstance(content.get("top_provinces"), list) else []
+            for row in rows[:12]:
+                if not isinstance(row, dict):
+                    continue
+                name = str(row.get("province", "") or "").strip()
+                value = _safe_int(row.get("count", 0))
+                if name and value > 0:
+                    region_data.append({"name": name, "value": value})
+
+        elif filename.startswith("volume_stats"):
+            rows = content.get("data") if isinstance(content.get("data"), list) else []
+            for row in rows[-14:]:
+                if not isinstance(row, dict):
+                    continue
+                name = str(row.get("name", "") or "").strip()
+                value = _safe_int(row.get("value", 0))
+                if name and value >= 0:
+                    volume_data.append({"name": name, "value": value})
+
+        elif filename.startswith("sentiment_analysis") or filename.startswith("sentiment"):
+            stats = content.get("statistics") if isinstance(content.get("statistics"), dict) else {}
+            pos = _safe_int(stats.get("positive_count", stats.get("positive", 0)))
+            neu = _safe_int(stats.get("neutral_count", stats.get("neutral", 0)))
+            neg = _safe_int(stats.get("negative_count", stats.get("negative", 0)))
+            if pos or neu or neg:
+                sentiment_data = [
+                    {"name": "正向", "value": pos},
+                    {"name": "中性", "value": neu},
+                    {"name": "负向", "value": neg},
+                ]
+
+    return {
+        "keywords": keyword_data,
+        "regions": region_data,
+        "sentiment": sentiment_data,
+        "volume": volume_data,
+    }
+
+
 def _needs_quality_retry(html_content: str) -> bool:
     """
     质量兜底：当报告过短或未覆盖关键方法论章节时，触发一次重试。
@@ -797,762 +590,7 @@ def _needs_quality_retry(html_content: str) -> bool:
         "总结复盘",
     ]
     matched = sum(1 for t in required_terms if t in text)
-    if matched < 3:
-        return True
-    # 图后分析兜底：至少应出现多处“结论/分析”文本，避免只出图不解读
-    conclusion_hits = text.count("简要分析结论") + text.count("分析结论")
-    if conclusion_hits < 3:
-        return True
-    return False
-
-
-def _has_effective_oprag_reference(
-    *,
-    html_content: str,
-    has_oprag_snapshot: bool,
-) -> bool:
-    """
-    检查报告正文是否体现 OPRAG/舆情知识库引用。
-    仅在存在知识快照输入时启用检查。
-    """
-    if not has_oprag_snapshot:
-        return True
-    text = str(html_content or "")
-    if not text:
-        return False
-    # 显式出现本地 wiki 路径或目录名即视为已引用知识库（避免仅复述内置三理论）
-    if any(
-        k in text
-        for k in (
-            "opinion_analysis_kb",
-            "references/wiki",
-            "本地 Wiki",
-            "wiki_cli",
-        )
-    ):
-        return True
-    # 命中“知识库/智库/wiki/方法论/案例”等关键词至少 2 类，认为有体现（含旧名 yqzk 以兼容历史 HTML）
-    keyword_groups = [
-        ("舆情智库", "知识库", "oprag", "yqzk"),
-        ("wiki", "概念", "方法论"),
-        ("相似案例", "历史案例", "案例对比"),
-    ]
-    hit_groups = 0
-    lower = text.lower()
-    for group in keyword_groups:
-        if any((k.lower() in lower) for k in group):
-            hit_groups += 1
-    return hit_groups >= 2
-
-
-def _sanitize_echarts_invalid_js_css_var_calls(html_content: str) -> str:
-    """
-    模型有时在 <script> 的 ECharts option 里写成 var('--token')，这在 JavaScript 中是非法语法
-    （var 为关键字，不是 CSS 的 var()），会导致整段脚本解析失败、所有图表空白。
-
-    仅替换带引号形式：var('--xxx') / var("--xxx")。
-    <style> 中常见的 var(--xxx)（无内层引号）不受影响。
-    """
-    if not html_content:
-        return html_content
-
-    token_hex: Dict[str, str] = {
-        "primary-strong": "#1e90ff",
-        "primary": "#4ea5ff",
-        "text": "#1f2937",
-        "muted": "#6b7280",
-        "line": "#e5e7eb",
-        "card": "#ffffff",
-        "bg-grad-start": "#eaf4ff",
-        "bg-grad-end": "#f7fbff",
-    }
-
-    def _repl(m: re.Match[str]) -> str:
-        name = str(m.group(1) or "").strip().lower()
-        return f"'{token_hex.get(name, '#333333')}'"
-
-    return re.sub(
-        r"\bvar\s*\(\s*['\"]--([a-z0-9-]+)['\"]\s*\)",
-        _repl,
-        html_content,
-        flags=re.IGNORECASE,
-    )
-
-
-def _ensure_five_dimension_radar(html_content: str) -> str:
-    """
-    强制保证报告包含“舆情核心分析维度”五维雷达图。
-    """
-    if not html_content:
-        return html_content
-
-    lower_html = html_content.lower()
-    has_radar_keyword = ("五维雷达图" in html_content) or ("雷达图" in html_content)
-    has_radar_series = ('"radar"' in lower_html) or ("'radar'" in lower_html)
-    if has_radar_keyword and has_radar_series:
-        return html_content
-
-    fallback_block = """
-<section class="card" id="core-dimension-radar-card">
-  <h2>舆情核心分析维度（五维雷达图）</h2>
-  <div class="meta">说明：当源数据不完整时，以下分值为基于当前证据的估计值，仅用于结构化对比。</div>
-  <div id="core-dimension-radar" style="width: 100%; height: 360px;"></div>
-</section>
-<script>
-(function () {
-  var el = document.getElementById('core-dimension-radar');
-  if (!el || typeof echarts === 'undefined') return;
-  var chart = echarts.init(el);
-  var option = {
-    tooltip: { trigger: 'item' },
-    legend: { data: ['综合研判'] },
-    radar: {
-      indicator: [
-        { name: '量', max: 100 },
-        { name: '质', max: 100 },
-        { name: '人', max: 100 },
-        { name: '场', max: 100 },
-        { name: '效', max: 100 }
-      ],
-      splitArea: { areaStyle: { color: ['rgba(78,165,255,0.06)', 'rgba(78,165,255,0.12)'] } }
-    },
-    series: [{
-      name: '舆情核心分析维度',
-      type: 'radar',
-      areaStyle: { opacity: 0.2 },
-      lineStyle: { width: 2 },
-      data: [
-        { value: [72, 68, 64, 66, 61], name: '综合研判' }
-      ]
-    }]
-  };
-  chart.setOption(option);
-  window.addEventListener('resize', function () { chart.resize(); });
-})();
-</script>
-"""
-
-    if re.search(r"</body\s*>", html_content, flags=re.IGNORECASE):
-        return re.sub(r"</body\s*>", fallback_block + "\n</body>", html_content, flags=re.IGNORECASE, count=1)
-    return html_content + "\n" + fallback_block
-
-
-def _ensure_lifecycle_chart(html_content: str) -> str:
-    """
-    强制保证报告包含“舆情生命周期阶段研判”可视化图表。
-    """
-    if not html_content:
-        return html_content
-
-    lower_html = html_content.lower()
-    has_lifecycle_heading = ("舆情生命周期阶段研判" in html_content) or ("生命周期" in html_content)
-    has_lifecycle_container = (
-        'id="lifecycle-chart"' in lower_html
-        or "id='lifecycle-chart'" in lower_html
-        or 'id="lifecycle-stage-chart"' in lower_html
-        or "id='lifecycle-stage-chart'" in lower_html
-    )
-    has_area_chart_hint = (
-        ("堆叠面积图" in html_content)
-        or (('"line"' in lower_html) and ("stack" in lower_html))
-        or (("'line'" in lower_html) and ("stack" in lower_html))
-    )
-    if has_lifecycle_container or (has_lifecycle_heading and has_area_chart_hint):
-        return html_content
-
-    fallback_block = """
-<section class="card" id="lifecycle-stage-card">
-  <h2>舆情生命周期阶段研判</h2>
-  <div class="meta">说明：该图为兜底可视化，基于当前样本结构给出阶段趋势示意，最终结论以正文研判为准。</div>
-  <div id="lifecycle-stage-chart" style="width: 100%; height: 360px;"></div>
-  <div class="analysis-conclusion">
-    <h3>简要分析结论</h3>
-    <ul>
-      <li>主要发现：传播热度在中段快速拉升后逐步回落，呈现典型“萌芽-爆发-衰退”轨迹。</li>
-      <li>风险影响：衰退期仍存在次生议题回流风险，可能引发阶段性二次讨论。</li>
-      <li>建议动作：持续监测关键节点与高互动内容，采用“澄清+回应”双轨策略降低反复发酵概率。</li>
-    </ul>
-  </div>
-</section>
-<script>
-(function () {
-  var el = document.getElementById('lifecycle-stage-chart');
-  if (!el || typeof echarts === 'undefined') return;
-  var chart = echarts.init(el);
-  var xAxisData = ['T1', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'];
-  var option = {
-    tooltip: { trigger: 'axis' },
-    legend: { data: ['潜伏期', '萌芽期', '爆发期', '衰退期'] },
-    xAxis: { type: 'category', boundaryGap: false, data: xAxisData },
-    yAxis: { type: 'value', name: '强度' },
-    series: [
-      { name: '潜伏期', type: 'line', stack: 'total', areaStyle: {}, smooth: true, data: [18, 22, 10, 4, 2, 1, 1] },
-      { name: '萌芽期', type: 'line', stack: 'total', areaStyle: {}, smooth: true, data: [2, 10, 28, 20, 8, 3, 1] },
-      { name: '爆发期', type: 'line', stack: 'total', areaStyle: {}, smooth: true, data: [0, 4, 16, 36, 18, 6, 2] },
-      { name: '衰退期', type: 'line', stack: 'total', areaStyle: {}, smooth: true, data: [0, 0, 2, 8, 20, 28, 24] }
-    ]
-  };
-  chart.setOption(option);
-  window.addEventListener('resize', function () { chart.resize(); });
-})();
-</script>
-"""
-
-    if re.search(r"</body\s*>", html_content, flags=re.IGNORECASE):
-        return re.sub(r"</body\s*>", fallback_block + "\n</body>", html_content, flags=re.IGNORECASE, count=1)
-    return html_content + "\n" + fallback_block
-
-
-def _fix_chart_title_legend_overlap(html_content: str) -> str:
-    """
-    修复图表标题与图例重叠问题（永久后处理）：
-    - 雷达图：补齐 title.top / legend.top，并下移雷达中心；
-    - 生命周期图：补齐 title.top / legend.top / grid.top。
-    """
-    if not html_content:
-        return html_content
-
-    # 雷达图：标题“舆情核心分析维度...”
-    radar_pat = re.compile(
-        r"(radarChart\.setOption\(\{[\s\S]*?title:\s*\{[\s\S]*?text:\s*['\"]舆情核心分析维度[^'\"]*['\"][\s\S]*?\}[\s\S]*?legend:\s*\{[\s\S]*?\}[\s\S]*?radar:\s*\{[\s\S]*?center:\s*\[[\s\S]*?\][\s\S]*?\})",
-        flags=re.IGNORECASE,
-    )
-
-    def _radar_repl(m: re.Match[str]) -> str:
-        block = m.group(1)
-        out = block
-        out = re.sub(
-            r"(title:\s*\{[\s\S]*?left:\s*['\"]center['\"]\s*,?)",
-            r"\1\n                top: 8,",
-            out,
-            count=1,
-            flags=re.IGNORECASE,
-        ) if "top:" not in re.search(r"title:\s*\{[\s\S]*?\}", out, flags=re.IGNORECASE).group(0) else out
-        out = re.sub(
-            r"(legend:\s*\{)([\s\S]*?)(\})",
-            lambda mm: mm.group(0) if "top:" in mm.group(0) else f"{mm.group(1)}{mm.group(2).rstrip()}, top: 40{mm.group(3)}",
-            out,
-            count=1,
-            flags=re.IGNORECASE,
-        )
-        out = re.sub(
-            r"center:\s*\[\s*['\"]50%['\"]\s*,\s*['\"]55%['\"]\s*\]",
-            "center: ['50%', '60%']",
-            out,
-            count=1,
-            flags=re.IGNORECASE,
-        )
-        return out
-
-    html_content = radar_pat.sub(_radar_repl, html_content, count=1)
-
-    # 生命周期图：标题“舆情生命周期阶段研判”
-    lifecycle_pat = re.compile(
-        r"(lifecycleChart\.setOption\(\{[\s\S]*?title:\s*\{[\s\S]*?text:\s*['\"]舆情生命周期阶段研判['\"][\s\S]*?\}[\s\S]*?legend:\s*\{[\s\S]*?\}[\s\S]*?grid:\s*\{[\s\S]*?\})",
-        flags=re.IGNORECASE,
-    )
-
-    def _lifecycle_repl(m: re.Match[str]) -> str:
-        block = m.group(1)
-        out = block
-        out = re.sub(
-            r"(title:\s*\{[\s\S]*?left:\s*['\"]center['\"]\s*,?)",
-            r"\1\n                top: 8,",
-            out,
-            count=1,
-            flags=re.IGNORECASE,
-        ) if "top:" not in re.search(r"title:\s*\{[\s\S]*?\}", out, flags=re.IGNORECASE).group(0) else out
-        out = re.sub(
-            r"(legend:\s*\{)([\s\S]*?)(\})",
-            lambda mm: mm.group(0) if "top:" in mm.group(0) else f"{mm.group(1)}{mm.group(2).rstrip()}, top: 40{mm.group(3)}",
-            out,
-            count=1,
-            flags=re.IGNORECASE,
-        )
-        out = re.sub(
-            r"(grid:\s*\{)([\s\S]*?)(\})",
-            lambda mm: mm.group(0) if "top:" in mm.group(0) else f"{mm.group(1)}{mm.group(2).rstrip()}, top: 90{mm.group(3)}",
-            out,
-            count=1,
-            flags=re.IGNORECASE,
-        )
-        return out
-
-    html_content = lifecycle_pat.sub(_lifecycle_repl, html_content, count=1)
-
-    # 通用雷达图修复：匹配 radarChart.setOption({...})
-    def _generic_radar_repl(match: re.Match[str]) -> str:
-        block = match.group(0)
-        out = block
-        out = re.sub(
-            r"(title:\s*\{[\s\S]*?left:\s*['\"]center['\"]\s*,?)",
-            r"\1\n                top: 8,",
-            out,
-            count=1,
-            flags=re.IGNORECASE,
-        ) if re.search(r"title:\s*\{", out, flags=re.IGNORECASE) and "top:" not in (re.search(r"title:\s*\{[\s\S]*?\}", out, flags=re.IGNORECASE).group(0)) else out
-        out = re.sub(
-            r"(legend:\s*\{)([\s\S]*?)(\})",
-            lambda mm: mm.group(0) if "top:" in mm.group(0) else f"{mm.group(1)}{mm.group(2).rstrip()}, top: 40{mm.group(3)}",
-            out,
-            count=1,
-            flags=re.IGNORECASE,
-        )
-        out = re.sub(
-            r"center:\s*\[\s*['\"]50%['\"]\s*,\s*['\"]55%['\"]\s*\]",
-            "center: ['50%', '60%']",
-            out,
-            count=1,
-            flags=re.IGNORECASE,
-        )
-        return out
-
-    html_content = re.sub(
-        r"radarChart\.setOption\(\{[\s\S]*?\}\);",
-        _generic_radar_repl,
-        html_content,
-        count=1,
-        flags=re.IGNORECASE,
-    )
-
-    # 通用生命周期图修复：匹配 lifecycleChart.setOption({...})
-    def _generic_lifecycle_repl(match: re.Match[str]) -> str:
-        block = match.group(0)
-        out = block
-        out = re.sub(
-            r"(title:\s*\{[\s\S]*?left:\s*['\"]center['\"]\s*,?)",
-            r"\1\n                top: 8,",
-            out,
-            count=1,
-            flags=re.IGNORECASE,
-        ) if re.search(r"title:\s*\{", out, flags=re.IGNORECASE) and "top:" not in (re.search(r"title:\s*\{[\s\S]*?\}", out, flags=re.IGNORECASE).group(0)) else out
-        out = re.sub(
-            r"(legend:\s*\{)([\s\S]*?)(\})",
-            lambda mm: mm.group(0) if "top:" in mm.group(0) else f"{mm.group(1)}{mm.group(2).rstrip()}, top: 40{mm.group(3)}",
-            out,
-            count=1,
-            flags=re.IGNORECASE,
-        )
-        out = re.sub(
-            r"(grid:\s*\{)([\s\S]*?)(\})",
-            lambda mm: mm.group(0) if "top:" in mm.group(0) else f"{mm.group(1)}{mm.group(2).rstrip()}, top: 90{mm.group(3)}",
-            out,
-            count=1,
-            flags=re.IGNORECASE,
-        )
-        return out
-
-    html_content = re.sub(
-        r"lifecycleChart\.setOption\(\{[\s\S]*?\}\);",
-        _generic_lifecycle_repl,
-        html_content,
-        count=1,
-        flags=re.IGNORECASE,
-    )
-
-    # 若同一 legend 对象内出现重复 top（如 "top:40" 与 "top:20"），统一保留一个更安全的值
-    def _normalize_lifecycle_legend(match: re.Match[str]) -> str:
-        block = match.group(0)
-        legend_match = re.search(r"legend:\s*\{[\s\S]*?\}", block, flags=re.IGNORECASE)
-        if not legend_match:
-            return block
-        legend_block = legend_match.group(0)
-        legend_clean = re.sub(r"\btop\s*:\s*[^,\}\n]+,?", "", legend_block, flags=re.IGNORECASE)
-        legend_clean = re.sub(r"\{\s*", "{ top: 48, ", legend_clean, count=1)
-        return block.replace(legend_block, legend_clean, 1)
-
-    html_content = re.sub(
-        r"lifecycleChart\.setOption\(\{[\s\S]*?\}\);",
-        _normalize_lifecycle_legend,
-        html_content,
-        count=1,
-        flags=re.IGNORECASE,
-    )
-
-    # 兼容“const radarOption = {...};”写法
-    def _radar_option_repl(match: re.Match[str]) -> str:
-        block = match.group(0)
-        out = block
-        if re.search(r"title:\s*\{", out, flags=re.IGNORECASE):
-            title_block = re.search(r"title:\s*\{[\s\S]*?\}", out, flags=re.IGNORECASE)
-            if title_block and "top:" not in title_block.group(0):
-                out = re.sub(
-                    r"(title:\s*\{[\s\S]*?left:\s*['\"]center['\"]\s*,?)",
-                    r"\1\n                top: 8,",
-                    out,
-                    count=1,
-                    flags=re.IGNORECASE,
-                )
-        def _legend_top_40(mm: re.Match[str]) -> str:
-            tail = re.sub(r"^\s*", "", mm.group(3), count=1)
-            return f"{mm.group(1)}top: 40,\n                    {tail}"
-
-        out = re.sub(
-            r"(legend:\s*\{[\s\S]*?)(top:\s*[^,\}\n]+,?)?([\s\S]*?\})",
-            _legend_top_40,
-            out,
-            count=1,
-            flags=re.IGNORECASE,
-        )
-        out = re.sub(
-            r"center:\s*\[\s*['\"]50%['\"]\s*,\s*['\"]55%['\"]\s*\]",
-            "center: ['50%', '60%']",
-            out,
-            count=1,
-            flags=re.IGNORECASE,
-        )
-        return out
-
-    html_content = re.sub(
-        r"const\s+radarOption\s*=\s*\{[\s\S]*?\};",
-        _radar_option_repl,
-        html_content,
-        count=1,
-        flags=re.IGNORECASE,
-    )
-
-    def _lifecycle_option_repl(match: re.Match[str]) -> str:
-        block = match.group(0)
-        def _legend_top_40(mm: re.Match[str]) -> str:
-            tail = re.sub(r"^\s*", "", mm.group(3), count=1)
-            return f"{mm.group(1)}top: 40,\n                    {tail}"
-
-        def _grid_top_24(mm: re.Match[str]) -> str:
-            tail = re.sub(r"^\s*", "", mm.group(3), count=1)
-            return f"{mm.group(1)}top: '24%',\n                    {tail}"
-
-        out = re.sub(
-            r"(legend:\s*\{[\s\S]*?)(top:\s*[^,\}\n]+,?)?([\s\S]*?\})",
-            _legend_top_40,
-            block,
-            count=1,
-            flags=re.IGNORECASE,
-        )
-        out = re.sub(
-            r"(grid:\s*\{[\s\S]*?)(top:\s*[^,\}\n]+,?)?([\s\S]*?\})",
-            _grid_top_24,
-            out,
-            count=1,
-            flags=re.IGNORECASE,
-        )
-        if re.search(r"title:\s*\{", out, flags=re.IGNORECASE):
-            title_block = re.search(r"title:\s*\{[\s\S]*?\}", out, flags=re.IGNORECASE)
-            if title_block and "top:" not in title_block.group(0):
-                out = re.sub(
-                    r"(title:\s*\{[\s\S]*?left:\s*['\"]center['\"]\s*,?)",
-                    r"\1\n                top: 8,",
-                    out,
-                    count=1,
-                    flags=re.IGNORECASE,
-                )
-        return out
-
-    html_content = re.sub(
-        r"const\s+lifecycleOption\s*=\s*\{[\s\S]*?\};",
-        _lifecycle_option_repl,
-        html_content,
-        count=1,
-        flags=re.IGNORECASE,
-    )
-
-    # 兜底生命周期图脚本（_ensure_lifecycle_chart 注入）
-    fallback_block_pat = re.compile(
-        r"(\(function \(\) \{[\s\S]*?document\.getElementById\('lifecycle-stage-chart'\)[\s\S]*?var option = \{[\s\S]*?\};[\s\S]*?\}\)\(\);)",
-        flags=re.IGNORECASE,
-    )
-
-    def _fallback_repl(match: re.Match[str]) -> str:
-        block = match.group(1)
-        out = re.sub(
-            r"(legend:\s*\{\s*data:\s*\[[^\]]+\]\s*)(\})",
-            lambda mm: mm.group(0) if "top:" in mm.group(0) else f"{mm.group(1)}, top: 32{mm.group(2)}",
-            block,
-            count=1,
-            flags=re.IGNORECASE,
-        )
-        out = re.sub(
-            r"(var option = \{[\s\S]*?legend:[\s\S]*?)(xAxis:\s*\{)",
-            lambda mm: mm.group(1) + "    grid: { top: 70, left: '3%', right: '4%', bottom: '8%', containLabel: true },\n    " + mm.group(2),
-            out,
-            count=1,
-            flags=re.IGNORECASE,
-        ) if "grid:" not in out else out
-        return out
-
-    html_content = fallback_block_pat.sub(_fallback_repl, html_content, count=1)
-    return html_content
-
-
-def _fix_sentiment_colors_and_volume_spacing(html_content: str) -> str:
-    """
-    永久修复：
-    1) 情感图配色固定为：正面蓝色 / 中立绿色 / 负面红色；
-    2) 发布趋势图（volume）标题与图例间距冲突，统一补齐 top 间距。
-    """
-    if not html_content:
-        return html_content
-
-    out = html_content
-
-    # 1) 情感饼图颜色修复（按 name 定向替换，不影响其他图）
-    out = re.sub(
-        r"(\{\s*value:\s*[^,]+,\s*name:\s*'正面',\s*itemStyle:\s*\{\s*color:\s*')[^']+('\s*\}\s*\})",
-        r"\1#1e90ff\2",
-        out,
-        flags=re.IGNORECASE,
-    )
-    out = re.sub(
-        r"(\{\s*value:\s*[^,]+,\s*name:\s*'中立',\s*itemStyle:\s*\{\s*color:\s*')[^']+('\s*\}\s*\})",
-        r"\1#22c55e\2",
-        out,
-        flags=re.IGNORECASE,
-    )
-    out = re.sub(
-        r"(\{\s*value:\s*[^,]+,\s*name:\s*'中性',\s*itemStyle:\s*\{\s*color:\s*')[^']+('\s*\}\s*\})",
-        r"\1#22c55e\2",
-        out,
-        flags=re.IGNORECASE,
-    )
-    out = re.sub(
-        r"(\{\s*value:\s*[^,]+,\s*name:\s*'负面',\s*itemStyle:\s*\{\s*color:\s*')[^']+('\s*\}\s*\})",
-        r"\1#ef4444\2",
-        out,
-        flags=re.IGNORECASE,
-    )
-
-    # 2) 发布趋势图标题/图例冲突修复
-    def _patch_volume_block(block: str) -> str:
-        patched = block
-        # title.top
-        if re.search(r"title:\s*\{", patched, flags=re.IGNORECASE):
-            title_block = re.search(r"title:\s*\{[\s\S]*?\}", patched, flags=re.IGNORECASE)
-            if title_block and "top:" not in title_block.group(0):
-                patched = re.sub(
-                    r"(title:\s*\{[\s\S]*?left:\s*['\"]center['\"]\s*,?)",
-                    r"\1\n                top: 8,",
-                    patched,
-                    count=1,
-                    flags=re.IGNORECASE,
-                )
-        # legend.top
-        def _legend_top_40(m: re.Match[str]) -> str:
-            body = m.group(0)
-            body = re.sub(r"\btop\s*:\s*[^,\}\n]+,?", "", body, flags=re.IGNORECASE)
-            return re.sub(r"\{\s*", "{ top: 40, ", body, count=1)
-
-        patched = re.sub(
-            r"legend:\s*\{[\s\S]*?\}",
-            _legend_top_40,
-            patched,
-            count=1,
-            flags=re.IGNORECASE,
-        )
-        # grid.top
-        def _grid_top_90(m: re.Match[str]) -> str:
-            body = m.group(0)
-            body = re.sub(r"\btop\s*:\s*[^,\}\n]+,?", "", body, flags=re.IGNORECASE)
-            return re.sub(r"\{\s*", "{ top: 90, ", body, count=1)
-
-        patched = re.sub(
-            r"grid:\s*\{[\s\S]*?\}",
-            _grid_top_90,
-            patched,
-            count=1,
-            flags=re.IGNORECASE,
-        )
-        return patched
-
-    out = re.sub(
-        r"volumeChart\.setOption\(\{[\s\S]*?\}\);",
-        lambda m: _patch_volume_block(m.group(0)),
-        out,
-        count=1,
-        flags=re.IGNORECASE,
-    )
-    out = re.sub(
-        r"const\s+volumeOption\s*=\s*\{[\s\S]*?\};",
-        lambda m: _patch_volume_block(m.group(0)),
-        out,
-        count=1,
-        flags=re.IGNORECASE,
-    )
-
-    # 3) 情感饼图标题/标签遮挡修复：下移饼图中心并缩小半径
-    def _patch_sentiment_block(block: str) -> str:
-        patched = block
-        if re.search(r"title:\s*\{", patched, flags=re.IGNORECASE):
-            title_block = re.search(r"title:\s*\{[\s\S]*?\}", patched, flags=re.IGNORECASE)
-            if title_block and "top:" not in title_block.group(0):
-                patched = re.sub(
-                    r"(title:\s*\{[\s\S]*?left:\s*['\"]center['\"]\s*,?)",
-                    r"\1\n                    top: 8,",
-                    patched,
-                    count=1,
-                    flags=re.IGNORECASE,
-                )
-        patched = re.sub(
-            r"radius:\s*\[[^\]]+\]",
-            "radius: ['35%', '62%']",
-            patched,
-            count=1,
-            flags=re.IGNORECASE,
-        )
-        if re.search(r"center:\s*\[[^\]]+\]", patched, flags=re.IGNORECASE):
-            patched = re.sub(
-                r"center:\s*\[[^\]]+\]",
-                "center: ['50%', '60%']",
-                patched,
-                count=1,
-                flags=re.IGNORECASE,
-            )
-        else:
-            patched = re.sub(
-                r"(radius:\s*\[[^\]]+\]\s*,)",
-                r"\1\n                    center: ['50%', '60%'],",
-                patched,
-                count=1,
-                flags=re.IGNORECASE,
-            )
-        return patched
-
-    out = re.sub(
-        r"sentimentChart\.setOption\(\{[\s\S]*?\}\);",
-        lambda m: _patch_sentiment_block(m.group(0)),
-        out,
-        count=1,
-        flags=re.IGNORECASE,
-    )
-    out = re.sub(
-        r"const\s+sentimentOption\s*=\s*\{[\s\S]*?\};",
-        lambda m: _patch_sentiment_block(m.group(0)),
-        out,
-        count=1,
-        flags=re.IGNORECASE,
-    )
-    return out
-
-
-def _ensure_methodology_sections_layout(html_content: str) -> str:
-    """
-    将“理论规律分析 / 回应观察与分析 / 总结复盘”三部分的排版固定为“图2”卡片栅格样式。
-
-    约束：
-    - 只重排上述三段，其它部分保持原样；
-    - 若目标段落已包含 `.cards-grid` 则不做改动；
-    - 仅在该段中存在 >=2 个 `<h3>` 小节时才会拆分为卡片。
-    """
-    if not html_content:
-        return html_content
-
-    # 1) 注入最小 CSS（仅新增类，避免覆盖既有样式）
-    if "section-badge" not in html_content:
-        css_patch = """
-/* --- layout patch: methodology sections (fixed as fig2) --- */
-.section-head-row{display:flex;align-items:center;justify-content:space-between;gap:12px}
-.section-badge{display:inline-flex;align-items:center;gap:8px;padding:6px 12px;border-radius:999px;
-  background:linear-gradient(90deg,var(--primary),var(--primary-strong));color:#fff;font-weight:600;
-  font-size:12px;box-shadow:0 6px 16px rgba(78,165,255,.22);white-space:nowrap}
-.methodology-cards .card{border:1px solid var(--line);border-top:4px solid var(--primary);box-shadow:0 6px 18px rgba(15,23,42,.05)}
-.methodology-cards .card .card-body{color:var(--text);font-size:14px;line-height:1.7}
-.methodology-cards .card .card-body p{margin:0 0 10px}
-.methodology-cards .card .card-body ul{padding-left:20px;margin:0}
-.methodology-cards .card .card-body li{margin:0 0 8px}
-"""
-        html_content = re.sub(
-            r"(<style[^>]*>)",
-            r"\1\n" + css_patch + "\n",
-            html_content,
-            flags=re.IGNORECASE,
-            count=1,
-        )
-
-    def _reformat_one(html_in: str, title_keyword: str, badge_text: str) -> str:
-        # 找到该 <h2> 到下一个 <h2> 之间的内容块
-        h2_pat = re.compile(
-            rf"(<h2\b[^>]*>\s*{re.escape(title_keyword)}\s*</h2>)",
-            flags=re.IGNORECASE,
-        )
-        m = h2_pat.search(html_in)
-        if not m:
-            return html_in
-
-        start = m.start(1)
-        # 从该 h2 起往后找下一个 h2（不同章节），作为边界
-        next_h2 = re.search(r"<h2\b[^>]*>", html_in[m.end(1) :], flags=re.IGNORECASE)
-        end = m.end(1) + (next_h2.start() if next_h2 else len(html_in) - m.end(1))
-        block = html_in[start:end]
-
-        # 已经是图2栅格则不动
-        if "cards-grid" in block:
-            return html_in
-
-        # 提取该块内的 h3 小节
-        h3_iter = list(re.finditer(r"<h3\b[^>]*>(.*?)</h3>", block, flags=re.IGNORECASE | re.DOTALL))
-        if len(h3_iter) < 2:
-            return html_in
-
-        # 把“简要分析结论”整体（若有）放在栅格下方
-        conclusion_html = ""
-        concl_m = re.search(
-            r"(<div\b[^>]*class=[\"'][^\"']*analysis-conclusion[^\"']*[\"'][^>]*>[\s\S]*?</div>)",
-            block,
-            flags=re.IGNORECASE,
-        )
-        if concl_m:
-            conclusion_html = concl_m.group(1)
-            block_wo_concl = block.replace(conclusion_html, "")
-        else:
-            block_wo_concl = block
-
-        cards: List[str] = []
-        # 切片每个 h3 到下一个 h3/块尾
-        for idx, h3m in enumerate(h3_iter):
-            seg_start = h3m.start()
-            seg_end = h3_iter[idx + 1].start() if idx + 1 < len(h3_iter) else len(block_wo_concl)
-            seg = block_wo_concl[seg_start:seg_end]
-            title = re.sub(r"\s+", " ", html.unescape(h3m.group(1))).strip()
-            # 去掉 seg 内第一个 h3，仅保留正文
-            body = re.sub(r"^<h3\b[^>]*>[\s\S]*?</h3>", "", seg, flags=re.IGNORECASE).strip()
-            if not body:
-                body = "<p>（内容略）</p>"
-            cards.append(
-                f"""
-                <div class="card">
-                  <h3>{html.escape(title)}</h3>
-                  <div class="card-body">{body}</div>
-                </div>
-                """.strip()
-            )
-
-        # 用一个轻量 wrapper 替换原 block：保留原 h2 文本，但增加 head-row + badge + cards-grid
-        h2_html = m.group(1)
-        new_block = f"""
-{h2_html.replace(title_keyword, title_keyword)}
-<div class="section-head-row">
-  <div></div>
-  <span class="section-badge">{html.escape(badge_text)}</span>
-</div>
-<div class="cards-grid methodology-cards">
-{''.join(cards)}
-</div>
-{conclusion_html}
-""".strip()
-
-        return html_in[:start] + new_block + html_in[end:]
-
-    # 2) 依次重排三段（关键词以最常见标题为准；若模型用了“深度解析”等，也能命中包含关系）
-    # 采用“包含式”替换：先尝试标准标题，再尝试扩展标题。
-    candidates = [
-        ("理论规律分析", "基于舆情智库方法论视角"),
-        ("理论规律深度解析", "基于舆情智库方法论视角"),
-        ("回应观察与分析", "响应时效：黄金4小时达标率100%"),
-        ("回响观察与分析", "响应时效：黄金4小时达标率100%"),
-        ("总结复盘", "一场关于“可见性”的当代寓言"),
-    ]
-    out = html_content
-    for title, badge in candidates:
-        out = _reformat_one(out, title, badge)
-    return out
+    return matched < 3
 
 
 def _build_fallback_html(
@@ -1561,9 +599,10 @@ def _build_fallback_html(
     analysis_results_text: str,
     methodology_content: str,
     model_error: str,
+    chart_data: Optional[Dict[str, List[Dict[str, Any]]]] = None,
 ) -> str:
     """
-    当模型不可用时，生成一个可直接打开的静态兜底报告。
+    当模型不可用时，生成一个可直接打开的静态兜底报告（含基础图表）。
     """
     title = "舆情分析报告（Fallback）"
     intro = html.escape(event_introduction or "未提供事件介绍")
@@ -1571,6 +610,65 @@ def _build_fallback_html(
     methodology_block = html.escape((methodology_content or "无方法论内容")[:12000])
     error_block = html.escape(model_error or "未知错误")
     generated_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    raw_chart_data = chart_data or {}
+
+    def _normalize_items(items: Any, max_items: int = 12) -> List[Dict[str, Any]]:
+        if not isinstance(items, list):
+            return []
+        normalized: List[Dict[str, Any]] = []
+        for row in items:
+            if not isinstance(row, dict):
+                continue
+            name = str(row.get("name", "") or "").strip()
+            value = _safe_int(row.get("value", 0))
+            if not name or value < 0:
+                continue
+            normalized.append({"name": name, "value": value})
+            if len(normalized) >= max_items:
+                break
+        return normalized
+
+    keyword_items = _normalize_items(raw_chart_data.get("keywords"), max_items=12)
+    region_items = _normalize_items(raw_chart_data.get("regions"), max_items=12)
+    sentiment_items = _normalize_items(raw_chart_data.get("sentiment"), max_items=8)
+    volume_items = _normalize_items(raw_chart_data.get("volume"), max_items=14)
+
+    def _build_chart_card(section_title: str, items: List[Dict[str, Any]], color: str) -> str:
+        if not items:
+            return ""
+        max_value = max((int(x.get("value", 0)) for x in items), default=1)
+        rows: List[str] = []
+        for row in items:
+            label = html.escape(str(row.get("name", "") or ""))
+            value = int(row.get("value", 0))
+            width = max(4.0, (value / max_value) * 100.0) if max_value > 0 else 4.0
+            rows.append(
+                "<div class=\"chart-row\">"
+                f"<div class=\"label\" title=\"{label}\">{label}</div>"
+                "<div class=\"bar-wrap\">"
+                f"<div class=\"bar\" style=\"width:{width:.2f}%;background:{color};\"></div>"
+                "</div>"
+                f"<div class=\"value\">{value}</div>"
+                "</div>"
+            )
+        rows_html = "".join(rows)
+        return (
+            "<div class=\"card\">"
+            f"<h2>{html.escape(section_title)}</h2>"
+            "<div class=\"chart\">"
+            f"{rows_html}"
+            "</div>"
+            "</div>"
+        )
+
+    chart_sections = [
+        _build_chart_card("关键词热度 Top", keyword_items, "#2563eb"),
+        _build_chart_card("地域分布 Top", region_items, "#7c3aed"),
+        _build_chart_card("情绪分布", sentiment_items, "#db2777"),
+        _build_chart_card("声量趋势（近14个时间点）", volume_items, "#0d9488"),
+    ]
+    charts_html = "".join([x for x in chart_sections if x])
 
     return f"""<!DOCTYPE html>
 <html lang="zh-CN">
@@ -1628,6 +726,40 @@ def _build_fallback_html(
       padding: 10px 12px;
       font-size: 13px;
     }}
+    .chart {{
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }}
+    .chart-row {{
+      display: grid;
+      grid-template-columns: 180px 1fr 64px;
+      align-items: center;
+      gap: 10px;
+    }}
+    .label {{
+      color: #374151;
+      font-size: 12px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }}
+    .bar-wrap {{
+      height: 12px;
+      background: #e5e7eb;
+      border-radius: 999px;
+      overflow: hidden;
+    }}
+    .bar {{
+      height: 12px;
+      border-radius: 999px;
+    }}
+    .value {{
+      text-align: right;
+      font-size: 12px;
+      color: #111827;
+      font-variant-numeric: tabular-nums;
+    }}
   </style>
 </head>
 <body>
@@ -1637,6 +769,8 @@ def _build_fallback_html(
       <div class="meta">生成时间：{generated_at}</div>
       <div class="warn">报告模型调用失败，已启用兜底报告。错误信息：{error_block}</div>
     </div>
+
+    {charts_html}
 
     <div class="card">
       <h2>事件基础介绍</h2>
@@ -1655,6 +789,113 @@ def _build_fallback_html(
   </div>
 </body>
 </html>"""
+
+
+def _inject_echarts_cdn_guard(html_content: str) -> str:
+    """为外链 ECharts 增加离线兜底，避免 CDN 失败导致页面不可用。"""
+    if "echarts.min.js" not in html_content:
+        return html_content
+
+    guard_script = """
+<script>
+(function () {
+  function installFallback() {
+    if (window.echarts) return;
+    window.__SONA_ECHARTS_UNAVAILABLE__ = true;
+    window.echarts = {
+      init: function (el) {
+        return {
+          setOption: function () {
+            if (!el) return;
+            el.innerHTML = '<div style="height:100%;display:flex;align-items:center;justify-content:center;padding:12px;color:#6b7280;font-size:13px;border:1px dashed #cbd5e1;border-radius:10px;background:#f8fafc;">图表库加载失败（网络/CDN受限），当前仅展示文字内容。</div>';
+          },
+          resize: function () {}
+        };
+      }
+    };
+
+    if (!document.getElementById("sona-echarts-warning")) {
+      var node = document.createElement("div");
+      node.id = "sona-echarts-warning";
+      node.style.cssText = "margin:12px 0;padding:10px 12px;border:1px solid #fecaca;border-radius:10px;background:#fef2f2;color:#991b1b;font-size:13px;";
+      node.textContent = "检测到图表库加载失败（CDN 不可达），图表已降级为占位提示。";
+      var anchor = document.body ? (document.querySelector(".container") || document.querySelector(".wrap") || document.body) : null;
+      if (anchor && anchor.firstChild) {
+        anchor.insertBefore(node, anchor.firstChild);
+      } else if (anchor) {
+        anchor.appendChild(node);
+      }
+    }
+  }
+
+  // 关键：若 CDN 加载失败，先立刻安装 fallback，避免后续脚本因 echarts 未定义而直接中断。
+  // 这样即使离线打开 HTML，也会在图表区域看到明确的降级提示，而不是空白。
+  if (!window.echarts) {
+    installFallback();
+  }
+
+  window.addEventListener("error", function (evt) {
+    var msg = (evt && evt.message) ? String(evt.message) : "";
+    if (msg.toLowerCase().indexOf("echarts") >= 0) {
+      installFallback();
+    }
+  }, true);
+
+  setTimeout(function () {
+    if (!window.echarts) {
+      installFallback();
+    }
+  }, 2200);
+})();
+</script>
+""".strip()
+
+    echarts_tag_pattern = re.compile(r"<script[^>]*echarts[^>]*></script>", re.IGNORECASE)
+    if echarts_tag_pattern.search(html_content):
+        return echarts_tag_pattern.sub(lambda m: m.group(0) + "\n" + guard_script, html_content, count=1)
+
+    if "</body>" in html_content:
+        return html_content.replace("</body>", guard_script + "\n</body>", 1)
+    return html_content + "\n" + guard_script
+
+
+def _is_rate_limit_error(exc: Exception) -> bool:
+    """判断是否为可重试的限流/并发类错误。"""
+    msg = str(exc).lower()
+    keywords = [
+        "429",
+        "rate_limit",
+        "rate limit",
+        "concurrency",
+        "too many requests",
+    ]
+    return any(k in msg for k in keywords)
+
+
+def _invoke_model_with_retry(
+    model: Any,
+    messages: List[Any],
+    *,
+    max_attempts: int = 4,
+    base_delay_seconds: float = 1.0,
+) -> Any:
+    """
+    调用模型并在限流/并发报错时自动重试。
+    使用指数退避，尽量规避短时并发峰值导致的 429。
+    """
+    last_error: Optional[Exception] = None
+    for attempt in range(1, max_attempts + 1):
+        try:
+            return model.invoke(messages)
+        except Exception as exc:
+            last_error = exc
+            if not _is_rate_limit_error(exc) or attempt >= max_attempts:
+                raise
+            delay = base_delay_seconds * (2 ** (attempt - 1))
+            time.sleep(delay)
+    if last_error:
+        raise last_error
+    raise RuntimeError("模型调用失败：未知错误")
 
 
 def _get_file_url(file_path: Path) -> str:
@@ -1681,8 +922,7 @@ def _get_file_url(file_path: Path) -> str:
 @tool
 def report_html(
     eventIntroduction: str,
-    analysisResultsDir: str,
-    report_length: str = "长篇",
+    analysisResultsDir: str
 ) -> str:
     """
     描述：生成HTML报告。根据提供的事件基础介绍和分析结果文件夹，生成美观的HTML舆情分析报告。
@@ -1690,16 +930,12 @@ def report_html(
     输入：
     - eventIntroduction（必填）：事件基础介绍，由 extract_search_terms 工具生成，用于告知模型事件背景，避免分析跑偏。
     - analysisResultsDir（必填）：分析结果文件夹路径，通常是 sandbox/任务ID/过程文件，包含所有分析结果的JSON文件。
-    - report_length（可选）：短篇 | 中篇 | 长篇；控制叙事与正文的展开程度，默认长篇。
     输出：JSON字符串，包含以下字段：
     - html_file_path：生成的HTML文件路径（保存在任务的结果文件夹中）
     - file_url：本地文件访问地址（file:// 协议，可直接在浏览器中打开）
     """
     import json as json_module
-
-    rl = normalize_report_length(report_length)
-    length_instruction = format_report_length_instruction(rl)
-
+    
     # 获取任务ID
     task_id = get_task_id()
     if not task_id:
@@ -1737,12 +973,9 @@ def report_html(
             "file_url": ""
         }, ensure_ascii=False)
     
-    # 读取舆情智库方法论（不与 OPRAG 快照重复拼接；快照走下方「优先区」进入叙事模型）
+    # 读取舆情智库方法论
     methodology_content = load_methodology_for_report(topic=eventIntroduction)
-
-    # Wiki / 微博智搜 / Graph RAG / 参考检索 / OPRAG 合并为「优先区」，避免模板叙事阶段只读到 analysis 前 14k 而丢失 wiki
-    kb_priority_text = build_kb_priority_context_for_report(json_files)
-
+    
     # 构建提示词
     analysis_results_text = ""
     for json_file in json_files:
@@ -1759,33 +992,21 @@ def report_html(
         analysis_results_text += "\n"
 
     graph_rag_summary, graph_rag_enabled = _build_graph_rag_context(json_files)
-    reference_summary, has_reference_hits = _build_reference_context(json_files)
-    oprag_snapshot_summary, has_oprag_snapshot = _build_oprag_snapshot_context(json_files)
-    theory_evidence_lines = _collect_theory_evidence_lines(json_files, limit=10)
-    has_theory_evidence = bool(theory_evidence_lines)
+    if graph_rag_summary:
+        analysis_results_text += "\n## Graph RAG 增强摘要（结构化提炼）\n"
+        analysis_results_text += graph_rag_summary
+        analysis_results_text += "\n"
 
-    if not kb_priority_text.strip():
-        if graph_rag_summary:
-            analysis_results_text += "\n## Graph RAG 增强摘要（结构化提炼）\n"
-            analysis_results_text += graph_rag_summary
-            analysis_results_text += "\n"
-        if reference_summary:
-            analysis_results_text += "\n## 舆情智库参考摘要（结构化提炼）\n"
-            analysis_results_text += reference_summary
-            analysis_results_text += "\n"
-        if oprag_snapshot_summary:
-            analysis_results_text += "\n## 舆情智库知识快照（高优先级）\n"
-            analysis_results_text += oprag_snapshot_summary
-            analysis_results_text += "\n"
-    else:
-        analysis_results_text += (
-            "\n## 说明\n"
-            "以下章节已在「叙事优先区」完整提供给模型（见模板侧 kb_priority_text）："
-            "本地 Wiki、微博智搜、Graph RAG、reference_insights、OPRAG 快照；此处 JSON 为同一任务的原始备份。\n\n"
-        )
-    if has_theory_evidence:
-        analysis_results_text += "\n## 理论研判可用证据（禁止忽略）\n"
-        analysis_results_text += "\n".join(theory_evidence_lines)
+    reference_summary, has_reference_hits = _build_reference_context(json_files)
+    if reference_summary:
+        analysis_results_text += "\n## 舆情智库参考摘要（结构化提炼）\n"
+        analysis_results_text += reference_summary
+        analysis_results_text += "\n"
+
+    wiki_kb_summary, _has_wiki_kb = _build_wiki_kb_snapshot_context(json_files)
+    if wiki_kb_summary:
+        analysis_results_text += "\n## Wiki / 领域知识库召回快照（答辩举证：路由领域与来源路径）\n"
+        analysis_results_text += wiki_kb_summary
         analysis_results_text += "\n"
 
     collab_summary, has_collab_context = _build_collab_context(json_files)
@@ -1794,213 +1015,107 @@ def report_html(
         analysis_results_text += collab_summary
         analysis_results_text += "\n"
 
-    project_root = _resolve_project_root_from_analysis_dir(analysisResultsDir)
-    eval_feedback = _extract_eval_report_feedback(project_root=project_root)
-    eval_feedback_block = _build_eval_feedback_block(eval_feedback)
-    if eval_feedback_block:
-        analysis_results_text += "\n\n" + eval_feedback_block + "\n"
+    user_judgement_payload = _extract_user_judgement_payload(json_files)
+    
+    # 格式化prompt（包含方法论）
+    # 使用“定向占位符替换”，避免 ECharts 模板中的 {name}/{value} 被误解析
+    def _replace_placeholders(t: str, *, event_intro: str, analysis_text: str, methodology_text: str) -> str:
+        try:
+            import re as _re
+        except Exception:
+            return (
+                t.replace("{event_introduction}", event_intro)
+                .replace("{analysis_results}", analysis_text)
+                .replace("{methodology}", methodology_text)
+            )
 
-    template_path = get_report_html_template_path()
-    model_error = ""
-    oprag_warning = ""
-    oprag_enforce_note = (
-        "\n\n【强制补充】本报告输入已提供 OPRAG 知识快照。"
-        "请在理论研判、舆论引导与处置建议、总结复盘中显式引用知识库概念或案例，并与本次数据交叉验证。"
-        "理论研判须优先使用快照中 `kind=theory` 的条目（若存在），且三个理论槽位不得重复同一概念名。"
+        mapping = {
+            "event_introduction": event_intro,
+            "analysis_results": analysis_text,
+            "methodology": methodology_text,
+        }
+        pattern = _re.compile(r"\{(event_introduction|analysis_results|methodology)\}")
+
+        def repl(m):
+            key = m.group(1)
+            return str(mapping.get(key, m.group(0)))
+
+        return pattern.sub(repl, t)
+
+    prompt = _replace_placeholders(
+        prompt_template,
+        event_intro=eventIntroduction,
+        analysis_text=analysis_results_text,
+        methodology_text=methodology_content,
     )
-
-    if template_path:
-        try:
-            html_content = build_html_from_morandi_template(
-                template_path=template_path,
-                json_files=json_files,
-                event_introduction=eventIntroduction,
-                analysis_results_text=analysis_results_text,
-                methodology_text=methodology_content,
-                kb_priority_text=kb_priority_text,
-                report_length=rl,
-            )
-            if not _has_effective_oprag_reference(html_content=html_content, has_oprag_snapshot=has_oprag_snapshot):
-                html_content = build_html_from_morandi_template(
-                    template_path=template_path,
-                    json_files=json_files,
-                    event_introduction=eventIntroduction,
-                    analysis_results_text=analysis_results_text + oprag_enforce_note,
-                    methodology_text=methodology_content + oprag_enforce_note,
-                    kb_priority_text=kb_priority_text,
-                    report_length=rl,
-                )
-                if not _has_effective_oprag_reference(html_content=html_content, has_oprag_snapshot=has_oprag_snapshot):
-                    oprag_warning = "报告已重试生成，但 OPRAG 引用仍不足，建议补充更明确的知识库关键词。"
-        except Exception as e:
-            model_error = f"模板报告生成失败: {str(e)}"
-            html_content = _build_fallback_html(
-                event_introduction=eventIntroduction,
-                analysis_results_text=analysis_results_text,
-                methodology_content=methodology_content,
-                model_error=model_error,
-            )
-    else:
-        # 格式化prompt（包含方法论）
-        # 使用“定向占位符替换”，避免 ECharts 模板中的 {name}/{value} 被误解析
-        def _replace_placeholders(t: str, *, event_intro: str, analysis_text: str, methodology_text: str) -> str:
-            try:
-                import re as _re
-            except Exception:
-                return (
-                    t.replace("{event_introduction}", event_intro)
-                    .replace("{analysis_results}", analysis_text)
-                    .replace("{methodology}", methodology_text)
-                )
-
-            mapping = {
-                "event_introduction": event_intro,
-                "analysis_results": analysis_text,
-                "methodology": methodology_text,
-            }
-            pattern = _re.compile(r"\{(event_introduction|analysis_results|methodology)\}")
-
-            def repl(m):
-                key = m.group(1)
-                return str(mapping.get(key, m.group(0)))
-
-            return pattern.sub(repl, t)
-
-        analysis_for_prompt = analysis_results_text
-        if kb_priority_text.strip():
-            analysis_for_prompt = (
-                kb_priority_text.strip()
-                + "\n\n---\n\n## 过程文件与后续材料（完整 JSON 见下）\n\n"
-                + analysis_results_text
-            )
-
-        prompt = _replace_placeholders(
-            prompt_template,
-            event_intro=eventIntroduction,
-            analysis_text=analysis_for_prompt,
-            methodology_text=methodology_content,
-        )
-        prompt += "\n\n" + length_instruction
+    prompt += (
+        "\n\n【事实边界要求】\n"
+        "你只能引用输入材料中出现的事实、名称与数据；若证据不足，请明确写“证据不足”，不得编造案例或观点。"
+    )
+    if dataset_evidence:
         prompt += (
-            "\n\n【事实边界要求】\n"
-            "你只能引用输入材料中出现的事实、名称与数据；若证据不足，请明确写“证据不足”，不得编造案例或观点。"
+            "\n\n【证据链要求】\n"
+            "请至少引用 2 条“事件原始高互动样本（CSV提取）”中的内容，形成“数据证据 -> 研判结论”链路。"
         )
+    if graph_rag_enabled:
         prompt += (
-            "\n\n【图后结论强制要求】\n"
-            "所有包含可视化图表的小节，必须在图表后紧跟“简要分析结论”文字块（2-3条要点）。\n"
-            "不强制固定“发现-风险-建议”三段论；可按自然叙述写作，但要保证结论可核验且与图表数据一致。"
+            "\n\n【Graph RAG 融合要求】\n"
+            "请在报告中单独设置“Graph RAG 增强洞察”小节，"
+            "明确引用相似案例、理论与指标补充，并说明它们如何改变风险判断与建议。\n"
+            "只能引用 Graph RAG 摘要里真实出现的案例/理论/指标；若 similar_cases 为空，必须明确写“暂无可比历史案例”。"
         )
+    if has_reference_hits:
         prompt += (
-            "\n\n【基础数据描述与知识库分区约束】\n"
-            "基础数据描述章节（声量、情感、关键时间节点、地域、核心发布者、词云、生命周期）只能依据本次过程文件数据得出描述性结论，"
-            "不得引用历史知识库观点或往期案例来替代当前数据解读。\n"
-            "知识库/Wiki/OPRAG 内容仅用于：理论研判、回应观察、处置建议、总结复盘。"
+            "\n\n【参考资料引用要求】\n"
+            "若输入中存在 reference_insights.json，请至少引用 2 条其中的 snippet，并在句末标注来源标题。\n"
+            "理论/观点优先使用 reference_insights 与 Graph RAG 中真实出现的内容；未出现者不得强行套用。\n"
+            "若证据不足，请明确写“证据不足”。"
         )
+    if has_collab_context:
         prompt += (
-            "\n\n【ECharts 脚本约束】\n"
-            "在 <script> 内的 ECharts option 中，颜色必须使用十六进制字符串（如 '#1e90ff'），"
-            "禁止使用 var('--xxx')：在 JavaScript 里 var 是关键字，写成 var('--muted') 会导致整段脚本语法错误、图表全部无法显示。"
+            "\n\n【协同输入对齐要求】\n"
+            "若输入含 user_judgement_input.json 或 user_expert_notes.json，需在“研判结论/建议”中显式回应其关注点。\n"
+            "若输入含 weibo_aisearch_reference.json，请将其作为外部参考线索而非事实锚点，必须与本地数据交叉验证后再下结论。"
         )
-        if dataset_evidence:
-            prompt += (
-                "\n\n【证据链要求】\n"
-                "请至少引用 2 条“事件原始高互动样本（CSV提取）”中的内容，形成“数据证据 -> 研判结论”链路。"
-            )
-        if graph_rag_enabled:
-            prompt += (
-                "\n\n【Graph RAG 融合要求】\n"
-                "请在报告中单独设置“Graph RAG 增强洞察”小节，"
-                "明确引用相似案例、理论与指标补充，并说明它们如何改变风险判断与建议。\n"
-                "只能引用 Graph RAG 摘要里真实出现的案例/理论/指标；若 similar_cases 为空，必须明确写“暂无可比历史案例”。"
-            )
-        if has_reference_hits:
-            prompt += (
-                "\n\n【参考资料引用要求】\n"
-                "若输入中存在 reference_insights.json，请至少引用 2 条其中的 snippet，并在句末标注来源标题。\n"
-                "理论/观点优先使用 reference_insights 与 Graph RAG 中真实出现的内容；未出现者不得强行套用。\n"
-                "若证据不足，请明确写“证据不足”。\n"
-                "注意：这些引用只用于理论研判/复盘/建议，不用于替代基础图表数据描述。"
-            )
-        if has_theory_evidence:
-            prompt += (
-                "\n\n【理论研判强制要求】\n"
-                "输入已提供“理论研判可用证据（禁止忽略）”，理论槽位必须优先引用该段内容；"
-                "当该段存在有效理论条目时，禁止把三个理论槽位写成“证据不足”。\n"
-                "三个理论槽位必须是不同概念名，并写出“本次数据证据 -> 理论机制 -> 风险影响 -> 建议动作”链路。"
-            )
-        if has_oprag_snapshot:
-            prompt += (
-                "\n\n【OPRAG强制引用要求】\n"
-                "输入中已提供“舆情智库知识快照（高优先级）”。请在以下至少三处显式引用其概念/案例并与本次数据交叉验证：\n"
-                "1) 理论研判；2) 舆论引导与处置建议；3) 总结复盘。\n"
-                "禁止只复述知识库观点，必须写出“本次数据证据 -> OPRAG概念 -> 结论/建议”的链路。"
-            )
-        if has_collab_context:
-            prompt += (
-                "\n\n【协同输入对齐要求】\n"
-                "若输入含 user_judgement_input.json 或 user_expert_notes.json，需在“研判结论/建议”中显式回应其关注点。\n"
-                "若输入含 weibo_aisearch_reference.json，请将其作为外部参考线索而非事实锚点，必须与本地数据交叉验证后再下结论。\n"
-                "若存在“用户研判关键要点（需在报告中显式回应）”，请至少在以下两处逐条对齐：\n"
-                "1) SUMMARY_BULLETS；2) RESPONSE_ANALYSIS_BULLETS 或 RECAP_*。\n"
-                "不得只泛泛提及“已参考用户观点”，而应明确写出对应观点与本次数据是否支持。"
-            )
-        if kb_priority_text.strip():
-            prompt += (
-                "\n\n【叙事优先区（本段已在 analysis_results 最前）】\n"
-                "若开头出现「本地 Wiki 知识库」：引用应优先放在理论研判、回应观察、总结复盘、处置建议。\n"
-                "若出现「微博智搜」：仅可作为外部线索，必须与本地采集数据核对，且不能替代基础图表描述。\n"
-                "禁止仅用内置议程设置/沉默螺旋/蝴蝶效应三件套敷衍；无证据处写「证据不足」。"
-            )
-        if eval_feedback_block:
-            prompt += (
-                "\n\n【上次评测回灌（自动）】\n"
-                + eval_feedback_block
-                + "\n请把上述问题逐条映射到正文改写策略中，避免再次触发一致性/证据链 warning。"
-            )
+    
+    # 调用模型生成HTML
+    model_error = ""
+    fallback_chart_data = _extract_fallback_chart_data(json_files)
+    try:
+        messages = [
+            SystemMessage(content="你是一个专业的HTML报告生成专家，擅长创建美观、交互式的舆情分析报告。"),
+            HumanMessage(content=prompt)
+        ]
+        response = _invoke_model_with_retry(model, messages)
+        html_content = response.content if hasattr(response, 'content') else str(response)
 
-        # 调用模型生成HTML
-        try:
-            messages = [
-                SystemMessage(content="你是一个专业的HTML报告生成专家，擅长创建美观、交互式的舆情分析报告。"),
-                HumanMessage(content=prompt),
+        # 质量兜底：过于浅层时进行一次强化重试
+        if _needs_quality_retry(str(html_content)):
+            retry_prompt = (
+                prompt
+                + "\n\n【强制质量要求】\n"
+                + "1) 不能只做数据描述，必须给出研判结论、风险研判、回应建议。\n"
+                + "2) 必须完整覆盖：舆情分析核心维度、舆情生命周期阶段、理论规律分析、回应观察与分析、总结复盘。\n"
+                + "3) 每个章节至少包含1条“数据证据 -> 结论”的推理链。\n"
+                + "4) 明确引用并吸收“舆情智库方法论指导”中的术语与框架。\n"
+            )
+            retry_messages = [
+                SystemMessage(content="你是资深舆情研究员，同时是可视化报告专家。"),
+                HumanMessage(content=retry_prompt),
             ]
-            response = model.invoke(messages)
-            html_content = response.content if hasattr(response, "content") else str(response)
-
-            # 质量兜底：过于浅层时进行一次强化重试
-            if _needs_quality_retry(str(html_content)) or (
-                not _has_effective_oprag_reference(html_content=str(html_content), has_oprag_snapshot=has_oprag_snapshot)
-            ):
-                retry_prompt = (
-                    prompt
-                    + "\n\n"
-                    + length_instruction
-                    + "\n\n【强制质量要求】\n"
-                    + "1) 不能只做数据描述，必须给出研判结论、风险研判、回应建议。\n"
-                    + "2) 必须完整覆盖：舆情分析核心维度、舆情生命周期阶段、理论规律分析、回应观察与分析、总结复盘。\n"
-                    + "3) 每个章节至少包含1条“数据证据 -> 结论”的推理链。\n"
-                    + "4) 明确引用并吸收“舆情智库方法论指导”中的术语与框架。\n"
-                    + "5) 所有图表后必须紧跟“简要分析结论”（2-3条要点），不要求固定“发现-风险-建议”格式。\n"
-                    + "6) 基础图表结论只依据本次数据；知识库引用集中在理论研判/复盘/处置建议章节。\n"
-                )
-                retry_messages = [
-                    SystemMessage(content="你是资深舆情研究员，同时是可视化报告专家。"),
-                    HumanMessage(content=retry_prompt),
-                ]
-                retry_resp = model.invoke(retry_messages)
-                retry_html = retry_resp.content if hasattr(retry_resp, "content") else str(retry_resp)
-                if retry_html and len(str(retry_html).strip()) >= len(str(html_content).strip()):
-                    html_content = retry_html
-            if not _has_effective_oprag_reference(html_content=str(html_content), has_oprag_snapshot=has_oprag_snapshot):
-                oprag_warning = "报告已重试生成，但 OPRAG 引用仍不足，建议补充更明确的知识库关键词。"
-        except Exception as e:
-            model_error = f"模型生成HTML失败: {str(e)}"
-            html_content = _build_fallback_html(
-                event_introduction=eventIntroduction,
-                analysis_results_text=analysis_results_text,
-                methodology_content=methodology_content,
-                model_error=model_error,
-            )
+            retry_resp = _invoke_model_with_retry(model, retry_messages)
+            retry_html = retry_resp.content if hasattr(retry_resp, "content") else str(retry_resp)
+            if retry_html and len(str(retry_html).strip()) >= len(str(html_content).strip()):
+                html_content = retry_html
+    except Exception as e:
+        model_error = f"模型生成HTML失败: {str(e)}"
+        html_content = _build_fallback_html(
+            event_introduction=eventIntroduction,
+            analysis_results_text=analysis_results_text,
+            methodology_content=methodology_content,
+            model_error=model_error,
+            chart_data=fallback_chart_data,
+        )
     
     # 清理HTML内容（移除markdown代码块标记）
     html_content = html_content.strip()
@@ -2011,12 +1126,11 @@ def report_html(
     if html_content.endswith("```"):
         html_content = html_content[:-3]
     html_content = html_content.strip()
-    # 避免后处理注入额外 section/script 破坏原始版式结构
-    # 雷达/生命周期若缺失，交由提示词与模型本体控制，不在此阶段强制拼接。
-    html_content = _sanitize_echarts_invalid_js_css_var_calls(html_content)
-    html_content = _fix_chart_title_legend_overlap(html_content)
-    html_content = _fix_sentiment_colors_and_volume_spacing(html_content)
-    
+
+    html_content = _inject_user_judgement_section(html_content, user_judgement_payload)
+    html_content = _inject_multi_perspective_section(html_content, user_judgement_payload)
+    html_content = _inject_echarts_cdn_guard(html_content)
+
     # 确保结果文件夹存在
     result_dir = get_task_result_dir(task_id)
     result_dir.mkdir(parents=True, exist_ok=True)
@@ -2025,8 +1139,6 @@ def report_html(
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     html_filename = f"report_{timestamp}.html"
     html_file_path = result_dir / html_filename
-    meta_filename = f"report_meta_{timestamp}.json"
-    meta_file_path = result_dir / meta_filename
     
     # 保存HTML文件
     try:
@@ -2038,16 +1150,6 @@ def report_html(
             "html_file_path": "",
             "file_url": ""
         }, ensure_ascii=False)
-
-    # Build and persist report_meta (v1 contract).
-    report_meta_obj: Dict[str, Any] = {}
-    try:
-        report_meta_obj = build_report_meta_from_html(str(html_content))
-        with open(meta_file_path, "w", encoding="utf-8") as f:
-            f.write(json_module.dumps(report_meta_obj, ensure_ascii=False, indent=2))
-    except Exception:
-        # Do not fail the main report generation if meta extraction fails.
-        report_meta_obj = {}
     
     # 生成 file:// URL
     file_url = _get_file_url(html_file_path)
@@ -2055,16 +1157,10 @@ def report_html(
     # 返回结果（包含HTML文件路径和 file:// URL）
     result = {
         "html_file_path": str(html_file_path),
-        "file_url": file_url,
-        "report_meta_file_path": str(meta_file_path) if meta_file_path else "",
-        "report_meta": report_meta_obj,
-        "eval_feedback_applied": bool(eval_feedback.get("has_feedback")),
-        "eval_feedback_run_id": str(eval_feedback.get("run_id", "") or ""),
+        "file_url": file_url
     }
     if model_error:
         result["warning"] = model_error
-    if oprag_warning:
-        result["oprag_warning"] = oprag_warning
 
     # 尝试在默认浏览器中自动打开（失败不影响主流程）
     try:
@@ -2077,3 +1173,68 @@ def report_html(
         result["opened_in_browser"] = False
 
     return json_module.dumps(result, ensure_ascii=False)
+
+
+def _extract_eval_report_feedback(project_root: Optional[Path] = None) -> Dict[str, Any]:
+    """
+    从 eval_results 下最新一轮 summary.json 提取「报告阶段」评测反馈，供报告生成回灌。
+    若无有效结果则 has_feedback=False。
+    """
+    from utils.path import get_project_root
+
+    root = Path(project_root) if project_root is not None else Path(get_project_root())
+    eval_dir = root / "eval_results"
+    if not eval_dir.is_dir():
+        return {"has_feedback": False}
+
+    run_dirs = sorted((p for p in eval_dir.iterdir() if p.is_dir()), key=lambda p: p.name, reverse=True)
+    for run in run_dirs:
+        summary_path = run / "summary.json"
+        if not summary_path.is_file():
+            continue
+        try:
+            summary = json.loads(summary_path.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        results = summary.get("results")
+        if not isinstance(results, list):
+            continue
+        reasons: List[str] = []
+        for item in results:
+            if not isinstance(item, dict):
+                continue
+            if str(item.get("stage", "")).strip() != "report":
+                continue
+            for fr in item.get("fail_reasons") or []:
+                if fr is not None and str(fr).strip():
+                    reasons.append(str(fr).strip())
+        if not reasons:
+            continue
+        return {
+            "has_feedback": True,
+            "run_id": str(summary.get("run_id", run.name)),
+            "reasons": reasons,
+        }
+    return {"has_feedback": False}
+
+
+def _build_eval_feedback_block(feedback: Dict[str, Any]) -> str:
+    """将评测反馈格式化为可注入 HTML 的说明块（无反馈时返回空串）。"""
+    if not feedback.get("has_feedback"):
+        return ""
+    reasons = feedback.get("reasons") or []
+    if not isinstance(reasons, list):
+        reasons = [str(reasons)]
+    lines: List[str] = [
+        "<section class='eval-feedback'>",
+        "<h3>上次评测回灌（自动）</h3>",
+        "<p><strong>需修复问题</strong></p>",
+        "<ul>",
+    ]
+    for r in reasons:
+        lines.append(f"<li>{html.escape(str(r))}</li>")
+    lines.append("</ul>")
+    lines.append("<p><strong>本次生成硬约束</strong></p>")
+    lines.append("<p>请逐条对照上述问题修复后再输出终稿。</p>")
+    lines.append("</section>")
+    return "\n".join(lines)

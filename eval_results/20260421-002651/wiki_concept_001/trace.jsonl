@@ -1,0 +1,2 @@
+{"ts": "2026-04-20T16:26:51+00:00", "event": "case_start", "run_id": "20260421-002651", "case_id": "wiki_concept_001"}
+{"ts": "2026-04-20T16:26:51+00:00", "event": "case_end", "run_id": "20260421-002651", "case_id": "wiki_concept_001", "status": "pass", "latency_ms": 0}

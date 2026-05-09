@@ -1,0 +1,14 @@
+{
+  "type": "ResponseTactic",
+  "title": "宣传策略",
+  "source_file": "瀹ｄ紶绛栫暐.md",
+  "confidence": "medium",
+  "keywords": [
+    "自动生成",
+    "增量更新"
+  ],
+  "domain": "",
+  "description": "",
+  "applicable_scenarios": [],
+  "examples": []
+}

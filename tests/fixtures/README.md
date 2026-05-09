@@ -1,27 +1,69 @@
-# Fixtures Guide
+# Fixtures 目录说明
 
-`tests/fixtures/<case_id>/` holds replay payloads for eval cases. Many cases use `tools.json`; some tools use `output.json` — the path must match `fixtures.recorded_tools` in the case JSON.
+本目录用于存放评测 replay 所需的最小回放样本。
 
-Guidelines:
+## 目录规范
 
-- Keep payloads small but structurally correct.
-- Prefer deterministic values for replay stability.
-- Include only fields used by expectations/scorers.
-- If schema evolves, update case expectations and fixture together.
+- `tests/fixtures/<case_id>/tools.json`
+- 每个 case 对应一个独立目录
+- `tools.json` 保存该 case 在 replay 模式下的最小可用输出样本
 
-Checklist when adding or changing a fixture:
+当前示例：
 
-1. Case `id` matches the fixture directory name (recommended).
-2. `fixtures.recorded_tools` points to the file you edited (repo-relative).
-3. `expectations` still match the payload (required fields, thresholds, report_meta paths).
-4. Run `python scripts/eval_runner.py --case <id> --mode replay` (and `EVAL_DETERMINISTIC=1` if comparing diffs).
+- `wiki_concept_001/tools.json`
+- `wiki_case_002/tools.json`
+- `wiki_compare_003/tools.json`
+- `workflow_sentiment_004/tools.json`
+- `workflow_report_005/tools.json`
 
-Current Day2 baseline includes:
+## 编写原则
 
-- `wiki_concept_001`
-- `wiki_case_002`
-- `wiki_compare_003`
-- `workflow_sentiment_004`
-- `workflow_report_005`
-- `workflow_report_006_warning_baseline`
+1. 先保证结构正确，再逐步提高内容质量。
+2. Day2 阶段允许使用“最小可跑样本”。
+3. replay fixture 的目标是保证回归稳定，不等价于 live 真实效果。
+4. 不同 target 的 fixture 结构可以不同，但必须满足对应 case 的 `expectations.required_fields`。
 
+## 最小字段建议
+
+### wiki
+
+通常至少包含：
+
+- `answer`
+- `sources`
+
+示例：
+
+```json
+{
+  "answer": "舆情反转是指公众对同一事件的主导判断在新证据出现后发生方向性改变。",
+  "sources": [
+    {
+      "title": "舆情反转",
+      "snippet": "舆情反转通常由新增事实或权威通报触发。"
+    }
+  ]
+}
+```
+
+### workflow
+
+Day2 可先使用 warning/pass-through 结构，通常至少包含：
+
+- `status`
+- `message`
+
+示例：
+
+```json
+{
+  "status": "warning",
+  "message": "workflow replay stub loaded"
+}
+```
+
+## 维护建议
+
+- 新增 case 时，同时新增对应 fixture。
+- 如果 case 的 `required_fields` 变更，需同步更新 fixture。
+- Day3/Day4 可以继续增强 fixture 的真实性，并逐步收紧 `thresholds`。

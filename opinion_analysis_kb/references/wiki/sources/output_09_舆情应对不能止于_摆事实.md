@@ -1,6 +1,6 @@
 ---
 title: 舆情应对不能止于“摆事实”
-source_file: /Users/biaowenhuang/Documents/sona-master/opinion_analysis_kb/references/wiki/output/09_舆情应对不能止于“摆事实”.md
+source_file: /Users/walk/Downloads/sona-main/opinion_analysis_kb/references/wiki/output/09_舆情应对不能止于“摆事实”.md
 updated_at: 2026-04-08 11:41:38
 tags:
   - 舆情应对

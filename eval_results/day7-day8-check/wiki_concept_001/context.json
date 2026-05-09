@@ -1,0 +1,67 @@
+{
+  "run_id": "day7-day8-check",
+  "task_id": null,
+  "query": "什么是舆情反转？",
+  "mode": "replay",
+  "diagnostics": {
+    "case_id": "wiki_concept_001",
+    "target": "wiki",
+    "stage": null
+  },
+  "policy": {},
+  "artifacts": {
+    "output": {
+      "answer": "舆情反转是指公众对同一事件的主导判断在新证据出现后发生方向性改变。常见触发因素包括信息不完整、早期叙事偏差、权威调查披露与关键证据补充。",
+      "sources": [
+        {
+          "title": "舆情反转",
+          "snippet": "舆情反转通常由新增事实或权威通报触发，导致舆论立场明显变化。"
+        },
+        {
+          "title": "舆情事件",
+          "snippet": "在信息不充分阶段，情绪先行与叙事偏差容易放大误判，后续证据可能带来集体观点修正。"
+        }
+      ]
+    }
+  },
+  "budget": {
+    "token_budget": null,
+    "latency_budget_ms": 30000,
+    "retry_budget": null,
+    "triggers": {
+      "latency_budget_exceeded": 0
+    },
+    "actions": []
+  },
+  "errors": [],
+  "stage_outputs": {
+    "wiki": {
+      "stage": "wiki",
+      "status": "success",
+      "metrics": {
+        "latency_ms": 0.0,
+        "traceability_score": 1.0,
+        "relevance_score": 0.3125,
+        "structure_completeness": 1.0,
+        "fallback_rate": 0.0
+      },
+      "artifacts": {
+        "output": {
+          "answer": "舆情反转是指公众对同一事件的主导判断在新证据出现后发生方向性改变。常见触发因素包括信息不完整、早期叙事偏差、权威调查披露与关键证据补充。",
+          "sources": [
+            {
+              "title": "舆情反转",
+              "snippet": "舆情反转通常由新增事实或权威通报触发，导致舆论立场明显变化。"
+            },
+            {
+              "title": "舆情事件",
+              "snippet": "在信息不充分阶段，情绪先行与叙事偏差容易放大误判，后续证据可能带来集体观点修正。"
+            }
+          ]
+        }
+      },
+      "fallback_used": false,
+      "error": null
+    }
+  }
+}

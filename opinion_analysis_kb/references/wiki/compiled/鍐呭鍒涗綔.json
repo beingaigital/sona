@@ -1,0 +1,15 @@
+{
+  "type": "Case",
+  "title": "内容创作",
+  "source_file": "鍐呭鍒涗綔.md",
+  "confidence": "medium",
+  "keywords": [
+    "自动生成",
+    "增量更新"
+  ],
+  "domain": "",
+  "actors": [],
+  "risk_patterns": [],
+  "response_tactics": [],
+  "summary": ""
+}

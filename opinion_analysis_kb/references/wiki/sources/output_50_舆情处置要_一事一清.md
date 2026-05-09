@@ -1,6 +1,6 @@
 ---
 title: 舆情处置要“一事一清”
-source_file: /Users/biaowenhuang/Documents/sona-master/opinion_analysis_kb/references/wiki/output/50_舆情处置要“一事一清”.md
+source_file: /Users/walk/Downloads/sona-main/opinion_analysis_kb/references/wiki/output/50_舆情处置要“一事一清”.md
 updated_at: 2024-05-22 10:00:00
 tags:
   - 舆情处置

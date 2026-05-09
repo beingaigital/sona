@@ -1,0 +1,21 @@
+{
+  "run_id": "20260507-224953",
+  "case_id": "tool_data_num_platform_001",
+  "target": "tool",
+  "stage": "data_num",
+  "status": "pass",
+  "metrics": {
+    "latency_ms": 0.0,
+    "traceability_score": 0.0,
+    "relevance_score": 0.0,
+    "structure_completeness": 1.0,
+    "fallback_rate": 0.0
+  },
+  "artifacts": {
+    "trace": "eval_results/20260507-224953/tool_data_num_platform_001/trace.jsonl",
+    "output": "eval_results/20260507-224953/tool_data_num_platform_001/artifacts/output.json",
+    "context": "eval_results/20260507-224953/tool_data_num_platform_001/context.json"
+  },
+  "reasons": [],
+  "fail_reasons": []
+}

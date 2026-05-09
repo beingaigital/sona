@@ -935,6 +935,7 @@ def _legacy_candidate_files(project_root: Path) -> List[Path]:
 
 def retrieve_wiki_sources(query: str, *, topk: int = 6, project_root: Path | None = None) -> List[WikiSource]:
     root = project_root or Path(__file__).resolve().parents[1]
+    domain = None
     normalized_query = _normalize_query(query)
     query_tokens = _tokenize(normalized_query or query)
     ngrams = _cn_ngrams(normalized_query or str(query or ""))

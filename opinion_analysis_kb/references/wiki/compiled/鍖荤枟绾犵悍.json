@@ -1,0 +1,15 @@
+{
+  "type": "Case",
+  "title": "医疗纠纷",
+  "source_file": "鍖荤枟绾犵悍.md",
+  "confidence": "medium",
+  "keywords": [
+    "自动生成",
+    "增量更新"
+  ],
+  "domain": "",
+  "actors": [],
+  "risk_patterns": [],
+  "response_tactics": [],
+  "summary": ""
+}

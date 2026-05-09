@@ -1,0 +1,15 @@
+{
+  "type": "Case",
+  "title": "公共卫生",
+  "source_file": "鍏叡鍗敓.md",
+  "confidence": "medium",
+  "keywords": [
+    "自动生成",
+    "增量更新"
+  ],
+  "domain": "",
+  "actors": [],
+  "risk_patterns": [],
+  "response_tactics": [],
+  "summary": ""
+}

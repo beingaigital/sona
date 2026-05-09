@@ -1,0 +1,15 @@
+{
+  "type": "Case",
+  "title": "基层工作人员",
+  "source_file": "鍩哄眰宸ヤ綔浜哄憳.md",
+  "confidence": "medium",
+  "keywords": [
+    "自动生成",
+    "增量更新"
+  ],
+  "domain": "",
+  "actors": [],
+  "risk_patterns": [],
+  "response_tactics": [],
+  "summary": ""
+}

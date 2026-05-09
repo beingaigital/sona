@@ -1,0 +1,15 @@
+{
+  "type": "Case",
+  "title": "文化出版",
+  "source_file": "鏂囧寲鍑虹増.md",
+  "confidence": "medium",
+  "keywords": [
+    "自动生成",
+    "增量更新"
+  ],
+  "domain": "",
+  "actors": [],
+  "risk_patterns": [],
+  "response_tactics": [],
+  "summary": ""
+}

@@ -1,0 +1,13 @@
+{
+  "run_id": "day7-day8-check",
+  "total_cases": 1,
+  "avg_latency_ms": 0.0,
+  "fallback_rate": 1.0,
+  "budget_summary": {
+    "max_latency_ms": 30000,
+    "max_fallback_rate": 0.2,
+    "trigger_count": 0,
+    "actions": [],
+    "fallback_rate_exceeded": true
+  }
+}

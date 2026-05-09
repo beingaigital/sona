@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import re
-from datetime import datetime
 from pathlib import Path
 
 # 项目根目录
@@ -18,24 +16,10 @@ def get_project_root() -> Path:
     return _PROJECT_ROOT
 
 
-# 历史目录名为中文，曾用全仓库字符串替换迁移；此处用码位拼接避免再被误批量改写。
-_LEGACY_OPINION_KB_DIR = "".join(chr(c) for c in (0x8206, 0x60C5, 0x6DF1, 0x5EA6, 0x5206, 0x6790))
-
-
 def get_opinion_analysis_kb_root(project_root: Path | None = None) -> Path:
-    """
-    项目根下「舆情分析知识库」根目录（英文文件夹 ``opinion_analysis_kb``，内含 references/ 等）。
-
-    若仍存在旧的中文目录名（见 ``_LEGACY_OPINION_KB_DIR``），则优先新目录，否则回退旧目录。
-    """
-    root = project_root if project_root is not None else get_project_root()
-    new_p = root / "opinion_analysis_kb"
-    legacy = root / _LEGACY_OPINION_KB_DIR
-    if new_p.is_dir():
-        return new_p
-    if legacy.is_dir():
-        return legacy
-    return new_p
+    """垂类知识库根目录：`<项目根>/opinion_analysis_kb`（Wiki/编译产物与 domains 的上层）。"""
+    base = project_root if project_root is not None else get_project_root()
+    return Path(base) / "opinion_analysis_kb"
 
 
 def get_config_dir() -> Path:
@@ -82,50 +66,6 @@ def ensure_task_dirs(task_id: str) -> Path:
     return process_dir
 
 
-def _clean_event_label(text: str, max_len: int = 18) -> str:
-    s = str(text or "").strip()
-    if not s:
-        return "事件"
-    # 保留中英文数字，去掉其它符号
-    s = re.sub(r"[^\w\u4e00-\u9fff]+", "", s)
-    # 去掉常见指令词
-    for w in ("请帮我", "帮我", "请", "分析", "舆情", "事件", "报告", "一下", "给出", "概述"):
-        s = s.replace(w, "")
-    s = s.strip() or "事件"
-    return s[:max_len]
-
-
-def ensure_task_readable_alias(task_id: str, event_text: str) -> Path:
-    """
-    在 sandbox 下创建“中文可读别名目录”（优先软链接到真实 task 目录）。
-    例：20260414高铁骂熊孩子舆情事件分析_任务ab12cd34
-    """
-    sandbox = get_sandbox_dir()
-    task_dir = get_task_dir(task_id)
-    date_prefix = datetime.now().strftime("%Y%m%d")
-    label = _clean_event_label(event_text)
-    alias_name = f"{date_prefix}{label}舆情事件分析_任务{task_id[:8]}"
-    alias_path = sandbox / alias_name
-
-    # 已存在则直接返回
-    if alias_path.exists():
-        return alias_path
-
-    try:
-        # 优先创建软链接，避免重复占用空间
-        alias_path.symlink_to(task_dir, target_is_directory=True)
-        return alias_path
-    except Exception:
-        # 回退：创建目录并写入指向说明
-        alias_path.mkdir(parents=True, exist_ok=True)
-        pointer = alias_path / "README_任务目录指引.txt"
-        pointer.write_text(
-            f"该目录为可读别名。\n真实任务目录：{task_dir}\n任务ID：{task_id}\n",
-            encoding="utf-8",
-        )
-        return alias_path
-
-
 def get_memory_dir() -> Path:
     """Memory 目录：项目根/memory，用于存储会话记忆。"""
     return get_project_root() / "memory"
@@ -141,3 +81,34 @@ def ensure_memory_dirs() -> Path:
     stm_dir = get_stm_dir()
     stm_dir.mkdir(parents=True, exist_ok=True)
     return stm_dir
+
+
+def ensure_task_readable_alias(task_id: str, user_query: str) -> None:
+    """
+    在 sandbox 下为任务目录创建可读别名（相对路径符号链接或占位文件）。
+    任意失败静默忽略，不影响主流程。
+    """
+    import re
+    from datetime import datetime
+
+    if not task_id:
+        return
+    sandbox = get_sandbox_dir()
+    tgt = sandbox / task_id
+    if not tgt.is_dir():
+        return
+    q = (user_query or "").strip()
+    slug = re.sub(r"[^\w\u4e00-\u9fff]+", "_", q[:48]).strip("_") or "task"
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    alias = sandbox / f"{stamp}_{slug}"
+    if alias.exists():
+        return
+    try:
+        alias.symlink_to(task_id, target_is_directory=True)
+    except OSError:
+        try:
+            alias.mkdir(parents=True, exist_ok=True)
+            marker = alias / ".sona_task_id.txt"
+            marker.write_text(task_id, encoding="utf-8")
+        except Exception:
+            return

@@ -1,0 +1,15 @@
+{
+  "type": "Case",
+  "title": "市场监管部门",
+  "source_file": "甯傚満鐩戠閮ㄩ棬.md",
+  "confidence": "medium",
+  "keywords": [
+    "自动生成",
+    "增量更新"
+  ],
+  "domain": "",
+  "actors": [],
+  "risk_patterns": [],
+  "response_tactics": [],
+  "summary": ""
+}

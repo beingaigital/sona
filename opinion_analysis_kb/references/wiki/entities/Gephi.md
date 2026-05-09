@@ -11,10 +11,10 @@ tags: [自动生成, 增量更新]
 证据不足
 
 ## 关联来源
-- [舆论事件背后的社会心理图谱：多学科交叉视角下的解码路径（研究提纲）.md](sources/expert_57a2239d06_舆论事件背后的社会心理图谱_多学科交叉视角下的解码路径_研究.md) | /Users/biaowenhuang/Documents/sona-master/opinion_analysis_kb/references/expert_notes/舆情分析的相关理论/舆论事件背后的社会心理图谱：多学科交叉视角下的解码路径（研究提纲）.md
+- [舆论事件背后的社会心理图谱：多学科交叉视角下的解码路径（研究提纲）.md](sources/expert_57a2239d06_舆论事件背后的社会心理图谱_多学科交叉视角下的解码路径_研究.md) | /Users/walk/Downloads/sona-main/opinion_analysis_kb/references/expert_notes/舆情分析的相关理论/舆论事件背后的社会心理图谱：多学科交叉视角下的解码路径（研究提纲）.md
 
 ## 近期增量
-- --- title: 舆论事件背后的社会心理图谱：多学科交叉视角下的解码路径（研究提纲） source_file: /Users/biaowenhuang/Documents/sona-master/opinion_analysis_kb/references/expert_notes/舆情分析的相关理论/舆论事件背后
+- --- title: 舆论事件背后的社会心理图谱：多学科交叉视角下的解码路径（研究提纲） source_file: /Users/walk/Downloads/sona-main/opinion_analysis_kb/references/expert_notes/舆情分析的相关理论/舆论事件背后
 
 ## 关联概念
 - [社会心理](../concepts/社会心理.md)、[舆论事件](../concepts/舆论事件.md)、[阶层流动](../concepts/阶层流动.md)、[制度认同](../concepts/制度认同.md)

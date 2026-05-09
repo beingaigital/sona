@@ -1,0 +1,15 @@
+{
+  "type": "Case",
+  "title": "北京控烟协会",
+  "source_file": "鍖椾含鎺х儫鍗忎細.md",
+  "confidence": "medium",
+  "keywords": [
+    "自动生成",
+    "增量更新"
+  ],
+  "domain": "",
+  "actors": [],
+  "risk_patterns": [],
+  "response_tactics": [],
+  "summary": ""
+}

@@ -1,0 +1,15 @@
+{
+  "type": "Case",
+  "title": "个人成长",
+  "source_file": "涓汉鎴愰暱.md",
+  "confidence": "medium",
+  "keywords": [
+    "自动生成",
+    "增量更新"
+  ],
+  "domain": "",
+  "actors": [],
+  "risk_patterns": [],
+  "response_tactics": [],
+  "summary": ""
+}

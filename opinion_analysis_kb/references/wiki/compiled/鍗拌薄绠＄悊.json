@@ -1,0 +1,15 @@
+{
+  "type": "Case",
+  "title": "印象管理",
+  "source_file": "鍗拌薄绠＄悊.md",
+  "confidence": "medium",
+  "keywords": [
+    "自动生成",
+    "增量更新"
+  ],
+  "domain": "",
+  "actors": [],
+  "risk_patterns": [],
+  "response_tactics": [],
+  "summary": ""
+}

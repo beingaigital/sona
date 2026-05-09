@@ -1,0 +1,195 @@
+好的，我重新整理成**成员1-4**的方案：
+
+---
+
+## B组任务分配（工作量平衡版）
+
+### 🎯 原则：2个技术流 + 2个内容流，工作量均等
+
+---
+
+#### **成员1：任务05（Schema+编译器）**
+**工作量：🟡 中等**
+- 设计 `opinion_analysis_kb/schema/` 目录结构
+- 定义6种知识类型的JSON Schema
+- 写 md → structured JSON 的编译脚本
+- 测试现有100+ wiki页能否编译
+
+**难度：🟡 中等（需要写代码）**
+
+---
+
+#### **成员2：任务06（Neo4j接入主流程）**
+**工作量：🟡 中等**
+- 完善 `tools/graph_rag_query.py`
+- 加 Neo4j 连接健康检查 + 自动降级逻辑
+- 在 `workflow/event_analysis_pipeline.py` 稳定调用 Graph RAG
+- 从 wiki markdown 提取实体和关系，导入 Neo4j
+- 建立 `Case` → `Actor` → `RiskPattern` → `ResponseTactic` → `Theory` 的边
+
+**难度：🟡 中等（需要写Python）**
+
+---
+
+#### **成员3：任务07（健康） + 任务09（熊猫）**
+**工作量：🟡 中等（平衡分配！）**
+- **07：健康领域包** → 整理已有15个文件（含刚拆分的7个）
+- **09：熊猫领域包** → 已有18个现成文件（最轻松！）
+- 各写1份健康+1份熊猫领域 playbook
+- 案例：健康10个 + 熊猫8个
+
+**难度：🟢 低（主要是整理资料）**
+
+---
+
+#### **成员4：任务08（交通）**
+**工作量：🟡 中等（刚好平衡！）**
+- **08：交通领域包** → 从6个docx + 1个pdf里提取整理
+- 写1份交通领域 playbook
+- 案例：交通10个
+
+**难度：🟢 低（主要是整理资料）**
+
+---
+
+## 工作量对比表
+
+| 成员 | 技术含量 | 内容量 | 总难度 |
+|------|----------|--------|--------|
+| 1 | 🟡🟡 | 🟢 | 🟡 |
+| 2 | 🟡🟡 | 🟢 | 🟡 |
+| 3 | 🟢 | 🟡🟡 | 🟡 |
+| 4 | 🟢 | 🟡🟡 | 🟡 |
+
+**平衡完美！**
+
+---
+
+## 说明
+- **09给成员3**是因为熊猫现成资料最多（18个md），容易完成
+- **08给成员4**一个人做，因为交通资料虽然少但需要处理docx转md
+- 成员1+2一起做基础设施，进度同步
+
+好的！作为 **成员1（任务05：知识库 Schema 与编译器）**，我来帮你梳理详细的工作内容和计划：
+
+---
+
+## 🎯 成员1任务总览
+
+### 当前现状
+- ✅ 已有 `WIKI_SCHEMA.md` 文档规范
+- ✅ 已有 100+ wiki/output 文档
+- ❌ 缺少 `opinion_analysis_kb/schema/` 目录
+- ❌ 缺少编译脚本
+
+---
+
+## 📋 详细工作清单
+
+### 阶段1：设计 Schema（第1-2天）
+
+**1.1 创建目录结构：**
+```
+opinion_analysis_kb/
+├── schema/
+│   ├── __init__.py
+│   ├── definitions.py    # 6种知识类型的Pydantic模型
+│   ├── compiler.py       # md → JSON编译逻辑
+│   └── config.py         # 编译配置
+```
+
+**1.2 定义6种知识类型：**
+
+| 类型 | 关键字段 | 说明 |
+|------|----------|------|
+| `Methodology` | name, description, source, keywords | 理论、模型、分析框架 |
+| `Case` | title, domain, actors, timeline, risk_patterns, response_tactics | 舆情事件案例 |
+| `DomainPlaybook` | domain, scenarios, tactics, references | 领域应对指南 |
+| `Actor` | name, type, role, influence_level | 主体、机构、媒体、KOL |
+| `RiskPattern` | name, description, indicators, severity | 风险模式（迟回应、口径冲突等） |
+| `ResponseTactic` | name, description,适用场景, examples | 回应策略（先事实后态度等） |
+
+---
+
+### 阶段2：编写编译脚本（第3-4天）
+
+**2.1 核心功能：**
+- 读取 wiki markdown 文件
+- 解析 YAML frontmatter
+- 按章节提取内容
+- 转换为结构化 JSON
+- 生成 `schema/compiled/` 目录
+
+**2.2 输出格式示例：**
+```json
+{
+  "type": "Case",
+  "title": "2024年烟卡舆情事件",
+  "domain": "health",
+  "actors": ["学校", "家长", "烟草公司"],
+  "risk_patterns": ["未成年人保护", "商品属性异化"],
+  "response_tactics": ["教育引导", "政策规范"],
+  "source_file": "烟卡舆情.md",
+  "confidence": "high",
+  "created_at": "2024-05-01"
+}
+```
+
+---
+
+### 阶段3：测试与优化（第5天）
+
+**3.1 测试目标：**
+- 至少 100 篇现有 wiki/output 文档可编译
+- 编译失败有错误报告，不静默跳过
+- 生成的 JSON 符合 Schema 规范
+
+---
+
+## 🛠️ 技术实现路径
+
+### 推荐工具：
+- **Pydantic**：定义数据模型
+- **python-frontmatter**：解析 markdown frontmatter
+- **markdown-it-py**：解析 markdown 结构
+
+### 代码框架：
+```python
+# schema/definitions.py
+from pydantic import BaseModel
+from typing import List, Optional
+
+class Case(BaseModel):
+    title: str
+    domain: str
+    actors: List[str]
+    timeline: Optional[str] = None
+    risk_patterns: List[str]
+    response_tactics: List[str]
+```
+
+---
+
+## ✅ 验收标准
+
+1. ✅ 创建 `opinion_analysis_kb/schema/` 目录
+2. ✅ 定义6种知识类型的 Schema
+3. ✅ 编写 wiki markdown → JSON 编译脚本
+4. ✅ 至少 100 篇现有文档可编译成功
+5. ✅ 编译失败有错误报告
+
+---
+
+## 📅 时间安排（建议）
+
+| 天数 | 任务 |
+|------|------|
+| Day1 | 设计目录结构 + 定义 Schema |
+| Day2 | 编写核心模型类 |
+| Day3 | 编写编译脚本 |
+| Day4 | 测试 + 修复bug |
+| Day5 | 文档 + 交付 |
+
+---
+
+需要我帮你先查看一下现有代码的结构，或者直接开始写代码？

@@ -1,6 +1,6 @@
 ---
 title: 地方舆情处置工作思路的转变
-source_file: /Users/biaowenhuang/Documents/sona-master/opinion_analysis_kb/references/wiki/output/11_地方舆情处置工作思路的转变.md
+source_file: /Users/walk/Downloads/sona-main/opinion_analysis_kb/references/wiki/output/11_地方舆情处置工作思路的转变.md
 updated_at: 2026-04-11 12:26:48
 tags:
   - 舆情处置

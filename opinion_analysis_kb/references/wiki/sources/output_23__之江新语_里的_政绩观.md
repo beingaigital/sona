@@ -1,6 +1,6 @@
 ---
 title: 之江新语里的政绩观分析
-source_file: /Users/biaowenhuang/Documents/sona-master/opinion_analysis_kb/references/wiki/output/23_《之江新语》里的“政绩观”.md
+source_file: /Users/walk/Downloads/sona-main/opinion_analysis_kb/references/wiki/output/23_《之江新语》里的“政绩观”.md
 updated_at: 2026-04-02 16:07:04
 tags:
   - 政绩观

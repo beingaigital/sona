@@ -1,6 +1,9 @@
 {
   "id": "tool_weibo_aisearch_001",
   "suite": "netinsight-smoke",
+  "suites": [
+    "ci-gate"
+  ],
   "target": "tool",
   "stage": "weibo_aisearch",
   "input": {

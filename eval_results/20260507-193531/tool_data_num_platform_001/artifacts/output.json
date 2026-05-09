@@ -1,0 +1,22 @@
+{
+  "search_matrix": {
+    "华为+(手机|(数据线+充电器))-小米": 2000
+  },
+  "total_count": 2000,
+  "platform": "MULTI",
+  "time_range": "2026-04-01 00:00:00;2026-04-18 23:59:59",
+  "threshold": 2000,
+  "keyword_mode": "advanced",
+  "query_string": "华为+(手机|(数据线+充电器))-小米",
+  "allocate_by_platform": true,
+  "platform_counts": {
+    "微博": 12000,
+    "微信": 8000,
+    "新闻网站": 50000
+  },
+  "platform_allocation": {
+    "微博": 320,
+    "微信": 213,
+    "新闻网站": 1467
+  }
+}

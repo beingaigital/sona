@@ -11,10 +11,10 @@ tags: [自动生成, 增量更新]
 证据不足
 
 ## 关联来源
-- [29_浙江宣传篇篇10万+，到底为什么？那是“始终相信文字的力量”.md](sources/29_浙江宣传篇篇10万_到底为什么_那是_始终相信文字的力量.md) | /Users/biaowenhuang/Documents/sona-master/opinion_analysis_kb/references/raw/29_浙江宣传篇篇10万+，到底为什么？那是“始终相信文字的力量”.md
+- [29_浙江宣传篇篇10万+，到底为什么？那是“始终相信文字的力量”.md](sources/29_浙江宣传篇篇10万_到底为什么_那是_始终相信文字的力量.md) | /Users/walk/Downloads/sona-main/opinion_analysis_kb/references/raw/29_浙江宣传篇篇10万+，到底为什么？那是“始终相信文字的力量”.md
 
 ## 近期增量
-- --- title: 浙江宣传篇篇 10 万 + 现象分析 source_file: /Users/biaowenhuang/Documents/sona-master/opinion_analysis_kb/references/raw/29_浙江宣传篇篇 10 万 +，到底为什么？那是“始终相信文字的力量”.md updated_at: 2
+- --- title: 浙江宣传篇篇 10 万 + 现象分析 source_file: /Users/walk/Downloads/sona-main/opinion_analysis_kb/references/raw/29_浙江宣传篇篇 10 万 +，到底为什么？那是“始终相信文字的力量”.md updated_at: 2
 
 ## 关联概念
 - [政务传播](../concepts/政务传播.md)、[新媒体运营](../concepts/新媒体运营.md)、[传播效果](../concepts/传播效果.md)

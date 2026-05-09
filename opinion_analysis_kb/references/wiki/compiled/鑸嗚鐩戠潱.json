@@ -1,0 +1,15 @@
+{
+  "type": "Case",
+  "title": "舆论监督",
+  "source_file": "鑸嗚鐩戠潱.md",
+  "confidence": "medium",
+  "keywords": [
+    "自动生成",
+    "增量更新"
+  ],
+  "domain": "",
+  "actors": [],
+  "risk_patterns": [],
+  "response_tactics": [],
+  "summary": ""
+}

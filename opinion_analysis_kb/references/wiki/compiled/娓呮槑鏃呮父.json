@@ -1,0 +1,15 @@
+{
+  "type": "Case",
+  "title": "清明旅游",
+  "source_file": "娓呮槑鏃呮父.md",
+  "confidence": "medium",
+  "keywords": [
+    "自动生成",
+    "增量更新"
+  ],
+  "domain": "",
+  "actors": [],
+  "risk_patterns": [],
+  "response_tactics": [],
+  "summary": ""
+}

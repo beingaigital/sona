@@ -44,6 +44,7 @@
    - RECAP_DISCOURSE / RECAP_TRENDS / RECAP_DRIVERS_BULLETS（至少一处）
    若未引用，视为不合格输出。
 12) RECAP_DISCOURSE 与 RECAP_TRENDS 必须写成“可执行复盘”风格：每段建议 120~260 字，至少包含 1 个数据证据、1 个机制解释与 1 条可落地建议；禁止输出“证据不足：请补充...”这类占位句。
+13) 若输入中包含「Wiki / 领域知识库召回快照」段落（来自 wiki_qa_snapshot）：你必须在 SUMMARY_BULLETS 或 RESPONSE_ANALYSIS_BULLETS 中至少一处写出：**命中领域路由（domain）**与 **至少一条知识来源路径（path）**；若无该段落则不得编造。
 
 所有 value 必须使用简体中文书写。
 - 禁止输出英文句子、英文短语、英文分析术语。

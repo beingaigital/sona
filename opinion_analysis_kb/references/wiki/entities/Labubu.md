@@ -11,10 +11,10 @@ tags: [自动生成, 增量更新]
 证据不足
 
 ## 关联来源
-- [舆情分析可参考的一些深度观点.md](sources/output_舆情分析可参考的一些深度观点.md) | /Users/biaowenhuang/Documents/sona-master/opinion_analysis_kb/references/wiki/output/舆情分析可参考的一些深度观点.md
+- [舆情分析可参考的一些深度观点.md](sources/output_舆情分析可参考的一些深度观点.md) | /Users/walk/Downloads/sona-main/opinion_analysis_kb/references/wiki/output/舆情分析可参考的一些深度观点.md
 
 ## 近期增量
-- --- title: 舆情分析深度观点与方法论 source_file: /Users/biaowenhuang/Documents/sona-master/opinion_analysis_kb/references/wiki/output/舆情分析可参考的一些深度观点.md updated_at: 2024-05-22 15:30:00 t
+- --- title: 舆情分析深度观点与方法论 source_file: /Users/walk/Downloads/sona-main/opinion_analysis_kb/references/wiki/output/舆情分析可参考的一些深度观点.md updated_at: 2024-05-22 15:30:00 t
 
 ## 关联概念
 - [企业公关](../concepts/企业公关.md)、[网络治理](../concepts/网络治理.md)、[行业监管](../concepts/行业监管.md)、[突发事件](../concepts/突发事件.md)、["舆情分析"](../concepts/舆情分析.md)、["舆论引导"](../concepts/舆论引导.md)、["危机公关"](../concepts/危机公关.md)、["传播机制"](../concepts/传播机制.md)
