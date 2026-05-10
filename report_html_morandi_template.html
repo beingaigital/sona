@@ -1,0 +1,677 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{REPORT_TITLE}} | 舆情智库深度研判</title>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+    <style>
+        :root {
+            --primary: #5d8aa8;         /* 莫兰迪蓝 */
+            --primary-strong: #4a6fa5;
+            --accent: #4ea5ff;          /* 强调蓝 */
+            --bg-grad-start: #f8fafc;
+            --bg-grad-end: #f1f5f9;
+            --card-bg: #ffffff;
+            --analysis-bg: rgba(78, 165, 255, 0.05);
+            --text-main: #1f2937;
+            --text-muted: #6b7280;
+            --border-color: #e5e7eb;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: linear-gradient(180deg, var(--bg-grad-start) 0%, var(--bg-grad-end) 100%);
+            color: var(--text-main);
+            line-height: 1.6;
+            padding-bottom: 60px;
+        }
+
+        .container { max-width: 1400px; margin: 0 auto; padding: 0 30px; }
+
+        /* --- Header Section --- */
+        header {
+            background: linear-gradient(135deg, var(--primary), var(--primary-strong));
+            color: white;
+            padding: 45px 0 60px;
+            margin-bottom: 30px;
+            border-radius: 0 0 20px 20px;
+            box-shadow: 0 10px 30px rgba(74, 111, 165, 0.2);
+        }
+        .header-content { text-align: center; }
+        .event-title { font-size: 2.6rem; font-weight: 800; margin-bottom: 10px; }
+        .event-subtitle { font-size: 1.25rem; opacity: 0.9; max-width: 1000px; margin: 0 auto; }
+        .badge-group { display: flex; gap: 10px; margin-top: 20px; flex-wrap: wrap; justify-content: center; }
+        .badge { background: rgba(255, 255, 255, 0.2); padding: 5px 15px; border-radius: 20px; font-size: 0.85rem; font-weight: 600; }
+
+        /* --- KPI Grid --- */
+        .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 20px; margin-top: -45px; margin-bottom: 40px; }
+        .kpi-card { background: var(--card-bg); padding: 25px; border-radius: 12px; box-shadow: 0 6px 16px rgba(0,0,0,0.05); }
+        .kpi-label { font-size: 0.9rem; color: var(--text-muted); }
+        .kpi-value { font-size: 2rem; font-weight: 800; color: var(--text-main); margin-top: 5px; }
+
+        /* --- Main Sections --- */
+        section { margin-bottom: 40px; }
+        .section-title { font-size: 1.8rem; font-weight: 700; margin-bottom: 25px; padding-bottom: 10px; border-bottom: 3px solid var(--primary); display: flex; align-items: center; }
+        .card { background: var(--card-bg); border-radius: 12px; padding: 30px; margin-bottom: 25px; box-shadow: 0 4px 15px rgba(0,0,0,0.03); }
+        .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 25px; }
+
+        /* --- Analysis Conclusion Boxes --- */
+        .analysis-summary { background: var(--analysis-bg); border-left: 5px solid var(--accent); padding: 20px 25px; border-radius: 0 8px 8px 0; margin-top: 20px; }
+        .analysis-summary h3 { font-size: 1.1rem; color: var(--primary-strong); margin-bottom: 15px; }
+        .analysis-summary ul { padding-left: 20px; }
+        .analysis-summary li { margin-bottom: 10px; font-size: 0.95rem; }
+        .highlight { background: rgba(78, 165, 255, 0.15); padding: 2px 8px; border-radius: 4px; font-weight: 600; }
+
+        /* --- Specific Content Elements --- */
+        .chart-box { height: 420px; width: 100%; margin-top: 15px; }
+        .wordcloud-box { position: relative; height: 420px; width: 100%; margin-top: 15px; overflow: hidden; border-radius: 12px; background: linear-gradient(180deg, rgba(93,138,168,0.07), rgba(255,255,255,0.8)); border: 1px solid var(--border-color); }
+        .wordcloud-box .w {
+            position: absolute;
+            left: 0;
+            top: 0;
+            transform-origin: center center;
+            font-weight: 800;
+            line-height: 1;
+            white-space: nowrap;
+            user-select: none;
+            cursor: default;
+            opacity: 0;
+            transition: transform .35s ease, opacity .35s ease;
+            text-shadow: 0 2px 8px rgba(0,0,0,.06);
+        }
+        .wordcloud-box .w:hover { filter: brightness(0.92); }
+        .wordcloud-box .hint {
+            position: absolute; right: 10px; bottom: 8px; font-size: 12px; color: var(--text-muted);
+            background: rgba(255,255,255,.7); padding: 3px 8px; border-radius: 999px; border: 1px solid var(--border-color);
+        }
+        .timeline-list { list-style: none; }
+        .timeline-item { padding: 18px 0; border-bottom: 1px dashed var(--border-color); position: relative; padding-left: 25px; }
+        .timeline-item::before { content: "•"; color: var(--accent); position: absolute; left: 0; font-size: 1.8rem; top: 12px; }
+        .timeline-time { font-weight: 700; color: var(--primary-strong); margin-bottom: 5px; }
+        .timeline-impact-positive { background: #d4edda; color: #155724; }
+        .timeline-impact-negative { background: #f8d7da; color: #721c24; }
+        .timeline-impact-turn { background: #fff3cd; color: #856404; }
+        .timeline-impact-ferment { background: #d1ecf1; color: #0c5464; }
+        .timeline-evidence { font-size: 12px; color: #6c757d; margin-top: 5px; padding-left: 8px; border-left: 2px solid #4ea5ff; }
+        /* ========== 任务11/13：情绪机制与四阶段行动清单样式 ========== */
+        .emotion-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; margin-top: 12px; }
+        .emotion-card { background: #f8fafc; border: 1px solid var(--border-color); border-radius: 8px; padding: 10px; font-size: 13px; }
+        .emotion-card strong { color: var(--primary-strong); }
+        .action-plan-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 14px; }
+        .action-plan-card { background: #f8fafc; border: 1px solid var(--border-color); border-left: 4px solid var(--accent); border-radius: 10px; padding: 14px; }
+        .action-plan-card h4 { color: var(--primary-strong); margin-bottom: 8px; }
+        .action-plan-card ul { padding-left: 18px; font-size: 13px; }
+        .action-plan-card li { margin-bottom: 6px; }
+        /* ========== 任务11/13：情绪机制与四阶段行动清单样式结束 ========== */
+
+        /* --- Footer --- */
+        footer { text-align: center; padding: 50px; color: var(--text-muted); border-top: 1px solid var(--border-color); font-size: 0.9rem; }
+
+        @media (max-width: 1000px) { .grid-2 { grid-template-columns: 1fr; } }
+        /* ========== 任务12：移动端图表可读性优化 ========== */
+        @media (max-width: 640px) {
+            .container { padding: 0 14px; }
+            .event-title { font-size: 1.9rem; }
+            .section-title { font-size: 1.35rem; }
+            .card { padding: 18px; }
+            .chart-box, .wordcloud-box { height: 340px; }
+        }
+        /* ========== 任务12：移动端图表可读性优化结束 ========== */
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <header>
+        <div class="header-content">
+            <h1 class="event-title">{{REPORT_TITLE}}</h1>
+            <p class="event-subtitle">{{REPORT_SUBTITLE}}</p>
+            <div class="badge-group">
+                <span class="badge">事件类型：{{EVENT_TYPE}}</span>
+                <span class="badge">核心客体：{{OBJECT_NAME}}</span>
+            </div>
+        </div>
+    </header>
+
+    <div class="kpi-grid">
+        <div class="kpi-card"><div class="kpi-label">总样本量</div><div class="kpi-value">{{KPI_TOTAL}}</div></div>
+        <div class="kpi-card"><div class="kpi-label">影响指数</div><div class="kpi-value">{{KPI_EFFECTIVE}}</div></div>
+        <div class="kpi-card"><div class="kpi-label">整体态度</div><div class="kpi-value">{{KPI_POS_RATIO}}</div></div>
+        <div class="kpi-card"><div class="kpi-label">目前阶段</div><div class="kpi-value">{{KPI_NEG_RATIO}}</div></div>
+    </div>
+
+    <section>
+        <h2 class="section-title">事件概览</h2>
+        <div class="card">
+            <p><strong>事件背景：</strong>{{INTRO_BACKGROUND}}</p>
+            <p style="margin-top:15px;"><strong>舆情触发点：</strong>{{INTRO_TRIGGERS}}</p>
+            <div class="analysis-summary">
+                <h3>概览研判结论</h3>
+                <ul>{{SUMMARY_BULLETS}}</ul>
+            </div>
+        </div>
+    </section>
+
+    <section>
+        <h2 class="section-title">数据分析板块</h2>
+
+        <div class="grid-2">
+            <div class="card">
+                <h3>情感倾向分析结果</h3>
+                <div id="sentimentChart" class="chart-box"></div>
+                <!-- ========== 任务11：情绪结构与负面驱动展示 ========== -->
+                <div id="emotionMechanism" class="analysis-summary" style="display:none;"></div>
+                <!-- ========== 任务11：情绪结构与负面驱动展示结束 ========== -->
+                <div class="analysis-summary">
+                    <h3>简要分析结论</h3>
+                    <ul>{{CHART_SENTIMENT_ANALYSIS}}</ul>
+                </div>
+            </div>
+            <div class="card">
+                <h3>关键时间线节点 (按发生时序)</h3>
+                <ul class="timeline-list" id="timelineList"></ul>
+                <div class="analysis-summary">
+                    <h3>简要分析结论</h3>
+                    <ul>{{CHART_TIMELINE_ANALYSIS}}</ul>
+                </div>
+            </div>
+        </div>
+
+        <div class="grid-2">
+            <div class="card">
+                <h3>渠道占比（各平台声量分布）</h3>
+                <div id="channelChart" class="chart-box"></div>
+                <div class="analysis-summary">
+                    <h3>简要分析结论</h3>
+                    <ul>{{CHART_CHANNEL_ANALYSIS}}</ul>
+                </div>
+            </div>
+            <div class="card">
+                <h3>每日声量趋势分析</h3>
+                <div id="volumeChart" class="chart-box"></div>
+                <div class="analysis-summary">
+                    <h3>简要分析结论</h3>
+                    <ul>{{CHART_VOLUME_ANALYSIS}}</ul>
+                </div>
+            </div>
+        </div>
+
+        <div class="grid-2">
+            <div class="card">
+                <h3>发布地域 Top10 分析 (省级)</h3>
+                <div id="regionChart" class="chart-box"></div>
+                <div class="analysis-summary">
+                    <h3>简要分析结论</h3>
+                    <ul>{{CHART_REGION_ANALYSIS}}</ul>
+                </div>
+            </div>
+            <div class="card">
+                <h3>核心发布者 Top10 分析</h3>
+                <div id="authorChart" class="chart-box"></div>
+                <div class="analysis-summary">
+                    <h3>简要分析结论</h3>
+                    <ul>{{CHART_AUTHOR_ANALYSIS}}</ul>
+                </div>
+            </div>
+        </div>
+
+        <div class="grid-2">
+            <div class="card">
+                <h3>关键词热度词云（Top200）</h3>
+                <div id="keywordCloud" class="wordcloud-box"></div>
+                <div class="analysis-summary">
+                    <h3>简要分析结论</h3>
+                    <ul>{{CHART_KEYWORD_ANALYSIS}}</ul>
+                </div>
+            </div>
+            <div class="card">
+                <h3>舆情核心五维分析 (雷达图)</h3>
+                <div id="radarChart" class="chart-box"></div>
+                <div class="analysis-summary">
+                    <h3>简要分析结论</h3>
+                    <ul>{{CHART_RADAR_ANALYSIS}}</ul>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h3>舆情生命周期阶段研判（声量趋势+阶段划分）</h3>
+            <div id="lifecycleChart" class="chart-box"></div>
+            <div class="analysis-summary">
+                <h3>简要分析结论</h3>
+                <ul>{{CHART_LIFECYCLE_ANALYSIS}}</ul>
+            </div>
+        </div>
+    </section>
+
+    <section>
+        <h2 class="section-title">理论研判与复盘总结</h2>
+        
+        <div class="card">
+            <h3>理论研判</h3>
+            <div class="analysis-summary" style="background:none; border-left-color:var(--primary);">
+                <p>{{THEORY_SILENCE}}</p><br>
+                <p>{{THEORY_AGENDA}}</p><br>
+                <p>{{THEORY_BUTTERFLY}}</p>
+            </div>
+        </div>
+
+        <div class="card">
+            <h3>舆论引导与处置建议</h3>
+            <div class="analysis-summary">
+                <ul>{{RESPONSE_ANALYSIS_BULLETS}}</ul>
+            </div>
+            <!-- ========== 任务13：四阶段处置行动清单展示 ========== -->
+            <div style="margin-top:18px;">{{RESPONSE_ACTION_PLAN}}</div>
+            <!-- ========== 任务13：四阶段处置行动清单展示结束 ========== -->
+        </div>
+
+        <div class="card">
+            <h3>总结复盘</h3>
+            <p>{{RECAP_DISCOURSE}}</p>
+            <p style="margin-top:12px;">{{RECAP_TRENDS}}</p>
+            <div class="analysis-summary" style="margin-top:16px;">
+                <ul>{{RECAP_DRIVERS_BULLETS}}</ul>
+            </div>
+        </div>
+    </section>
+
+    <footer>
+        <p>舆情智库｜基于真实数据的深度研判 · 报告生成时间：{{GEN_TIME}}</p>
+        <p>方法论依据：《舆情智库方法论》 ｜ 数据来源：{{DATA_SOURCE}}</p>
+    </footer>
+</div>
+
+<script>
+    /**
+     * 🚀 全量 JSON 配置对象
+     * 调用时请确保 JSON 结构完整
+     */
+    const REPORT_DATA = __REPORT_JSON_DATA__;
+
+    const chartInstances = {};
+    const ECHARTS_THEME = {
+        colors: ['#5470C6', '#91CC75', '#FAC858', '#EE6666', '#73C0DE', '#3BA272', '#9A60B4', '#EA7CCC'],
+        text: '#2b2f36',
+        subText: '#6b7280',
+        split: 'rgba(107,114,128,0.16)',
+    };
+
+    function baseToolbox() {
+        return {
+            show: true,
+            right: 8,
+            top: 2,
+            itemSize: 14,
+            feature: { saveAsImage: { pixelRatio: 2, name: '舆情图表导出' } }
+        };
+    }
+
+    function axisStyle() {
+        return {
+            axisLine: { lineStyle: { color: 'rgba(43,47,54,0.28)' } },
+            axisTick: { show: false },
+            axisLabel: { color: ECHARTS_THEME.subText }
+        };
+    }
+
+    function initAll() {
+        // 1. 情感饼图
+        chartInstances.sentiment = echarts.init(document.getElementById('sentimentChart'));
+        chartInstances.sentiment.setOption({
+            color: ECHARTS_THEME.colors,
+            animationDuration: 900,
+            tooltip: { trigger: 'item', confine: true, formatter: '{b}<br/>数量：{c}<br/>占比：{d}%' },
+            legend: { bottom: '4%', left: 'center', textStyle: { color: ECHARTS_THEME.subText } },
+            toolbox: baseToolbox(),
+            series: [{
+                type: 'pie', radius: ['40%', '70%'],
+                itemStyle: { borderRadius: 8, borderColor: '#fff', borderWidth: 2 },
+                emphasis: { scale: true, scaleSize: 8, itemStyle: { shadowBlur: 18, shadowColor: 'rgba(0,0,0,0.18)' } },
+                data: REPORT_DATA.charts.sentiment
+            }]
+        });
+
+        // ========== 任务11：渲染情绪结构与负面驱动 ==========
+        const emotionBox = document.getElementById('emotionMechanism');
+        const sentimentDetail = REPORT_DATA.sentimentDetail || {};
+        const emotionAnalysis = sentimentDetail.emotionAnalysis || {};
+        const emotionKeys = Object.keys(emotionAnalysis);
+        if (emotionBox && (emotionKeys.length || sentimentDetail.negativeDrivers)) {
+            let emotionHtml = '<h3>情绪结构与负面/质疑驱动</h3>';
+            if (sentimentDetail.negativeDrivers) {
+                emotionHtml += `<p style="margin-bottom:10px;"><strong>上升原因：</strong>${sentimentDetail.negativeDrivers}</p>`;
+            }
+            if (emotionKeys.length) {
+                emotionHtml += '<div class="emotion-grid">';
+                emotionKeys.forEach(k => {
+                    const item = emotionAnalysis[k] || {};
+                    emotionHtml += `<div class="emotion-card"><strong>${k}</strong><br>计数：${item.count || 0}<br><span>${item.typical_expression || '无'}</span></div>`;
+                });
+                emotionHtml += '</div>';
+            }
+            if (sentimentDetail.emotionValidation && sentimentDetail.emotionValidation.sample_size) {
+                emotionHtml += `<p style="margin-top:10px; font-size:12px; color:#6b7280;">抽样校验：样本 ${sentimentDetail.emotionValidation.sample_size} 条；${sentimentDetail.emotionValidation.note || ''}</p>`;
+            }
+            emotionBox.innerHTML = emotionHtml;
+            emotionBox.style.display = 'block';
+        }
+        // ========== 任务11：渲染情绪结构与负面驱动结束 ==========
+
+        // 2. 渠道占比饼图（若数据缺失则隐藏）
+        const channelEl = document.getElementById('channelChart');
+        const channelData = (REPORT_DATA && REPORT_DATA.charts && Array.isArray(REPORT_DATA.charts.channel)) ? REPORT_DATA.charts.channel : [];
+        if (channelEl && channelData && channelData.length) {
+            chartInstances.channel = echarts.init(channelEl);
+            chartInstances.channel.setOption({
+                color: ECHARTS_THEME.colors,
+                animationDuration: 900,
+                tooltip: { trigger: 'item', confine: true, formatter: '{b}<br/>数量：{c}<br/>占比：{d}%' },
+                legend: { bottom: '2%', left: 'center', textStyle: { color: ECHARTS_THEME.subText } },
+                toolbox: baseToolbox(),
+                series: [{
+                    type: 'pie',
+                    radius: ['38%', '70%'],
+                    center: ['50%', '48%'],
+                    itemStyle: { borderRadius: 8, borderColor: '#fff', borderWidth: 2 },
+                    label: { color: ECHARTS_THEME.subText, formatter: '{b} {d}%' },
+                    emphasis: { scale: true, scaleSize: 8, itemStyle: { shadowBlur: 18, shadowColor: 'rgba(0,0,0,0.18)' } },
+                    data: channelData
+                }]
+            });
+        } else if (channelEl) {
+            // 无数据时不占空间，避免出现空白图框
+            channelEl.style.display = 'none';
+        }
+
+        // 3. 声量趋势（发文量 + 热度0-100）
+        chartInstances.volume = echarts.init(document.getElementById('volumeChart'));
+        chartInstances.volume.setOption({
+            color: ECHARTS_THEME.colors,
+            animationDuration: 1000,
+            tooltip: { trigger: 'axis', axisPointer: { type: 'cross' } },
+            legend: { top: '2%', left: 'center', data: ['发文量', '热度(0-100)'], textStyle: { color: ECHARTS_THEME.subText } },
+            toolbox: baseToolbox(),
+            grid: { left: 38, right: 18, top: 52, bottom: 34, containLabel: true },
+            xAxis: { type: 'category', data: REPORT_DATA.charts.volume.dates, ...axisStyle() },
+            yAxis: [
+                { type: 'value', name: '发文量', splitLine: { lineStyle: { color: ECHARTS_THEME.split } }, ...axisStyle() },
+                { type: 'value', name: '热度', min: 0, max: 100, splitLine: { show: false }, ...axisStyle() },
+            ],
+            series: [
+                {
+                    name: '发文量',
+                    data: REPORT_DATA.charts.volume.postCounts,
+                    type: 'bar',
+                    barMaxWidth: 22,
+                    itemStyle: { borderRadius: [6, 6, 0, 0], color: 'rgba(84,112,198,0.78)' }
+                },
+                {
+                    name: '热度(0-100)',
+                    yAxisIndex: 1,
+                    data: REPORT_DATA.charts.volume.heat,
+                    type: 'line',
+                    smooth: true,
+                    symbol: 'circle',
+                    symbolSize: 6,
+                    lineStyle: { width: 2.5, color: '#EE6666' },
+                    areaStyle: { color: 'rgba(238,102,102,0.14)' }
+                }
+            ],
+            dataZoom: [{ type: 'inside' }]
+        });
+
+        // 4. 地域柱状图
+        chartInstances.region = echarts.init(document.getElementById('regionChart'));
+        chartInstances.region.setOption({
+            color: ECHARTS_THEME.colors,
+            tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+            legend: { top: '2%', left: 'center', data: ['地域声量'], textStyle: { color: ECHARTS_THEME.subText } },
+            toolbox: baseToolbox(),
+            grid: { left: 32, right: 12, top: 52, bottom: 46, containLabel: true },
+            xAxis: { type: 'category', data: REPORT_DATA.charts.region.names, axisLabel: { rotate: 20, color: ECHARTS_THEME.subText }, ...axisStyle() },
+            yAxis: { type: 'value', splitLine: { lineStyle: { color: ECHARTS_THEME.split } }, ...axisStyle() },
+            series: [{
+                name: '地域声量', type: 'bar', data: REPORT_DATA.charts.region.values, barMaxWidth: 22,
+                itemStyle: {
+                    borderRadius: [6, 6, 0, 0],
+                    color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                        { offset: 0, color: '#73C0DE' }, { offset: 1, color: '#5470C6' }
+                    ])
+                }
+            }]
+        });
+
+        // 5. 作者柱状图 (横向)
+        chartInstances.author = echarts.init(document.getElementById('authorChart'));
+        chartInstances.author.setOption({
+            color: ECHARTS_THEME.colors,
+            tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+            legend: { top: '2%', left: 'center', data: ['作者发文量'], textStyle: { color: ECHARTS_THEME.subText } },
+            toolbox: baseToolbox(),
+            grid: { left: '22%', right: 16, top: 52, bottom: 26 },
+            xAxis: { type: 'value', splitLine: { lineStyle: { color: ECHARTS_THEME.split } }, ...axisStyle() },
+            yAxis: { type: 'category', data: REPORT_DATA.charts.author.names.reverse(), ...axisStyle() },
+            series: [{
+                name: '作者发文量', type: 'bar', data: REPORT_DATA.charts.author.values.reverse(), barMaxWidth: 16,
+                itemStyle: { borderRadius: [0, 6, 6, 0], color: '#5470C6' }
+            }]
+        });
+
+        // 6. 关键词词云（70词优先、横竖混排、词性着色、碰撞避免）
+        const wc = document.getElementById('keywordCloud');
+        const posPalette = {
+            '名词': '#4A6FA5',
+            '动词': '#D16D5B',
+            '形容词': '#7D63A6',
+            '人名': '#2F7A4E',
+            '地名': '#2B8E9F',
+            '机构': '#8F6B3F',
+            '其他': '#6B7280',
+        };
+        const words = Array.isArray(REPORT_DATA.charts.keyword) ? REPORT_DATA.charts.keyword : [];
+        const maxV = Math.max(1, ...words.map(x => (x && x.value) ? Number(x.value) : 0));
+        const minV = Math.min(...words.map(x => (x && x.value) ? Number(x.value) : maxV), maxV);
+        wc.innerHTML = '';
+        const W = Math.max(220, wc.clientWidth);
+        const H = Math.max(220, wc.clientHeight);
+        const cx = W / 2;
+        const cy = H / 2;
+        const placed = [];
+        const sortedWords = words
+            .slice(0, 140)
+            .map(w => ({
+                name: (w && w.name) ? String(w.name) : '',
+                value: (w && w.value) ? Number(w.value) : 0,
+                pos: (w && w.pos) ? String(w.pos) : '其他',
+            }))
+            .filter(w => !!w.name)
+            .sort((a, b) => b.value - a.value)
+            .slice(0, 70);
+
+        function intersects(a, b, pad = 2) {
+            return !(
+                a.x + a.w + pad < b.x ||
+                b.x + b.w + pad < a.x ||
+                a.y + a.h + pad < b.y ||
+                b.y + b.h + pad < a.y
+            );
+        }
+
+        function mapSize(value) {
+            if (maxV <= minV) return 22;
+            const r = (value - minV) / (maxV - minV);
+            return Math.round(12 + Math.pow(Math.max(0, Math.min(1, r)), 0.72) * 28); // 12~40
+        }
+
+        sortedWords.forEach((w, idx) => {
+            const el = document.createElement('span');
+            el.className = 'w';
+            el.textContent = w.name;
+            el.title = `${w.name}：${w.value}（${w.pos || '其他'}）`;
+            el.style.fontSize = `${mapSize(w.value)}px`;
+            el.style.color = posPalette[w.pos] || posPalette['其他'];
+            // 大词优先横排，小词部分竖排，保持可读性
+            const rotate = idx < 12 ? 0 : (idx % 5 === 0 ? 90 : 0);
+            el.style.transform = `translate(-9999px, -9999px) rotate(${rotate}deg)`;
+            wc.appendChild(el);
+
+            const rect = el.getBoundingClientRect();
+            const bw = Math.max(8, rect.width);
+            const bh = Math.max(8, rect.height);
+            let ok = false;
+            let chosen = null;
+
+            // Archimedean spiral search
+            for (let t = 0; t < 9000; t++) {
+                const ang = 0.33 * t;
+                const rad = 0.52 * ang;
+                const x = cx + rad * Math.cos(ang) - bw / 2;
+                const y = cy + rad * Math.sin(ang) - bh / 2;
+                if (x < 2 || y < 2 || x + bw > W - 2 || y + bh > H - 2) continue;
+                const box = { x, y, w: bw, h: bh };
+                if (placed.every(p => !intersects(p, box, 2))) {
+                    ok = true;
+                    chosen = box;
+                    break;
+                }
+            }
+
+            // fallback: random sampling
+            if (!ok) {
+                for (let k = 0; k < 160; k++) {
+                    const x = Math.random() * Math.max(4, W - bw - 4) + 2;
+                    const y = Math.random() * Math.max(4, H - bh - 4) + 2;
+                    const box = { x, y, w: bw, h: bh };
+                    if (placed.every(p => !intersects(p, box, 2))) {
+                        ok = true;
+                        chosen = box;
+                        break;
+                    }
+                }
+            }
+
+            if (!ok || !chosen) {
+                el.remove();
+                return;
+            }
+
+            placed.push(chosen);
+            el.style.transform = `translate(${Math.round(chosen.x)}px, ${Math.round(chosen.y)}px) rotate(${rotate}deg)`;
+            el.style.opacity = '1';
+        });
+        const hint = document.createElement('div');
+        hint.className = 'hint';
+        hint.textContent = `已渲染 ${placed.length}/${sortedWords.length} 个词（颜色=词性）`;
+        wc.appendChild(hint);
+
+        // 7. 五维雷达图
+        chartInstances.radar = echarts.init(document.getElementById('radarChart'));
+        chartInstances.radar.setOption({
+            color: ECHARTS_THEME.colors,
+            legend: { top: '2%', left: 'center', data: ['五维评估'], textStyle: { color: ECHARTS_THEME.subText } },
+            toolbox: baseToolbox(),
+            radar: {
+                // ========== 任务12：雷达图居中与半径优化 ==========
+                center: ['50%', '58%'],
+                radius: '64%',
+                // ========== 任务12：雷达图居中与半径优化结束 ==========
+                indicator: [
+                    { name: '量', max: 10 }, { name: '质', max: 10 },
+                    { name: '人', max: 10 }, { name: '场', max: 10 }, { name: '效', max: 10 }
+                ],
+                splitLine: { lineStyle: { color: ECHARTS_THEME.split } },
+                axisLine: { lineStyle: { color: ECHARTS_THEME.split } },
+                name: { color: ECHARTS_THEME.subText }
+            },
+            series: [{
+                type: 'radar',
+                data: [{
+                    name: '五维评估',
+                    value: REPORT_DATA.charts.radarValues,
+                    areaStyle: { color: 'rgba(84,112,198,0.28)' },
+                    lineStyle: { width: 2, color: '#5470C6' },
+                    symbolSize: 5
+                }]
+            }]
+        });
+
+        // 8. 生命周期趋势图 + 阶段分割线
+        chartInstances.lifecycle = echarts.init(document.getElementById('lifecycleChart'));
+        const lifecycleDates = REPORT_DATA.charts.lifecycle.dates || [];
+        const lifecycleValues = REPORT_DATA.charts.lifecycle.values || [];
+        const lifecycleBoundaries = REPORT_DATA.charts.lifecycle.boundaries || [];
+        // ========== 任务10：趋势图关键时间线节点 ==========
+        const timelineMarkPoints = (REPORT_DATA.timeline || []).map(item => {
+            const idx = lifecycleDates.findIndex(d => String(d).slice(0, 10) === String(item.time || '').slice(0, 10));
+            if (idx < 0) return null;
+            return {
+                name: item.event || '关键节点',
+                coord: [lifecycleDates[idx], lifecycleValues[idx] || 0],
+                value: item.event || '关键节点',
+                itemStyle: { color: item.impact === '负面' ? '#EE6666' : (item.impact === '转折' ? '#FAC858' : '#5470C6') },
+            };
+        }).filter(Boolean).slice(0, 8);
+        // ========== 任务10：趋势图关键时间线节点结束 ==========
+        chartInstances.lifecycle.setOption({
+            color: ECHARTS_THEME.colors,
+            animationDuration: 1000,
+            tooltip: { trigger: 'axis', axisPointer: { type: 'line' } },
+            legend: { top: '2%', left: 'center', textStyle: { color: ECHARTS_THEME.subText } },
+            toolbox: baseToolbox(),
+            grid: { left: 28, right: 16, top: 52, bottom: 28, containLabel: true },
+            xAxis: { type: 'category', boundaryGap: false, data: lifecycleDates, ...axisStyle() },
+            yAxis: { type: 'value', splitLine: { lineStyle: { color: ECHARTS_THEME.split } }, ...axisStyle() },
+            dataZoom: [{ type: 'inside' }, { type: 'slider', height: 14, bottom: 4 }],
+            series: [{
+                name: '声量趋势',
+                type: 'line',
+                smooth: true,
+                symbol: 'circle',
+                symbolSize: 4,
+                lineStyle: { width: 2.2, color: '#5470C6' },
+                areaStyle: { color: 'rgba(84,112,198,0.16)' },
+                data: lifecycleValues,
+                markLine: {
+                    symbol: ['none', 'none'],
+                    label: { show: true, formatter: ({ data }) => data && data.name ? data.name : '', color: '#6b7280' },
+                    lineStyle: { type: 'dashed', color: 'rgba(107,114,128,0.6)', width: 1.2 },
+                    data: lifecycleBoundaries.map(b => ({ xAxis: b.xAxis, name: b.name })),
+                },
+                // ========== 任务10：趋势图展示关键事件节点 ==========
+                markPoint: {
+                    symbolSize: 42,
+                    label: { formatter: ({ data }) => data && data.name ? data.name : '', fontSize: 10 },
+                    data: timelineMarkPoints,
+                },
+                // ========== 任务10：趋势图展示关键事件节点结束 ==========
+            }]
+        });
+
+        // 渲染时间线
+        const tlList = document.getElementById('timelineList');
+        REPORT_DATA.timeline.forEach(item => {
+            let evidenceHtml = item.evidence ? `<div class="timeline-evidence" style="font-size:12px; color:#666; margin-top:4px;">📎 ${item.evidence}</div>` : '';
+            let impactClass = '';
+            let impactText = '';
+            if (item.impact === '正面') { impactClass = 'timeline-impact-positive'; impactText = '正面'; }
+            else if (item.impact === '负面') { impactClass = 'timeline-impact-negative'; impactText = '负面'; }
+            else if (item.impact === '转折') { impactClass = 'timeline-impact-turn'; impactText = '转折'; }
+            else if (item.impact === '发酵') { impactClass = 'timeline-impact-ferment'; impactText = '发酵'; }
+            let impactHtml = impactText ? `<span class="timeline-impact ${impactClass}" style="font-size:11px; margin-left:8px; padding:2px 8px; border-radius:12px;">${impactText}</span>` : '';
+            tlList.innerHTML += `<li class="timeline-item">
+                <div class="timeline-time">${item.time} ${impactHtml}</div>
+                <div class="timeline-event" style="font-weight:500;">${item.event}</div>
+                ${evidenceHtml}
+            </li>`;
+        });
+    }
+
+    document.addEventListener('DOMContentLoaded', initAll);
+    window.onresize = () => Object.values(chartInstances).forEach(c => c.resize());
+</script>
+
+</body>
+</html>
