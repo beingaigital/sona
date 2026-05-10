@@ -41,6 +41,15 @@ from utils.path import ensure_task_dirs, get_sandbox_dir
 from utils.task_context import set_task_id
 from utils.session_manager import SessionManager
 
+# 评测系统导入
+from pathlib import Path as PathLib
+import sys
+
+# 添加项目根目录到路径
+project_root = PathLib(__file__).resolve().parents[1]
+if str(project_root) not in sys.path:
+    sys.path.insert(0, str(project_root))
+
 
 console = Console()
 
@@ -996,6 +1005,30 @@ def _is_graph_rag_enabled() -> bool:
     return True
 
 
+def _detect_domain(query: str) -> str:
+    """根据用户查询文本推断领域分类。"""
+    _domain_keywords = {
+        "health": ["健康", "医疗", "医院", "疫情", "病毒", "感染", "疾病", "药品", "食品",
+                    "诺如", "流感", "新冠", "疫苗", "卫生", "疾控", "患者", "症状"],
+        "traffic": ["交通", "出行", "高铁", "地铁", "航班", "高速", "事故", "拥堵",
+                     "春运", "航空", "铁路", "道路"],
+        "education": ["教育", "学校", "高考", "大学", "考试", "招生", "学生", "教师",
+                      "校园", "学费", "双减", "师范"],
+        "government": ["政务", "政府", "政策", "法规", "监管", "执法", "官员", "反腐",
+                       "信访", "民生", "社保"],
+        "consumption": ["消费", "价格", "购物", "电商", "直播", "品牌", "质量", "投诉",
+                        "维权", "退货", "预制菜", "315"],
+        "tourism": ["旅游", "景区", "酒店", "民宿", "出行", "假期", "黄金周", "签证",
+                    "出境", "文旅"],
+        "panda": ["大熊猫", "熊猫", "国宝", "动物园", "保护", "繁育", "丫丫", "萌兰"],
+    }
+    query_lower = query.lower()
+    for domain, keywords in _domain_keywords.items():
+        if any(kw in query_lower for kw in keywords):
+            return domain
+    return "general"
+
+
 def run_event_analysis_workflow(
     user_query: str,
     task_id: str,
@@ -1005,6 +1038,7 @@ def run_event_analysis_workflow(
     default_threshold: int = 2000,
     existing_data_path: Optional[str] = None,
     skip_data_collect: bool = False,
+    eval_mode: bool = False,
 ) -> str:
     """
     在 CLI 中运行"4.1 舆情事件分析工作流"。
@@ -1017,6 +1051,7 @@ def run_event_analysis_workflow(
         default_threshold: 默认数据量阈值
         existing_data_path: 已有数据的文件路径（可选，提供后跳过数据采集）
         skip_data_collect: 是否跳过数据采集阶段（与 existing_data_path 配合使用）
+        eval_mode: 是否启用评测模式（生成报告后自动评分）
     
     Returns:
         report_html 生成的 `file_url`（若为空则返回 html 文件路径）。
@@ -2506,4 +2541,142 @@ def run_event_analysis_workflow(
 
     console.print()
     console.print(f"[green]✅ {final_msg}[/green]")
+
+    # ============ 自动评分：对生成的报告进行质量评分（默认启用） ============
+    if html_file_path:
+        try:
+            console.print()
+            console.print("[cyan]🔍 进入评测模式，正在对报告进行评分...[/cyan]")
+            
+            # 读取生成的报告内容
+            report_content = ""
+            try:
+                with open(html_file_path, 'r', encoding='utf-8') as f:
+                    report_content = f.read()
+            except Exception as e:
+                console.print(f"[yellow]警告：无法读取报告文件: {e}[/yellow]")
+            
+            if report_content:
+                # 使用 AutoScorer 直接对报告评分
+                from eval.scorer import AutoScorer, score_report
+                
+                # 尝试加载过程文件中的结构化数据
+                report_data = {}
+                from utils.path import get_task_dir
+                sandbox_dir = get_task_dir(task_id)
+                process_dir = sandbox_dir / "过程文件"
+                if process_dir.exists():
+                    # 查找 dataset_summary 或其他结构化数据
+                    for json_file in process_dir.glob("*.json"):
+                        try:
+                            with open(json_file, 'r', encoding='utf-8') as f:
+                                data = json.load(f)
+                                if isinstance(data, dict):
+                                    report_data.update(data)
+                        except Exception:
+                            pass
+                
+                # 构建案例配置
+                case_config = {
+                    "case_id": task_id,
+                    "domain": user_query[:50] if user_query else "unknown",
+                }
+                
+                # 运行评分
+                score_result = score_report(
+                    report_content=report_content,
+                    report_data=report_data if report_data else None,
+                    case_config=case_config
+                )
+                
+                # 显示评分结果
+                console.print()
+                console.print("[bold cyan]📊 评分结果[/bold cyan]")
+                console.print(f"  总分: [bold]{score_result['score']}/{score_result['max_score']}[/bold] ({score_result['percentage']}%)")
+                console.print(f"  状态: {'[green]通过[/green]' if score_result['status'] == 'passed' else '[red]未通过[/red]'}")
+                console.print(f"  总结: {score_result['summary']}")
+                
+                # 显示各维度评分
+                console.print()
+                console.print("[bold]各维度评分:[/bold]")
+                for dim_name, dim_data in score_result.get('breakdown', {}).items():
+                    status_icon = "✅" if dim_data['passed'] else "❌"
+                    level_text = dim_data.get('level', '')
+                    console.print(f"  {status_icon} {dim_name}: {dim_data['score']}/{dim_data['max_score']} ({dim_data['percentage']}%) [{level_text}]")
+                    
+                    # 显示具体问题
+                    for issue in dim_data.get('issues', []):
+                        console.print(f"      [yellow]⚠ {issue}[/yellow]")
+                
+                # 显示改进建议
+                if score_result.get('recommendations'):
+                    console.print()
+                    console.print("[bold]改进建议:[/bold]")
+                    for rec in score_result['recommendations']:
+                        console.print(f"  💡 {rec}")
+                
+                # 保存评分结果到 JSON
+                eval_results_dir = project_root / "eval" / "results"
+                eval_results_dir.mkdir(parents=True, exist_ok=True)
+                
+                eval_json_path = eval_results_dir / f"{task_id}_eval.json"
+                with open(eval_json_path, 'w', encoding='utf-8') as f:
+                    json.dump(score_result, f, ensure_ascii=False, indent=2)
+                
+                console.print()
+                console.print(f"[dim]评分详情已保存: {eval_json_path}[/dim]")
+                
+                # 同时保存到 sandbox
+                sandbox_result_dir = sandbox_dir / "结果文件"
+                sandbox_result_dir.mkdir(parents=True, exist_ok=True)
+                sandbox_eval_path = sandbox_result_dir / f"eval_score_{task_id}.json"
+                with open(sandbox_eval_path, 'w', encoding='utf-8') as f:
+                    json.dump(score_result, f, ensure_ascii=False, indent=2)
+                
+                console.print(f"[dim]评分详情已保存: {sandbox_eval_path}[/dim]")
+            
+        except Exception as e:
+            console.print(f"[yellow]评测过程出错: {e}[/yellow]")
+            import traceback
+            traceback.print_exc()
+
+    # ============ 人工反馈收集：评分完成后询问是否需要提供意见 ============
+    if html_file_path:
+        try:
+            from rich.prompt import Prompt as _Prompt
+            from feedback.collector import FeedbackCollector
+            from feedback.storage import FeedbackStorage
+            from pathlib import Path as _Path
+
+            console.print()
+            feedback_choice = _Prompt.ask(
+                "是否需要提供修改意见",
+                choices=["y", "n", "Y", "N"],
+                default="n",
+                show_choices=True,
+            )
+
+            if feedback_choice.lower() == "y":
+                console.print()
+                console.print("[cyan]进入详细反馈收集...[/cyan]")
+
+                _report_path = _Path(html_file_path)
+                _domain = _detect_domain(user_query)
+
+                _collector = FeedbackCollector()
+                _feedback = _collector.collect(
+                    report_path=_report_path,
+                    domain=_domain,
+                )
+
+                if _feedback:
+                    _storage = FeedbackStorage()
+                    _saved = _storage.save(_feedback)
+                    console.print(f"[green]✅ 反馈已保存: {_feedback.feedback_id}[/green]")
+                else:
+                    console.print("[dim]已取消反馈收集[/dim]")
+
+        except Exception as _fb_err:
+            console.print(f"[dim]反馈收集跳过: {_fb_err}[/dim]")
+
     return file_url or html_file_path

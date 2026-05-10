@@ -1,0 +1,3259 @@
+{
+  "basic_scoring": {
+    "case_id": "test_case_001",
+    "score": 65.25,
+    "max_score": 100,
+    "percentage": 65.25,
+    "status": "failed",
+    "summary": "报告质量评级：合格（65.2%）。最强维度：consistency（100.0%）；最弱维度：fields（41.7%）。未达标维度：structure, fields。",
+    "recommendations": [
+      "完善报告结构，确保包含摘要、事件、舆情、分析、趋势、建议等章节",
+      "补充关键数据字段，如事件标题、时间范围、数据量、情感倾向等"
+    ],
+    "breakdown": {
+      "structure": {
+        "score": 12.500000000000002,
+        "max_score": 25,
+        "percentage": 50.0,
+        "passed": false,
+        "level": "fail",
+        "issues": [
+          "报告内容过短 (232 字符)"
+        ],
+        "details": {
+          "found_sections": [
+            "摘要",
+            "事件",
+            "舆情",
+            "分析",
+            "趋势",
+            "建议"
+          ],
+          "missing_sections": [],
+          "char_count": 232
+        }
+      },
+      "fields": {
+        "score": 10.416666666666668,
+        "max_score": 25,
+        "percentage": 41.67,
+        "passed": false,
+        "level": "fail",
+        "issues": [
+          "字段 'event_title' 覆盖不完整 (50%)",
+          "字段 'time_range' 覆盖不完整 (50%)",
+          "字段 'data_volume' 覆盖不完整 (50%)",
+          "缺少必需字段: key_points",
+          "缺少必需字段: sources"
+        ],
+        "details": {
+          "found_fields": [
+            "event_title",
+            "time_range",
+            "data_volume",
+            "sentiment"
+          ],
+          "missing_fields": [
+            "key_points",
+            "sources"
+          ],
+          "field_coverage": {
+            "event_title": 50,
+            "time_range": 50,
+            "data_volume": 50,
+            "sentiment": 100,
+            "key_points": 0,
+            "sources": 0
+          }
+        }
+      },
+      "evidence": {
+        "score": 17.33,
+        "max_score": 25,
+        "percentage": 69.32,
+        "passed": true,
+        "level": "pass",
+        "issues": [],
+        "details": {
+          "evidence_stats": {
+            "data": 3,
+            "quote": 1,
+            "source": 2,
+            "example": 0
+          },
+          "paragraph_analysis": [
+            {
+              "length": 63,
+              "has_claim": true,
+              "has_evidence": true
+            }
+          ],
+          "claim_count": 1,
+          "evidence_supported": 1,
+          "support_rate": 1.0
+        }
+      },
+      "consistency": {
+        "score": 25,
+        "max_score": 25,
+        "percentage": 100.0,
+        "passed": true,
+        "level": "excellent",
+        "issues": [],
+        "details": {
+          "numbers_found": [
+            {
+              "value": "45",
+              "type": "percentage",
+              "context": "据显示，正面评价占比45%，负面评价占比30%",
+              "position": 117
+            },
+            {
+              "value": "30",
+              "type": "percentage",
+              "context": "45%，负面评价占比30%，中性评价占比25%",
+              "position": 127
+            },
+            {
+              "value": "25",
+              "type": "percentage",
+              "context": "30%，中性评价占比25%。\n专家表示，该产品",
+              "position": 137
+            },
+            {
+              "value": "1.2",
+              "type": "wan",
+              "context": "据统计，相关讨论量达1.2万条。\n\n## 事件回",
+              "position": 48
+            },
+            {
+              "value": "2024",
+              "type": "year",
+              "context": "事件回顾\n事件起因于2024年1月15日，某品牌发",
+              "position": 69
+            },
+            {
+              "value": "1",
+              "type": "month",
+              "context": "事件起因于2024年1月15日，某品牌发布新",
+              "position": 74
+            },
+            {
+              "value": "15",
+              "type": "day",
+              "context": "起因于2024年1月15日，某品牌发布新产品，",
+              "position": 76
+            },
+            {
+              "value": "1.2",
+              "type": "number",
+              "context": "据统计，相关讨论量达1.2万条。\n\n## 事件",
+              "position": 48
+            },
+            {
+              "value": "2024",
+              "type": "number",
+              "context": "事件回顾\n事件起因于2024年1月15日，某品牌",
+              "position": 69
+            },
+            {
+              "value": "1",
+              "type": "number",
+              "context": "事件起因于2024年1月15日，某品牌发布",
+              "position": 74
+            },
+            {
+              "value": "15",
+              "type": "number",
+              "context": "起因于2024年1月15日，某品牌发布新产品",
+              "position": 76
+            },
+            {
+              "value": "45",
+              "type": "number",
+              "context": "据显示，正面评价占比45%，负面评价占比30",
+              "position": 117
+            },
+            {
+              "value": "30",
+              "type": "number",
+              "context": "45%，负面评价占比30%，中性评价占比25",
+              "position": 127
+            },
+            {
+              "value": "25",
+              "type": "number",
+              "context": "30%，中性评价占比25%。\n专家表示，该产",
+              "position": 137
+            },
+            {
+              "value": "1",
+              "type": "number",
+              "context": "注。\n\n## 建议\n1. 加强信息监测\n2",
+              "position": 200
+            },
+            {
+              "value": "2",
+              "type": "number",
+              "context": "1. 加强信息监测\n2. 及时回应公众关切",
+              "position": 210
+            },
+            {
+              "value": "3",
+              "type": "number",
+              "context": " 及时回应公众关切\n3. 做好风险预案\n",
+              "position": 222
+            }
+          ],
+          "inconsistencies": [],
+          "checks": {
+            "time": {
+              "passed": true,
+              "issues": [],
+              "time_refs": [
+                "2024年1月15",
+                "2024年1",
+                "2024年"
+              ]
+            },
+            "logic": {
+              "passed": true,
+              "issues": [],
+              "percentages": [
+                45.0,
+                30.0,
+                25.0
+              ]
+            },
+            "data": {
+              "passed": true,
+              "issues": []
+            },
+            "percentage": {
+              "passed": true,
+              "issues": [],
+              "checked_patterns": 2
+            }
+          }
+        }
+      }
+    }
+  },
+  "low_quality": {
+    "case_id": "test_case_002",
+    "score": 27.08,
+    "max_score": 100,
+    "percentage": 27.08,
+    "status": "failed",
+    "summary": "报告质量评级：不合格（27.1%）。最强维度：consistency（100.0%）；最弱维度：fields（0.0%）。未达标维度：structure, fields, evidence。",
+    "recommendations": [
+      "完善报告结构，确保包含摘要、事件、舆情、分析、趋势、建议等章节",
+      "补充关键数据字段，如事件标题、时间范围、数据量、情感倾向等",
+      "增加数据引用和来源标注，提升论据可信度"
+    ],
+    "breakdown": {
+      "structure": {
+        "score": 2.0833333333333335,
+        "max_score": 25,
+        "percentage": 8.33,
+        "passed": false,
+        "level": "fail",
+        "issues": [
+          "缺少必需章节: 摘要",
+          "缺少必需章节: 舆情",
+          "缺少必需章节: 分析",
+          "缺少必需章节: 趋势",
+          "缺少必需章节: 建议",
+          "报告内容过短 (30 字符)"
+        ],
+        "details": {
+          "found_sections": [
+            "事件"
+          ],
+          "missing_sections": [
+            "摘要",
+            "舆情",
+            "分析",
+            "趋势",
+            "建议"
+          ],
+          "char_count": 30
+        }
+      },
+      "fields": {
+        "score": 0,
+        "max_score": 25,
+        "percentage": 0.0,
+        "passed": false,
+        "level": "fail",
+        "issues": [
+          "缺少必需字段: event_title",
+          "缺少必需字段: time_range",
+          "缺少必需字段: data_volume",
+          "缺少必需字段: sentiment",
+          "缺少必需字段: key_points",
+          "缺少必需字段: sources"
+        ],
+        "details": {
+          "found_fields": [],
+          "missing_fields": [
+            "event_title",
+            "time_range",
+            "data_volume",
+            "sentiment",
+            "key_points",
+            "sources"
+          ],
+          "field_coverage": {
+            "event_title": 0,
+            "time_range": 0,
+            "data_volume": 0,
+            "sentiment": 0,
+            "key_points": 0,
+            "sources": 0
+          }
+        }
+      },
+      "evidence": {
+        "score": 0.0,
+        "max_score": 25,
+        "percentage": 0.0,
+        "passed": false,
+        "level": "fail",
+        "issues": [
+          "数据引用不足，建议增加统计数据支撑",
+          "来源标注不足，建议明确信息来源",
+          "论点证据支持率较低 (0.0%)"
+        ],
+        "details": {
+          "evidence_stats": {
+            "data": 0,
+            "quote": 0,
+            "source": 0,
+            "example": 0
+          },
+          "paragraph_analysis": [
+            {
+              "length": 10,
+              "has_claim": true,
+              "has_evidence": false
+            }
+          ],
+          "claim_count": 1,
+          "evidence_supported": 0,
+          "support_rate": 0.0
+        }
+      },
+      "consistency": {
+        "score": 25,
+        "max_score": 25,
+        "percentage": 100.0,
+        "passed": true,
+        "level": "excellent",
+        "issues": [],
+        "details": {
+          "numbers_found": [],
+          "inconsistencies": [],
+          "checks": {
+            "time": {
+              "passed": true,
+              "issues": [],
+              "time_refs": []
+            },
+            "logic": {
+              "passed": true,
+              "issues": [],
+              "percentages": []
+            },
+            "percentage": {
+              "passed": true,
+              "issues": [],
+              "checked_patterns": 2
+            }
+          }
+        }
+      }
+    }
+  },
+  "custom_weights": {
+    "case_id": "test_case_003",
+    "score": 40.0,
+    "max_score": 100,
+    "percentage": 40.0,
+    "status": "failed",
+    "summary": "报告质量评级：不合格（40.0%）。最强维度：consistency（100.0%）；最弱维度：fields（0.0%）。未达标维度：structure, fields, evidence。",
+    "recommendations": [
+      "完善报告结构，确保包含摘要、事件、舆情、分析、趋势、建议等章节",
+      "补充关键数据字段，如事件标题、时间范围、数据量、情感倾向等",
+      "增加数据引用和来源标注，提升论据可信度"
+    ],
+    "breakdown": {
+      "structure": {
+        "score": 20.0,
+        "max_score": 40,
+        "percentage": 50.0,
+        "passed": false,
+        "level": "fail",
+        "issues": [
+          "报告内容过短 (80 字符)"
+        ],
+        "details": {
+          "found_sections": [
+            "摘要",
+            "事件",
+            "舆情",
+            "分析",
+            "趋势",
+            "建议"
+          ],
+          "missing_sections": [],
+          "char_count": 80
+        }
+      },
+      "fields": {
+        "score": 0,
+        "max_score": 20,
+        "percentage": 0.0,
+        "passed": false,
+        "level": "fail",
+        "issues": [
+          "缺少必需字段: event_title",
+          "缺少必需字段: time_range",
+          "缺少必需字段: data_volume",
+          "缺少必需字段: sentiment",
+          "缺少必需字段: key_points",
+          "缺少必需字段: sources"
+        ],
+        "details": {
+          "found_fields": [],
+          "missing_fields": [
+            "event_title",
+            "time_range",
+            "data_volume",
+            "sentiment",
+            "key_points",
+            "sources"
+          ],
+          "field_coverage": {
+            "event_title": 0,
+            "time_range": 0,
+            "data_volume": 0,
+            "sentiment": 0,
+            "key_points": 0,
+            "sources": 0
+          }
+        }
+      },
+      "evidence": {
+        "score": 0.0,
+        "max_score": 20,
+        "percentage": 0.0,
+        "passed": false,
+        "level": "fail",
+        "issues": [
+          "数据引用不足，建议增加统计数据支撑",
+          "来源标注不足，建议明确信息来源",
+          "论点证据支持率较低 (0.0%)"
+        ],
+        "details": {
+          "evidence_stats": {
+            "data": 0,
+            "quote": 0,
+            "source": 0,
+            "example": 0
+          },
+          "paragraph_analysis": [],
+          "claim_count": 0,
+          "evidence_supported": 0,
+          "support_rate": 0
+        }
+      },
+      "consistency": {
+        "score": 20,
+        "max_score": 20,
+        "percentage": 100.0,
+        "passed": true,
+        "level": "excellent",
+        "issues": [],
+        "details": {
+          "numbers_found": [],
+          "inconsistencies": [],
+          "checks": {
+            "time": {
+              "passed": true,
+              "issues": [],
+              "time_refs": []
+            },
+            "logic": {
+              "passed": true,
+              "issues": [],
+              "percentages": []
+            },
+            "percentage": {
+              "passed": true,
+              "issues": [],
+              "checked_patterns": 2
+            }
+          }
+        }
+      }
+    }
+  },
+  "runner_summary": {
+    "total_cases": 15,
+    "run_cases": 15,
+    "passed_cases": 0,
+    "failed_cases": 15,
+    "error_cases": 0,
+    "average_score": 38.12,
+    "average_percentage": 38.12,
+    "timestamp": "2026-05-06T22:33:00.649370",
+    "details": [
+      {
+        "case_id": "case_01_consumption",
+        "score": 37.5,
+        "max_score": 100,
+        "percentage": 37.5,
+        "status": "failed",
+        "summary": "报告质量评级：不合格（37.5%）。最强维度：structure（50.0%）；最弱维度：evidence（0.0%）。未达标维度：structure, fields, evidence, consistency。",
+        "recommendations": [
+          "完善报告结构，确保包含摘要、事件、舆情、分析、趋势、建议等章节",
+          "补充关键数据字段，如事件标题、时间范围、数据量、情感倾向等",
+          "增加数据引用和来源标注，提升论据可信度",
+          "检查数值逻辑一致性，确保时间、百分比等描述准确无误"
+        ],
+        "breakdown": {
+          "structure": {
+            "score": 12.500000000000002,
+            "max_score": 25,
+            "percentage": 50.0,
+            "passed": false,
+            "level": "fail",
+            "issues": [
+              "报告内容过短 (290 字符)"
+            ],
+            "details": {
+              "found_sections": [
+                "摘要",
+                "事件",
+                "舆情",
+                "分析",
+                "趋势",
+                "建议"
+              ],
+              "missing_sections": [],
+              "char_count": 290
+            }
+          },
+          "fields": {
+            "score": 12.500000000000002,
+            "max_score": 25,
+            "percentage": 50.0,
+            "passed": false,
+            "level": "fail",
+            "issues": [
+              "字段 'event_title' 覆盖不完整 (50%)",
+              "字段 'time_range' 覆盖不完整 (50%)",
+              "字段 'data_volume' 覆盖不完整 (50%)",
+              "缺少必需字段: key_points",
+              "字段 'sources' 覆盖不完整 (50%)"
+            ],
+            "details": {
+              "found_fields": [
+                "event_title",
+                "time_range",
+                "data_volume",
+                "sentiment",
+                "sources"
+              ],
+              "missing_fields": [
+                "key_points"
+              ],
+              "field_coverage": {
+                "event_title": 50,
+                "time_range": 50,
+                "data_volume": 50,
+                "sentiment": 100,
+                "key_points": 0,
+                "sources": 50
+              }
+            }
+          },
+          "evidence": {
+            "score": 0.0,
+            "max_score": 25,
+            "percentage": 0.0,
+            "passed": false,
+            "level": "fail",
+            "issues": [
+              "数据引用不足，建议增加统计数据支撑",
+              "来源标注不足，建议明确信息来源",
+              "论点证据支持率较低 (0.0%)"
+            ],
+            "details": {
+              "evidence_stats": {
+                "data": 0,
+                "quote": 0,
+                "source": 0,
+                "example": 0
+              },
+              "paragraph_analysis": [
+                {
+                  "length": 65,
+                  "has_claim": true,
+                  "has_evidence": false
+                }
+              ],
+              "claim_count": 1,
+              "evidence_supported": 0,
+              "support_rate": 0.0
+            }
+          },
+          "consistency": {
+            "score": 12.5,
+            "max_score": 25,
+            "percentage": 50.0,
+            "passed": false,
+            "level": "fail",
+            "issues": [
+              "数据量过少 (1.0)，可能影响分析代表性",
+              "文本中未找到数据量 (1000) 的对应描述"
+            ],
+            "details": {
+              "numbers_found": [
+                {
+                  "value": "1",
+                  "type": "number",
+                  "context": "注。\n\n舆情分析：\n1. 主流媒体观点：客",
+                  "position": 164
+                },
+                {
+                  "value": "2",
+                  "type": "number",
+                  "context": "报道，关注事件进展\n2. 社交媒体情绪：呈",
+                  "position": 186
+                },
+                {
+                  "value": "3",
+                  "type": "number",
+                  "context": "绪：呈现多元化态势\n3. 专家意见：存在不",
+                  "position": 204
+                },
+                {
+                  "value": "1",
+                  "type": "number",
+                  "context": "续发展。\n\n建议：\n1. 加强信息监测\n2",
+                  "position": 258
+                },
+                {
+                  "value": "2",
+                  "type": "number",
+                  "context": "1. 加强信息监测\n2. 及时回应公众关切",
+                  "position": 268
+                },
+                {
+                  "value": "3",
+                  "type": "number",
+                  "context": " 及时回应公众关切\n3. 做好风险预案\n",
+                  "position": 280
+                }
+              ],
+              "inconsistencies": [],
+              "checks": {
+                "time": {
+                  "passed": true,
+                  "issues": [],
+                  "time_refs": []
+                },
+                "logic": {
+                  "passed": false,
+                  "issues": [
+                    "数据量过少 (1.0)，可能影响分析代表性"
+                  ],
+                  "percentages": []
+                },
+                "data": {
+                  "passed": false,
+                  "issues": [
+                    "文本中未找到数据量 (1000) 的对应描述"
+                  ]
+                },
+                "percentage": {
+                  "passed": true,
+                  "issues": [],
+                  "checked_patterns": 2
+                }
+              }
+            }
+          }
+        },
+        "timestamp": "2026-05-06T22:33:00.637300",
+        "report_preview": "[Mock Report] 舆情分析报告：App自动续费乱象及《消费者权益保护法实施条例》规范舆情分析\n\n摘要：\n本报告针对「App自动续费乱象及《消费者权益保护法实施条例》规范舆情分析」进行舆情分析，梳理了事件发展脉络和舆论关注点。\n\n事件回顾：\n事件起因于近期网络热议，涉及多个利益相关方，引发广泛社会关注。\n\n舆情分析：\n1. 主流媒体观点：客观报道，关注事件进展\n2. 社交媒体情绪：呈现多元..."
+      },
+      {
+        "case_id": "case_01_education",
+        "score": 37.5,
+        "max_score": 100,
+        "percentage": 37.5,
+        "status": "failed",
+        "summary": "报告质量评级：不合格（37.5%）。最强维度：structure（50.0%）；最弱维度：evidence（0.0%）。未达标维度：structure, fields, evidence, consistency。",
+        "recommendations": [
+          "完善报告结构，确保包含摘要、事件、舆情、分析、趋势、建议等章节",
+          "补充关键数据字段，如事件标题、时间范围、数据量、情感倾向等",
+          "增加数据引用和来源标注，提升论据可信度",
+          "检查数值逻辑一致性，确保时间、百分比等描述准确无误"
+        ],
+        "breakdown": {
+          "structure": {
+            "score": 12.500000000000002,
+            "max_score": 25,
+            "percentage": 50.0,
+            "passed": false,
+            "level": "fail",
+            "issues": [
+              "报告内容过短 (278 字符)"
+            ],
+            "details": {
+              "found_sections": [
+                "摘要",
+                "事件",
+                "舆情",
+                "分析",
+                "趋势",
+                "建议"
+              ],
+              "missing_sections": [],
+              "char_count": 278
+            }
+          },
+          "fields": {
+            "score": 12.500000000000002,
+            "max_score": 25,
+            "percentage": 50.0,
+            "passed": false,
+            "level": "fail",
+            "issues": [
+              "字段 'event_title' 覆盖不完整 (50%)",
+              "字段 'time_range' 覆盖不完整 (50%)",
+              "字段 'data_volume' 覆盖不完整 (50%)",
+              "缺少必需字段: key_points",
+              "字段 'sources' 覆盖不完整 (50%)"
+            ],
+            "details": {
+              "found_fields": [
+                "event_title",
+                "time_range",
+                "data_volume",
+                "sentiment",
+                "sources"
+              ],
+              "missing_fields": [
+                "key_points"
+              ],
+              "field_coverage": {
+                "event_title": 50,
+                "time_range": 50,
+                "data_volume": 50,
+                "sentiment": 100,
+                "key_points": 0,
+                "sources": 50
+              }
+            }
+          },
+          "evidence": {
+            "score": 0.0,
+            "max_score": 25,
+            "percentage": 0.0,
+            "passed": false,
+            "level": "fail",
+            "issues": [
+              "数据引用不足，建议增加统计数据支撑",
+              "来源标注不足，建议明确信息来源",
+              "论点证据支持率较低 (0.0%)"
+            ],
+            "details": {
+              "evidence_stats": {
+                "data": 0,
+                "quote": 0,
+                "source": 0,
+                "example": 0
+              },
+              "paragraph_analysis": [
+                {
+                  "length": 65,
+                  "has_claim": true,
+                  "has_evidence": false
+                }
+              ],
+              "claim_count": 1,
+              "evidence_supported": 0,
+              "support_rate": 0.0
+            }
+          },
+          "consistency": {
+            "score": 12.5,
+            "max_score": 25,
+            "percentage": 50.0,
+            "passed": false,
+            "level": "fail",
+            "issues": [
+              "数据量过少 (1.0)，可能影响分析代表性",
+              "文本中未找到数据量 (1000) 的对应描述"
+            ],
+            "details": {
+              "numbers_found": [
+                {
+                  "value": "1",
+                  "type": "number",
+                  "context": "注。\n\n舆情分析：\n1. 主流媒体观点：客",
+                  "position": 152
+                },
+                {
+                  "value": "2",
+                  "type": "number",
+                  "context": "报道，关注事件进展\n2. 社交媒体情绪：呈",
+                  "position": 174
+                },
+                {
+                  "value": "3",
+                  "type": "number",
+                  "context": "绪：呈现多元化态势\n3. 专家意见：存在不",
+                  "position": 192
+                },
+                {
+                  "value": "1",
+                  "type": "number",
+                  "context": "续发展。\n\n建议：\n1. 加强信息监测\n2",
+                  "position": 246
+                },
+                {
+                  "value": "2",
+                  "type": "number",
+                  "context": "1. 加强信息监测\n2. 及时回应公众关切",
+                  "position": 256
+                },
+                {
+                  "value": "3",
+                  "type": "number",
+                  "context": " 及时回应公众关切\n3. 做好风险预案\n",
+                  "position": 268
+                }
+              ],
+              "inconsistencies": [],
+              "checks": {
+                "time": {
+                  "passed": true,
+                  "issues": [],
+                  "time_refs": []
+                },
+                "logic": {
+                  "passed": false,
+                  "issues": [
+                    "数据量过少 (1.0)，可能影响分析代表性"
+                  ],
+                  "percentages": []
+                },
+                "data": {
+                  "passed": false,
+                  "issues": [
+                    "文本中未找到数据量 (1000) 的对应描述"
+                  ]
+                },
+                "percentage": {
+                  "passed": true,
+                  "issues": [],
+                  "checked_patterns": 2
+                }
+              }
+            }
+          }
+        },
+        "timestamp": "2026-05-06T22:33:00.638291",
+        "report_preview": "[Mock Report] 舆情分析报告：涉教师不实负面网络舆情高企及教育生态恶化现象分析\n\n摘要：\n本报告针对「涉教师不实负面网络舆情高企及教育生态恶化现象分析」进行舆情分析，梳理了事件发展脉络和舆论关注点。\n\n事件回顾：\n事件起因于近期网络热议，涉及多个利益相关方，引发广泛社会关注。\n\n舆情分析：\n1. 主流媒体观点：客观报道，关注事件进展\n2. 社交媒体情绪：呈现多元化态势\n3. 专家意见：..."
+      },
+      {
+        "case_id": "case_01_government",
+        "score": 37.5,
+        "max_score": 100,
+        "percentage": 37.5,
+        "status": "failed",
+        "summary": "报告质量评级：不合格（37.5%）。最强维度：structure（50.0%）；最弱维度：evidence（0.0%）。未达标维度：structure, fields, evidence, consistency。",
+        "recommendations": [
+          "完善报告结构，确保包含摘要、事件、舆情、分析、趋势、建议等章节",
+          "补充关键数据字段，如事件标题、时间范围、数据量、情感倾向等",
+          "增加数据引用和来源标注，提升论据可信度",
+          "检查数值逻辑一致性，确保时间、百分比等描述准确无误"
+        ],
+        "breakdown": {
+          "structure": {
+            "score": 12.500000000000002,
+            "max_score": 25,
+            "percentage": 50.0,
+            "passed": false,
+            "level": "fail",
+            "issues": [
+              "报告内容过短 (300 字符)"
+            ],
+            "details": {
+              "found_sections": [
+                "摘要",
+                "事件",
+                "舆情",
+                "分析",
+                "趋势",
+                "建议"
+              ],
+              "missing_sections": [],
+              "char_count": 300
+            }
+          },
+          "fields": {
+            "score": 12.500000000000002,
+            "max_score": 25,
+            "percentage": 50.0,
+            "passed": false,
+            "level": "fail",
+            "issues": [
+              "字段 'event_title' 覆盖不完整 (50%)",
+              "字段 'time_range' 覆盖不完整 (50%)",
+              "字段 'data_volume' 覆盖不完整 (50%)",
+              "缺少必需字段: key_points",
+              "字段 'sources' 覆盖不完整 (50%)"
+            ],
+            "details": {
+              "found_fields": [
+                "event_title",
+                "time_range",
+                "data_volume",
+                "sentiment",
+                "sources"
+              ],
+              "missing_fields": [
+                "key_points"
+              ],
+              "field_coverage": {
+                "event_title": 50,
+                "time_range": 50,
+                "data_volume": 50,
+                "sentiment": 100,
+                "key_points": 0,
+                "sources": 50
+              }
+            }
+          },
+          "evidence": {
+            "score": 0.0,
+            "max_score": 25,
+            "percentage": 0.0,
+            "passed": false,
+            "level": "fail",
+            "issues": [
+              "数据引用不足，建议增加统计数据支撑",
+              "来源标注不足，建议明确信息来源",
+              "论点证据支持率较低 (0.0%)"
+            ],
+            "details": {
+              "evidence_stats": {
+                "data": 0,
+                "quote": 0,
+                "source": 0,
+                "example": 0
+              },
+              "paragraph_analysis": [
+                {
+                  "length": 56,
+                  "has_claim": true,
+                  "has_evidence": false
+                },
+                {
+                  "length": 69,
+                  "has_claim": true,
+                  "has_evidence": false
+                },
+                {
+                  "length": 65,
+                  "has_claim": true,
+                  "has_evidence": false
+                }
+              ],
+              "claim_count": 3,
+              "evidence_supported": 0,
+              "support_rate": 0.0
+            }
+          },
+          "consistency": {
+            "score": 12.5,
+            "max_score": 25,
+            "percentage": 50.0,
+            "passed": false,
+            "level": "fail",
+            "issues": [
+              "数据量过少 (1.0)，可能影响分析代表性",
+              "文本中未找到数据量 (1000) 的对应描述"
+            ],
+            "details": {
+              "numbers_found": [
+                {
+                  "value": "1",
+                  "type": "number",
+                  "context": "注。\n\n舆情分析：\n1. 主流媒体观点：客",
+                  "position": 174
+                },
+                {
+                  "value": "2",
+                  "type": "number",
+                  "context": "报道，关注事件进展\n2. 社交媒体情绪：呈",
+                  "position": 196
+                },
+                {
+                  "value": "3",
+                  "type": "number",
+                  "context": "绪：呈现多元化态势\n3. 专家意见：存在不",
+                  "position": 214
+                },
+                {
+                  "value": "1",
+                  "type": "number",
+                  "context": "续发展。\n\n建议：\n1. 加强信息监测\n2",
+                  "position": 268
+                },
+                {
+                  "value": "2",
+                  "type": "number",
+                  "context": "1. 加强信息监测\n2. 及时回应公众关切",
+                  "position": 278
+                },
+                {
+                  "value": "3",
+                  "type": "number",
+                  "context": " 及时回应公众关切\n3. 做好风险预案\n",
+                  "position": 290
+                }
+              ],
+              "inconsistencies": [],
+              "checks": {
+                "time": {
+                  "passed": true,
+                  "issues": [],
+                  "time_refs": []
+                },
+                "logic": {
+                  "passed": false,
+                  "issues": [
+                    "数据量过少 (1.0)，可能影响分析代表性"
+                  ],
+                  "percentages": []
+                },
+                "data": {
+                  "passed": false,
+                  "issues": [
+                    "文本中未找到数据量 (1000) 的对应描述"
+                  ]
+                },
+                "percentage": {
+                  "passed": true,
+                  "issues": [],
+                  "checked_patterns": 2
+                }
+              }
+            }
+          }
+        },
+        "timestamp": "2026-05-06T22:33:00.639300",
+        "report_preview": "[Mock Report] 舆情分析报告：吉林农安\"桃花源著\"项目回迁房搁置及县政府不作为慢作为引发重大舆情分析\n\n摘要：\n本报告针对「吉林农安\"桃花源著\"项目回迁房搁置及县政府不作为慢作为引发重大舆情分析」进行舆情分析，梳理了事件发展脉络和舆论关注点。\n\n事件回顾：\n事件起因于近期网络热议，涉及多个利益相关方，引发广泛社会关注。\n\n舆情分析：\n1. 主流媒体观点：客观报道，关注事件进展\n2. 社..."
+      },
+      {
+        "case_id": "case_01_health",
+        "score": 37.5,
+        "max_score": 100,
+        "percentage": 37.5,
+        "status": "failed",
+        "summary": "报告质量评级：不合格（37.5%）。最强维度：structure（50.0%）；最弱维度：evidence（0.0%）。未达标维度：structure, fields, evidence, consistency。",
+        "recommendations": [
+          "完善报告结构，确保包含摘要、事件、舆情、分析、趋势、建议等章节",
+          "补充关键数据字段，如事件标题、时间范围、数据量、情感倾向等",
+          "增加数据引用和来源标注，提升论据可信度",
+          "检查数值逻辑一致性，确保时间、百分比等描述准确无误"
+        ],
+        "breakdown": {
+          "structure": {
+            "score": 12.500000000000002,
+            "max_score": 25,
+            "percentage": 50.0,
+            "passed": false,
+            "level": "fail",
+            "issues": [
+              "报告内容过短 (280 字符)"
+            ],
+            "details": {
+              "found_sections": [
+                "摘要",
+                "事件",
+                "舆情",
+                "分析",
+                "趋势",
+                "建议"
+              ],
+              "missing_sections": [],
+              "char_count": 280
+            }
+          },
+          "fields": {
+            "score": 12.500000000000002,
+            "max_score": 25,
+            "percentage": 50.0,
+            "passed": false,
+            "level": "fail",
+            "issues": [
+              "字段 'event_title' 覆盖不完整 (50%)",
+              "字段 'time_range' 覆盖不完整 (50%)",
+              "字段 'data_volume' 覆盖不完整 (50%)",
+              "缺少必需字段: key_points",
+              "字段 'sources' 覆盖不完整 (50%)"
+            ],
+            "details": {
+              "found_fields": [
+                "event_title",
+                "time_range",
+                "data_volume",
+                "sentiment",
+                "sources"
+              ],
+              "missing_fields": [
+                "key_points"
+              ],
+              "field_coverage": {
+                "event_title": 50,
+                "time_range": 50,
+                "data_volume": 50,
+                "sentiment": 100,
+                "key_points": 0,
+                "sources": 50
+              }
+            }
+          },
+          "evidence": {
+            "score": 0.0,
+            "max_score": 25,
+            "percentage": 0.0,
+            "passed": false,
+            "level": "fail",
+            "issues": [
+              "数据引用不足，建议增加统计数据支撑",
+              "来源标注不足，建议明确信息来源",
+              "论点证据支持率较低 (0.0%)"
+            ],
+            "details": {
+              "evidence_stats": {
+                "data": 0,
+                "quote": 0,
+                "source": 0,
+                "example": 2
+              },
+              "paragraph_analysis": [
+                {
+                  "length": 65,
+                  "has_claim": true,
+                  "has_evidence": false
+                }
+              ],
+              "claim_count": 1,
+              "evidence_supported": 0,
+              "support_rate": 0.0
+            }
+          },
+          "consistency": {
+            "score": 12.5,
+            "max_score": 25,
+            "percentage": 50.0,
+            "passed": false,
+            "level": "fail",
+            "issues": [
+              "数据量过少 (1.0)，可能影响分析代表性",
+              "文本中未找到数据量 (1000) 的对应描述"
+            ],
+            "details": {
+              "numbers_found": [
+                {
+                  "value": "1",
+                  "type": "number",
+                  "context": "注。\n\n舆情分析：\n1. 主流媒体观点：客",
+                  "position": 154
+                },
+                {
+                  "value": "2",
+                  "type": "number",
+                  "context": "报道，关注事件进展\n2. 社交媒体情绪：呈",
+                  "position": 176
+                },
+                {
+                  "value": "3",
+                  "type": "number",
+                  "context": "绪：呈现多元化态势\n3. 专家意见：存在不",
+                  "position": 194
+                },
+                {
+                  "value": "1",
+                  "type": "number",
+                  "context": "续发展。\n\n建议：\n1. 加强信息监测\n2",
+                  "position": 248
+                },
+                {
+                  "value": "2",
+                  "type": "number",
+                  "context": "1. 加强信息监测\n2. 及时回应公众关切",
+                  "position": 258
+                },
+                {
+                  "value": "3",
+                  "type": "number",
+                  "context": " 及时回应公众关切\n3. 做好风险预案\n",
+                  "position": 270
+                }
+              ],
+              "inconsistencies": [],
+              "checks": {
+                "time": {
+                  "passed": true,
+                  "issues": [],
+                  "time_refs": []
+                },
+                "logic": {
+                  "passed": false,
+                  "issues": [
+                    "数据量过少 (1.0)，可能影响分析代表性"
+                  ],
+                  "percentages": []
+                },
+                "data": {
+                  "passed": false,
+                  "issues": [
+                    "文本中未找到数据量 (1000) 的对应描述"
+                  ]
+                },
+                "percentage": {
+                  "passed": true,
+                  "issues": [],
+                  "checked_patterns": 2
+                }
+              }
+            }
+          }
+        },
+        "timestamp": "2026-05-06T22:33:00.640301",
+        "report_preview": "[Mock Report] 舆情分析报告：沈阳师范大学诺如病毒感染引发学生胃肠炎事件舆情分析\n\n摘要：\n本报告针对「沈阳师范大学诺如病毒感染引发学生胃肠炎事件舆情分析」进行舆情分析，梳理了事件发展脉络和舆论关注点。\n\n事件回顾：\n事件起因于近期网络热议，涉及多个利益相关方，引发广泛社会关注。\n\n舆情分析：\n1. 主流媒体观点：客观报道，关注事件进展\n2. 社交媒体情绪：呈现多元化态势\n3. 专家意..."
+      },
+      {
+        "case_id": "case_01_panda",
+        "score": 37.5,
+        "max_score": 100,
+        "percentage": 37.5,
+        "status": "failed",
+        "summary": "报告质量评级：不合格（37.5%）。最强维度：structure（50.0%）；最弱维度：evidence（0.0%）。未达标维度：structure, fields, evidence, consistency。",
+        "recommendations": [
+          "完善报告结构，确保包含摘要、事件、舆情、分析、趋势、建议等章节",
+          "补充关键数据字段，如事件标题、时间范围、数据量、情感倾向等",
+          "增加数据引用和来源标注，提升论据可信度",
+          "检查数值逻辑一致性，确保时间、百分比等描述准确无误"
+        ],
+        "breakdown": {
+          "structure": {
+            "score": 12.500000000000002,
+            "max_score": 25,
+            "percentage": 50.0,
+            "passed": false,
+            "level": "fail",
+            "issues": [
+              "报告内容过短 (278 字符)"
+            ],
+            "details": {
+              "found_sections": [
+                "摘要",
+                "事件",
+                "舆情",
+                "分析",
+                "趋势",
+                "建议"
+              ],
+              "missing_sections": [],
+              "char_count": 278
+            }
+          },
+          "fields": {
+            "score": 12.500000000000002,
+            "max_score": 25,
+            "percentage": 50.0,
+            "passed": false,
+            "level": "fail",
+            "issues": [
+              "字段 'event_title' 覆盖不完整 (50%)",
+              "字段 'time_range' 覆盖不完整 (50%)",
+              "字段 'data_volume' 覆盖不完整 (50%)",
+              "缺少必需字段: key_points",
+              "字段 'sources' 覆盖不完整 (50%)"
+            ],
+            "details": {
+              "found_fields": [
+                "event_title",
+                "time_range",
+                "data_volume",
+                "sentiment",
+                "sources"
+              ],
+              "missing_fields": [
+                "key_points"
+              ],
+              "field_coverage": {
+                "event_title": 50,
+                "time_range": 50,
+                "data_volume": 50,
+                "sentiment": 100,
+                "key_points": 0,
+                "sources": 50
+              }
+            }
+          },
+          "evidence": {
+            "score": 0.0,
+            "max_score": 25,
+            "percentage": 0.0,
+            "passed": false,
+            "level": "fail",
+            "issues": [
+              "数据引用不足，建议增加统计数据支撑",
+              "来源标注不足，建议明确信息来源",
+              "论点证据支持率较低 (0.0%)"
+            ],
+            "details": {
+              "evidence_stats": {
+                "data": 0,
+                "quote": 0,
+                "source": 0,
+                "example": 0
+              },
+              "paragraph_analysis": [
+                {
+                  "length": 65,
+                  "has_claim": true,
+                  "has_evidence": false
+                }
+              ],
+              "claim_count": 1,
+              "evidence_supported": 0,
+              "support_rate": 0.0
+            }
+          },
+          "consistency": {
+            "score": 12.5,
+            "max_score": 25,
+            "percentage": 50.0,
+            "passed": false,
+            "level": "fail",
+            "issues": [
+              "数据量过少 (1.0)，可能影响分析代表性",
+              "文本中未找到数据量 (1000) 的对应描述"
+            ],
+            "details": {
+              "numbers_found": [
+                {
+                  "value": "1",
+                  "type": "number",
+                  "context": "注。\n\n舆情分析：\n1. 主流媒体观点：客",
+                  "position": 152
+                },
+                {
+                  "value": "2",
+                  "type": "number",
+                  "context": "报道，关注事件进展\n2. 社交媒体情绪：呈",
+                  "position": 174
+                },
+                {
+                  "value": "3",
+                  "type": "number",
+                  "context": "绪：呈现多元化态势\n3. 专家意见：存在不",
+                  "position": 192
+                },
+                {
+                  "value": "1",
+                  "type": "number",
+                  "context": "续发展。\n\n建议：\n1. 加强信息监测\n2",
+                  "position": 246
+                },
+                {
+                  "value": "2",
+                  "type": "number",
+                  "context": "1. 加强信息监测\n2. 及时回应公众关切",
+                  "position": 256
+                },
+                {
+                  "value": "3",
+                  "type": "number",
+                  "context": " 及时回应公众关切\n3. 做好风险预案\n",
+                  "position": 268
+                }
+              ],
+              "inconsistencies": [],
+              "checks": {
+                "time": {
+                  "passed": true,
+                  "issues": [],
+                  "time_refs": []
+                },
+                "logic": {
+                  "passed": false,
+                  "issues": [
+                    "数据量过少 (1.0)，可能影响分析代表性"
+                  ],
+                  "percentages": []
+                },
+                "data": {
+                  "passed": false,
+                  "issues": [
+                    "文本中未找到数据量 (1000) 的对应描述"
+                  ]
+                },
+                "percentage": {
+                  "passed": true,
+                  "issues": [],
+                  "checked_patterns": 2
+                }
+              }
+            }
+          }
+        },
+        "timestamp": "2026-05-06T22:33:00.640805",
+        "report_preview": "[Mock Report] 舆情分析报告：大熊猫极端粉丝网络暴力与造谣诽谤专家事件舆情分析\n\n摘要：\n本报告针对「大熊猫极端粉丝网络暴力与造谣诽谤专家事件舆情分析」进行舆情分析，梳理了事件发展脉络和舆论关注点。\n\n事件回顾：\n事件起因于近期网络热议，涉及多个利益相关方，引发广泛社会关注。\n\n舆情分析：\n1. 主流媒体观点：客观报道，关注事件进展\n2. 社交媒体情绪：呈现多元化态势\n3. 专家意见：..."
+      },
+      {
+        "case_id": "case_01_tourism",
+        "score": 37.5,
+        "max_score": 100,
+        "percentage": 37.5,
+        "status": "failed",
+        "summary": "报告质量评级：不合格（37.5%）。最强维度：structure（50.0%）；最弱维度：evidence（0.0%）。未达标维度：structure, fields, evidence, consistency。",
+        "recommendations": [
+          "完善报告结构，确保包含摘要、事件、舆情、分析、趋势、建议等章节",
+          "补充关键数据字段，如事件标题、时间范围、数据量、情感倾向等",
+          "增加数据引用和来源标注，提升论据可信度",
+          "检查数值逻辑一致性，确保时间、百分比等描述准确无误"
+        ],
+        "breakdown": {
+          "structure": {
+            "score": 12.500000000000002,
+            "max_score": 25,
+            "percentage": 50.0,
+            "passed": false,
+            "level": "fail",
+            "issues": [
+              "报告内容过短 (280 字符)"
+            ],
+            "details": {
+              "found_sections": [
+                "摘要",
+                "事件",
+                "舆情",
+                "分析",
+                "趋势",
+                "建议"
+              ],
+              "missing_sections": [],
+              "char_count": 280
+            }
+          },
+          "fields": {
+            "score": 12.500000000000002,
+            "max_score": 25,
+            "percentage": 50.0,
+            "passed": false,
+            "level": "fail",
+            "issues": [
+              "字段 'event_title' 覆盖不完整 (50%)",
+              "字段 'time_range' 覆盖不完整 (50%)",
+              "字段 'data_volume' 覆盖不完整 (50%)",
+              "缺少必需字段: key_points",
+              "字段 'sources' 覆盖不完整 (50%)"
+            ],
+            "details": {
+              "found_fields": [
+                "event_title",
+                "time_range",
+                "data_volume",
+                "sentiment",
+                "sources"
+              ],
+              "missing_fields": [
+                "key_points"
+              ],
+              "field_coverage": {
+                "event_title": 50,
+                "time_range": 50,
+                "data_volume": 50,
+                "sentiment": 100,
+                "key_points": 0,
+                "sources": 50
+              }
+            }
+          },
+          "evidence": {
+            "score": 0.0,
+            "max_score": 25,
+            "percentage": 0.0,
+            "passed": false,
+            "level": "fail",
+            "issues": [
+              "数据引用不足，建议增加统计数据支撑",
+              "来源标注不足，建议明确信息来源",
+              "论点证据支持率较低 (0.0%)"
+            ],
+            "details": {
+              "evidence_stats": {
+                "data": 0,
+                "quote": 0,
+                "source": 0,
+                "example": 0
+              },
+              "paragraph_analysis": [
+                {
+                  "length": 65,
+                  "has_claim": true,
+                  "has_evidence": false
+                }
+              ],
+              "claim_count": 1,
+              "evidence_supported": 0,
+              "support_rate": 0.0
+            }
+          },
+          "consistency": {
+            "score": 12.5,
+            "max_score": 25,
+            "percentage": 50.0,
+            "passed": false,
+            "level": "fail",
+            "issues": [
+              "数据量过少 (1.0)，可能影响分析代表性",
+              "文本中未找到数据量 (1000) 的对应描述"
+            ],
+            "details": {
+              "numbers_found": [
+                {
+                  "value": "1",
+                  "type": "number",
+                  "context": "注。\n\n舆情分析：\n1. 主流媒体观点：客",
+                  "position": 154
+                },
+                {
+                  "value": "2",
+                  "type": "number",
+                  "context": "报道，关注事件进展\n2. 社交媒体情绪：呈",
+                  "position": 176
+                },
+                {
+                  "value": "3",
+                  "type": "number",
+                  "context": "绪：呈现多元化态势\n3. 专家意见：存在不",
+                  "position": 194
+                },
+                {
+                  "value": "1",
+                  "type": "number",
+                  "context": "续发展。\n\n建议：\n1. 加强信息监测\n2",
+                  "position": 248
+                },
+                {
+                  "value": "2",
+                  "type": "number",
+                  "context": "1. 加强信息监测\n2. 及时回应公众关切",
+                  "position": 258
+                },
+                {
+                  "value": "3",
+                  "type": "number",
+                  "context": " 及时回应公众关切\n3. 做好风险预案\n",
+                  "position": 270
+                }
+              ],
+              "inconsistencies": [],
+              "checks": {
+                "time": {
+                  "passed": true,
+                  "issues": [],
+                  "time_refs": []
+                },
+                "logic": {
+                  "passed": false,
+                  "issues": [
+                    "数据量过少 (1.0)，可能影响分析代表性"
+                  ],
+                  "percentages": []
+                },
+                "data": {
+                  "passed": false,
+                  "issues": [
+                    "文本中未找到数据量 (1000) 的对应描述"
+                  ]
+                },
+                "percentage": {
+                  "passed": true,
+                  "issues": [],
+                  "checked_patterns": 2
+                }
+              }
+            }
+          }
+        },
+        "timestamp": "2026-05-06T22:33:00.641837",
+        "report_preview": "[Mock Report] 舆情分析报告：四川巴塘游客吐槽公厕脏乱反被围堵删视频事件舆情分析\n\n摘要：\n本报告针对「四川巴塘游客吐槽公厕脏乱反被围堵删视频事件舆情分析」进行舆情分析，梳理了事件发展脉络和舆论关注点。\n\n事件回顾：\n事件起因于近期网络热议，涉及多个利益相关方，引发广泛社会关注。\n\n舆情分析：\n1. 主流媒体观点：客观报道，关注事件进展\n2. 社交媒体情绪：呈现多元化态势\n3. 专家意..."
+      },
+      {
+        "case_id": "case_01_traffic",
+        "score": 37.5,
+        "max_score": 100,
+        "percentage": 37.5,
+        "status": "failed",
+        "summary": "报告质量评级：不合格（37.5%）。最强维度：structure（50.0%）；最弱维度：evidence（0.0%）。未达标维度：structure, fields, evidence, consistency。",
+        "recommendations": [
+          "完善报告结构，确保包含摘要、事件、舆情、分析、趋势、建议等章节",
+          "补充关键数据字段，如事件标题、时间范围、数据量、情感倾向等",
+          "增加数据引用和来源标注，提升论据可信度",
+          "检查数值逻辑一致性，确保时间、百分比等描述准确无误"
+        ],
+        "breakdown": {
+          "structure": {
+            "score": 12.500000000000002,
+            "max_score": 25,
+            "percentage": 50.0,
+            "passed": false,
+            "level": "fail",
+            "issues": [
+              "报告内容过短 (292 字符)"
+            ],
+            "details": {
+              "found_sections": [
+                "摘要",
+                "事件",
+                "舆情",
+                "分析",
+                "趋势",
+                "建议"
+              ],
+              "missing_sections": [],
+              "char_count": 292
+            }
+          },
+          "fields": {
+            "score": 12.500000000000002,
+            "max_score": 25,
+            "percentage": 50.0,
+            "passed": false,
+            "level": "fail",
+            "issues": [
+              "字段 'event_title' 覆盖不完整 (50%)",
+              "字段 'time_range' 覆盖不完整 (50%)",
+              "字段 'data_volume' 覆盖不完整 (50%)",
+              "缺少必需字段: key_points",
+              "字段 'sources' 覆盖不完整 (50%)"
+            ],
+            "details": {
+              "found_fields": [
+                "event_title",
+                "time_range",
+                "data_volume",
+                "sentiment",
+                "sources"
+              ],
+              "missing_fields": [
+                "key_points"
+              ],
+              "field_coverage": {
+                "event_title": 50,
+                "time_range": 50,
+                "data_volume": 50,
+                "sentiment": 100,
+                "key_points": 0,
+                "sources": 50
+              }
+            }
+          },
+          "evidence": {
+            "score": 0.0,
+            "max_score": 25,
+            "percentage": 0.0,
+            "passed": false,
+            "level": "fail",
+            "issues": [
+              "数据引用不足，建议增加统计数据支撑",
+              "来源标注不足，建议明确信息来源",
+              "论点证据支持率较低 (0.0%)"
+            ],
+            "details": {
+              "evidence_stats": {
+                "data": 0,
+                "quote": 0,
+                "source": 0,
+                "example": 0
+              },
+              "paragraph_analysis": [
+                {
+                  "length": 65,
+                  "has_claim": true,
+                  "has_evidence": false
+                }
+              ],
+              "claim_count": 1,
+              "evidence_supported": 0,
+              "support_rate": 0.0
+            }
+          },
+          "consistency": {
+            "score": 12.5,
+            "max_score": 25,
+            "percentage": 50.0,
+            "passed": false,
+            "level": "fail",
+            "issues": [
+              "数据量过少 (3.0)，可能影响分析代表性",
+              "文本中未找到数据量 (1000) 的对应描述"
+            ],
+            "details": {
+              "numbers_found": [
+                {
+                  "value": "3",
+                  "type": "number",
+                  "context": "情分析报告：南京地铁3号线建设迁移梧桐树引",
+                  "position": 25
+                },
+                {
+                  "value": "3",
+                  "type": "number",
+                  "context": "本报告针对「南京地铁3号线建设迁移梧桐树引",
+                  "position": 68
+                },
+                {
+                  "value": "1",
+                  "type": "number",
+                  "context": "注。\n\n舆情分析：\n1. 主流媒体观点：客",
+                  "position": 166
+                },
+                {
+                  "value": "2",
+                  "type": "number",
+                  "context": "报道，关注事件进展\n2. 社交媒体情绪：呈",
+                  "position": 188
+                },
+                {
+                  "value": "3",
+                  "type": "number",
+                  "context": "绪：呈现多元化态势\n3. 专家意见：存在不",
+                  "position": 206
+                },
+                {
+                  "value": "1",
+                  "type": "number",
+                  "context": "续发展。\n\n建议：\n1. 加强信息监测\n2",
+                  "position": 260
+                },
+                {
+                  "value": "2",
+                  "type": "number",
+                  "context": "1. 加强信息监测\n2. 及时回应公众关切",
+                  "position": 270
+                },
+                {
+                  "value": "3",
+                  "type": "number",
+                  "context": " 及时回应公众关切\n3. 做好风险预案\n",
+                  "position": 282
+                }
+              ],
+              "inconsistencies": [],
+              "checks": {
+                "time": {
+                  "passed": true,
+                  "issues": [],
+                  "time_refs": []
+                },
+                "logic": {
+                  "passed": false,
+                  "issues": [
+                    "数据量过少 (3.0)，可能影响分析代表性"
+                  ],
+                  "percentages": []
+                },
+                "data": {
+                  "passed": false,
+                  "issues": [
+                    "文本中未找到数据量 (1000) 的对应描述"
+                  ]
+                },
+                "percentage": {
+                  "passed": true,
+                  "issues": [],
+                  "checked_patterns": 2
+                }
+              }
+            }
+          }
+        },
+        "timestamp": "2026-05-06T22:33:00.642355",
+        "report_preview": "[Mock Report] 舆情分析报告：南京地铁3号线建设迁移梧桐树引发\"拯救南京梧桐树\"运动舆情分析\n\n摘要：\n本报告针对「南京地铁3号线建设迁移梧桐树引发\"拯救南京梧桐树\"运动舆情分析」进行舆情分析，梳理了事件发展脉络和舆论关注点。\n\n事件回顾：\n事件起因于近期网络热议，涉及多个利益相关方，引发广泛社会关注。\n\n舆情分析：\n1. 主流媒体观点：客观报道，关注事件进展\n2. 社交媒体情绪：呈现..."
+      },
+      {
+        "case_id": "case_02_consumption",
+        "score": 37.5,
+        "max_score": 100,
+        "percentage": 37.5,
+        "status": "failed",
+        "summary": "报告质量评级：不合格（37.5%）。最强维度：structure（50.0%）；最弱维度：evidence（0.0%）。未达标维度：structure, fields, evidence, consistency。",
+        "recommendations": [
+          "完善报告结构，确保包含摘要、事件、舆情、分析、趋势、建议等章节",
+          "补充关键数据字段，如事件标题、时间范围、数据量、情感倾向等",
+          "增加数据引用和来源标注，提升论据可信度",
+          "检查数值逻辑一致性，确保时间、百分比等描述准确无误"
+        ],
+        "breakdown": {
+          "structure": {
+            "score": 12.500000000000002,
+            "max_score": 25,
+            "percentage": 50.0,
+            "passed": false,
+            "level": "fail",
+            "issues": [
+              "报告内容过短 (288 字符)"
+            ],
+            "details": {
+              "found_sections": [
+                "摘要",
+                "事件",
+                "舆情",
+                "分析",
+                "趋势",
+                "建议"
+              ],
+              "missing_sections": [],
+              "char_count": 288
+            }
+          },
+          "fields": {
+            "score": 12.500000000000002,
+            "max_score": 25,
+            "percentage": 50.0,
+            "passed": false,
+            "level": "fail",
+            "issues": [
+              "字段 'event_title' 覆盖不完整 (50%)",
+              "字段 'time_range' 覆盖不完整 (50%)",
+              "字段 'data_volume' 覆盖不完整 (50%)",
+              "缺少必需字段: key_points",
+              "字段 'sources' 覆盖不完整 (50%)"
+            ],
+            "details": {
+              "found_fields": [
+                "event_title",
+                "time_range",
+                "data_volume",
+                "sentiment",
+                "sources"
+              ],
+              "missing_fields": [
+                "key_points"
+              ],
+              "field_coverage": {
+                "event_title": 50,
+                "time_range": 50,
+                "data_volume": 50,
+                "sentiment": 100,
+                "key_points": 0,
+                "sources": 50
+              }
+            }
+          },
+          "evidence": {
+            "score": 0.0,
+            "max_score": 25,
+            "percentage": 0.0,
+            "passed": false,
+            "level": "fail",
+            "issues": [
+              "数据引用不足，建议增加统计数据支撑",
+              "来源标注不足，建议明确信息来源",
+              "论点证据支持率较低 (0.0%)"
+            ],
+            "details": {
+              "evidence_stats": {
+                "data": 0,
+                "quote": 0,
+                "source": 0,
+                "example": 0
+              },
+              "paragraph_analysis": [
+                {
+                  "length": 65,
+                  "has_claim": true,
+                  "has_evidence": false
+                }
+              ],
+              "claim_count": 1,
+              "evidence_supported": 0,
+              "support_rate": 0.0
+            }
+          },
+          "consistency": {
+            "score": 12.5,
+            "max_score": 25,
+            "percentage": 50.0,
+            "passed": false,
+            "level": "fail",
+            "issues": [
+              "数据量过少 (1.0)，可能影响分析代表性",
+              "文本中未找到数据量 (1000) 的对应描述"
+            ],
+            "details": {
+              "numbers_found": [
+                {
+                  "value": "1",
+                  "type": "number",
+                  "context": "注。\n\n舆情分析：\n1. 主流媒体观点：客",
+                  "position": 162
+                },
+                {
+                  "value": "2",
+                  "type": "number",
+                  "context": "报道，关注事件进展\n2. 社交媒体情绪：呈",
+                  "position": 184
+                },
+                {
+                  "value": "3",
+                  "type": "number",
+                  "context": "绪：呈现多元化态势\n3. 专家意见：存在不",
+                  "position": 202
+                },
+                {
+                  "value": "1",
+                  "type": "number",
+                  "context": "续发展。\n\n建议：\n1. 加强信息监测\n2",
+                  "position": 256
+                },
+                {
+                  "value": "2",
+                  "type": "number",
+                  "context": "1. 加强信息监测\n2. 及时回应公众关切",
+                  "position": 266
+                },
+                {
+                  "value": "3",
+                  "type": "number",
+                  "context": " 及时回应公众关切\n3. 做好风险预案\n",
+                  "position": 278
+                }
+              ],
+              "inconsistencies": [],
+              "checks": {
+                "time": {
+                  "passed": true,
+                  "issues": [],
+                  "time_refs": []
+                },
+                "logic": {
+                  "passed": false,
+                  "issues": [
+                    "数据量过少 (1.0)，可能影响分析代表性"
+                  ],
+                  "percentages": []
+                },
+                "data": {
+                  "passed": false,
+                  "issues": [
+                    "文本中未找到数据量 (1000) 的对应描述"
+                  ]
+                },
+                "percentage": {
+                  "passed": true,
+                  "issues": [],
+                  "checked_patterns": 2
+                }
+              }
+            }
+          }
+        },
+        "timestamp": "2026-05-06T22:33:00.643395",
+        "report_preview": "[Mock Report] 舆情分析报告：演唱会\"柱子票\"\"栏杆票\"频现及大麦网致歉退款事件舆情分析\n\n摘要：\n本报告针对「演唱会\"柱子票\"\"栏杆票\"频现及大麦网致歉退款事件舆情分析」进行舆情分析，梳理了事件发展脉络和舆论关注点。\n\n事件回顾：\n事件起因于近期网络热议，涉及多个利益相关方，引发广泛社会关注。\n\n舆情分析：\n1. 主流媒体观点：客观报道，关注事件进展\n2. 社交媒体情绪：呈现多元化态..."
+      },
+      {
+        "case_id": "case_02_education",
+        "score": 37.5,
+        "max_score": 100,
+        "percentage": 37.5,
+        "status": "failed",
+        "summary": "报告质量评级：不合格（37.5%）。最强维度：structure（50.0%）；最弱维度：evidence（0.0%）。未达标维度：structure, fields, evidence, consistency。",
+        "recommendations": [
+          "完善报告结构，确保包含摘要、事件、舆情、分析、趋势、建议等章节",
+          "补充关键数据字段，如事件标题、时间范围、数据量、情感倾向等",
+          "增加数据引用和来源标注，提升论据可信度",
+          "检查数值逻辑一致性，确保时间、百分比等描述准确无误"
+        ],
+        "breakdown": {
+          "structure": {
+            "score": 12.500000000000002,
+            "max_score": 25,
+            "percentage": 50.0,
+            "passed": false,
+            "level": "fail",
+            "issues": [
+              "报告内容过短 (296 字符)"
+            ],
+            "details": {
+              "found_sections": [
+                "摘要",
+                "事件",
+                "舆情",
+                "分析",
+                "趋势",
+                "建议"
+              ],
+              "missing_sections": [],
+              "char_count": 296
+            }
+          },
+          "fields": {
+            "score": 12.500000000000002,
+            "max_score": 25,
+            "percentage": 50.0,
+            "passed": false,
+            "level": "fail",
+            "issues": [
+              "字段 'event_title' 覆盖不完整 (50%)",
+              "字段 'time_range' 覆盖不完整 (50%)",
+              "字段 'data_volume' 覆盖不完整 (50%)",
+              "缺少必需字段: key_points",
+              "字段 'sources' 覆盖不完整 (50%)"
+            ],
+            "details": {
+              "found_fields": [
+                "event_title",
+                "time_range",
+                "data_volume",
+                "sentiment",
+                "sources"
+              ],
+              "missing_fields": [
+                "key_points"
+              ],
+              "field_coverage": {
+                "event_title": 50,
+                "time_range": 50,
+                "data_volume": 50,
+                "sentiment": 100,
+                "key_points": 0,
+                "sources": 50
+              }
+            }
+          },
+          "evidence": {
+            "score": 0.0,
+            "max_score": 25,
+            "percentage": 0.0,
+            "passed": false,
+            "level": "fail",
+            "issues": [
+              "数据引用不足，建议增加统计数据支撑",
+              "来源标注不足，建议明确信息来源",
+              "论点证据支持率较低 (0.0%)"
+            ],
+            "details": {
+              "evidence_stats": {
+                "data": 0,
+                "quote": 0,
+                "source": 0,
+                "example": 0
+              },
+              "paragraph_analysis": [
+                {
+                  "length": 65,
+                  "has_claim": true,
+                  "has_evidence": false
+                }
+              ],
+              "claim_count": 1,
+              "evidence_supported": 0,
+              "support_rate": 0.0
+            }
+          },
+          "consistency": {
+            "score": 12.5,
+            "max_score": 25,
+            "percentage": 50.0,
+            "passed": false,
+            "level": "fail",
+            "issues": [
+              "数据量过少 (1.0)，可能影响分析代表性",
+              "文本中未找到数据量 (1000) 的对应描述"
+            ],
+            "details": {
+              "numbers_found": [
+                {
+                  "value": "1",
+                  "type": "number",
+                  "context": "注。\n\n舆情分析：\n1. 主流媒体观点：客",
+                  "position": 170
+                },
+                {
+                  "value": "2",
+                  "type": "number",
+                  "context": "报道，关注事件进展\n2. 社交媒体情绪：呈",
+                  "position": 192
+                },
+                {
+                  "value": "3",
+                  "type": "number",
+                  "context": "绪：呈现多元化态势\n3. 专家意见：存在不",
+                  "position": 210
+                },
+                {
+                  "value": "1",
+                  "type": "number",
+                  "context": "续发展。\n\n建议：\n1. 加强信息监测\n2",
+                  "position": 264
+                },
+                {
+                  "value": "2",
+                  "type": "number",
+                  "context": "1. 加强信息监测\n2. 及时回应公众关切",
+                  "position": 274
+                },
+                {
+                  "value": "3",
+                  "type": "number",
+                  "context": " 及时回应公众关切\n3. 做好风险预案\n",
+                  "position": 286
+                }
+              ],
+              "inconsistencies": [],
+              "checks": {
+                "time": {
+                  "passed": true,
+                  "issues": [],
+                  "time_refs": []
+                },
+                "logic": {
+                  "passed": false,
+                  "issues": [
+                    "数据量过少 (1.0)，可能影响分析代表性"
+                  ],
+                  "percentages": []
+                },
+                "data": {
+                  "passed": false,
+                  "issues": [
+                    "文本中未找到数据量 (1000) 的对应描述"
+                  ]
+                },
+                "percentage": {
+                  "passed": true,
+                  "issues": [],
+                  "checked_patterns": 2
+                }
+              }
+            }
+          }
+        },
+        "timestamp": "2026-05-06T22:33:00.643395",
+        "report_preview": "[Mock Report] 舆情分析报告：河南桐柏教师作业批语\"你的字和你一样丑吗\"引发教育边界争议舆情分析\n\n摘要：\n本报告针对「河南桐柏教师作业批语\"你的字和你一样丑吗\"引发教育边界争议舆情分析」进行舆情分析，梳理了事件发展脉络和舆论关注点。\n\n事件回顾：\n事件起因于近期网络热议，涉及多个利益相关方，引发广泛社会关注。\n\n舆情分析：\n1. 主流媒体观点：客观报道，关注事件进展\n2. 社交媒体情..."
+      },
+      {
+        "case_id": "case_02_government",
+        "score": 37.5,
+        "max_score": 100,
+        "percentage": 37.5,
+        "status": "failed",
+        "summary": "报告质量评级：不合格（37.5%）。最强维度：structure（50.0%）；最弱维度：evidence（0.0%）。未达标维度：structure, fields, evidence, consistency。",
+        "recommendations": [
+          "完善报告结构，确保包含摘要、事件、舆情、分析、趋势、建议等章节",
+          "补充关键数据字段，如事件标题、时间范围、数据量、情感倾向等",
+          "增加数据引用和来源标注，提升论据可信度",
+          "检查数值逻辑一致性，确保时间、百分比等描述准确无误"
+        ],
+        "breakdown": {
+          "structure": {
+            "score": 12.500000000000002,
+            "max_score": 25,
+            "percentage": 50.0,
+            "passed": false,
+            "level": "fail",
+            "issues": [
+              "报告内容过短 (282 字符)"
+            ],
+            "details": {
+              "found_sections": [
+                "摘要",
+                "事件",
+                "舆情",
+                "分析",
+                "趋势",
+                "建议"
+              ],
+              "missing_sections": [],
+              "char_count": 282
+            }
+          },
+          "fields": {
+            "score": 12.500000000000002,
+            "max_score": 25,
+            "percentage": 50.0,
+            "passed": false,
+            "level": "fail",
+            "issues": [
+              "字段 'event_title' 覆盖不完整 (50%)",
+              "字段 'time_range' 覆盖不完整 (50%)",
+              "字段 'data_volume' 覆盖不完整 (50%)",
+              "缺少必需字段: key_points",
+              "字段 'sources' 覆盖不完整 (50%)"
+            ],
+            "details": {
+              "found_fields": [
+                "event_title",
+                "time_range",
+                "data_volume",
+                "sentiment",
+                "sources"
+              ],
+              "missing_fields": [
+                "key_points"
+              ],
+              "field_coverage": {
+                "event_title": 50,
+                "time_range": 50,
+                "data_volume": 50,
+                "sentiment": 100,
+                "key_points": 0,
+                "sources": 50
+              }
+            }
+          },
+          "evidence": {
+            "score": 0.0,
+            "max_score": 25,
+            "percentage": 0.0,
+            "passed": false,
+            "level": "fail",
+            "issues": [
+              "数据引用不足，建议增加统计数据支撑",
+              "来源标注不足，建议明确信息来源",
+              "论点证据支持率较低 (0.0%)"
+            ],
+            "details": {
+              "evidence_stats": {
+                "data": 0,
+                "quote": 0,
+                "source": 0,
+                "example": 0
+              },
+              "paragraph_analysis": [
+                {
+                  "length": 65,
+                  "has_claim": true,
+                  "has_evidence": false
+                }
+              ],
+              "claim_count": 1,
+              "evidence_supported": 0,
+              "support_rate": 0.0
+            }
+          },
+          "consistency": {
+            "score": 12.5,
+            "max_score": 25,
+            "percentage": 50.0,
+            "passed": false,
+            "level": "fail",
+            "issues": [
+              "数据量过少 (1.0)，可能影响分析代表性",
+              "文本中未找到数据量 (1000) 的对应描述"
+            ],
+            "details": {
+              "numbers_found": [
+                {
+                  "value": "1",
+                  "type": "number",
+                  "context": "注。\n\n舆情分析：\n1. 主流媒体观点：客",
+                  "position": 156
+                },
+                {
+                  "value": "2",
+                  "type": "number",
+                  "context": "报道，关注事件进展\n2. 社交媒体情绪：呈",
+                  "position": 178
+                },
+                {
+                  "value": "3",
+                  "type": "number",
+                  "context": "绪：呈现多元化态势\n3. 专家意见：存在不",
+                  "position": 196
+                },
+                {
+                  "value": "1",
+                  "type": "number",
+                  "context": "续发展。\n\n建议：\n1. 加强信息监测\n2",
+                  "position": 250
+                },
+                {
+                  "value": "2",
+                  "type": "number",
+                  "context": "1. 加强信息监测\n2. 及时回应公众关切",
+                  "position": 260
+                },
+                {
+                  "value": "3",
+                  "type": "number",
+                  "context": " 及时回应公众关切\n3. 做好风险预案\n",
+                  "position": 272
+                }
+              ],
+              "inconsistencies": [],
+              "checks": {
+                "time": {
+                  "passed": true,
+                  "issues": [],
+                  "time_refs": []
+                },
+                "logic": {
+                  "passed": false,
+                  "issues": [
+                    "数据量过少 (1.0)，可能影响分析代表性"
+                  ],
+                  "percentages": []
+                },
+                "data": {
+                  "passed": false,
+                  "issues": [
+                    "文本中未找到数据量 (1000) 的对应描述"
+                  ]
+                },
+                "percentage": {
+                  "passed": true,
+                  "issues": [],
+                  "checked_patterns": 2
+                }
+              }
+            }
+          }
+        },
+        "timestamp": "2026-05-06T22:33:00.644400",
+        "report_preview": "[Mock Report] 舆情分析报告：近期三起涉公职人员负面言行舆情及官方回应策略效果分析\n\n摘要：\n本报告针对「近期三起涉公职人员负面言行舆情及官方回应策略效果分析」进行舆情分析，梳理了事件发展脉络和舆论关注点。\n\n事件回顾：\n事件起因于近期网络热议，涉及多个利益相关方，引发广泛社会关注。\n\n舆情分析：\n1. 主流媒体观点：客观报道，关注事件进展\n2. 社交媒体情绪：呈现多元化态势\n3. 专..."
+      },
+      {
+        "case_id": "case_02_health",
+        "score": 37.5,
+        "max_score": 100,
+        "percentage": 37.5,
+        "status": "failed",
+        "summary": "报告质量评级：不合格（37.5%）。最强维度：structure（50.0%）；最弱维度：evidence（0.0%）。未达标维度：structure, fields, evidence, consistency。",
+        "recommendations": [
+          "完善报告结构，确保包含摘要、事件、舆情、分析、趋势、建议等章节",
+          "补充关键数据字段，如事件标题、时间范围、数据量、情感倾向等",
+          "增加数据引用和来源标注，提升论据可信度",
+          "检查数值逻辑一致性，确保时间、百分比等描述准确无误"
+        ],
+        "breakdown": {
+          "structure": {
+            "score": 12.500000000000002,
+            "max_score": 25,
+            "percentage": 50.0,
+            "passed": false,
+            "level": "fail",
+            "issues": [
+              "报告内容过短 (282 字符)"
+            ],
+            "details": {
+              "found_sections": [
+                "摘要",
+                "事件",
+                "舆情",
+                "分析",
+                "趋势",
+                "建议"
+              ],
+              "missing_sections": [],
+              "char_count": 282
+            }
+          },
+          "fields": {
+            "score": 12.500000000000002,
+            "max_score": 25,
+            "percentage": 50.0,
+            "passed": false,
+            "level": "fail",
+            "issues": [
+              "字段 'event_title' 覆盖不完整 (50%)",
+              "字段 'time_range' 覆盖不完整 (50%)",
+              "字段 'data_volume' 覆盖不完整 (50%)",
+              "缺少必需字段: key_points",
+              "字段 'sources' 覆盖不完整 (50%)"
+            ],
+            "details": {
+              "found_fields": [
+                "event_title",
+                "time_range",
+                "data_volume",
+                "sentiment",
+                "sources"
+              ],
+              "missing_fields": [
+                "key_points"
+              ],
+              "field_coverage": {
+                "event_title": 50,
+                "time_range": 50,
+                "data_volume": 50,
+                "sentiment": 100,
+                "key_points": 0,
+                "sources": 50
+              }
+            }
+          },
+          "evidence": {
+            "score": 0.0,
+            "max_score": 25,
+            "percentage": 0.0,
+            "passed": false,
+            "level": "fail",
+            "issues": [
+              "数据引用不足，建议增加统计数据支撑",
+              "来源标注不足，建议明确信息来源",
+              "论点证据支持率较低 (0.0%)"
+            ],
+            "details": {
+              "evidence_stats": {
+                "data": 0,
+                "quote": 0,
+                "source": 0,
+                "example": 0
+              },
+              "paragraph_analysis": [
+                {
+                  "length": 65,
+                  "has_claim": true,
+                  "has_evidence": false
+                }
+              ],
+              "claim_count": 1,
+              "evidence_supported": 0,
+              "support_rate": 0.0
+            }
+          },
+          "consistency": {
+            "score": 12.5,
+            "max_score": 25,
+            "percentage": 50.0,
+            "passed": false,
+            "level": "fail",
+            "issues": [
+              "数据量过少 (1.0)，可能影响分析代表性",
+              "文本中未找到数据量 (1000) 的对应描述"
+            ],
+            "details": {
+              "numbers_found": [
+                {
+                  "value": "1",
+                  "type": "number",
+                  "context": "注。\n\n舆情分析：\n1. 主流媒体观点：客",
+                  "position": 156
+                },
+                {
+                  "value": "2",
+                  "type": "number",
+                  "context": "报道，关注事件进展\n2. 社交媒体情绪：呈",
+                  "position": 178
+                },
+                {
+                  "value": "3",
+                  "type": "number",
+                  "context": "绪：呈现多元化态势\n3. 专家意见：存在不",
+                  "position": 196
+                },
+                {
+                  "value": "1",
+                  "type": "number",
+                  "context": "续发展。\n\n建议：\n1. 加强信息监测\n2",
+                  "position": 250
+                },
+                {
+                  "value": "2",
+                  "type": "number",
+                  "context": "1. 加强信息监测\n2. 及时回应公众关切",
+                  "position": 260
+                },
+                {
+                  "value": "3",
+                  "type": "number",
+                  "context": " 及时回应公众关切\n3. 做好风险预案\n",
+                  "position": 272
+                }
+              ],
+              "inconsistencies": [],
+              "checks": {
+                "time": {
+                  "passed": true,
+                  "issues": [],
+                  "time_refs": []
+                },
+                "logic": {
+                  "passed": false,
+                  "issues": [
+                    "数据量过少 (1.0)，可能影响分析代表性"
+                  ],
+                  "percentages": []
+                },
+                "data": {
+                  "passed": false,
+                  "issues": [
+                    "文本中未找到数据量 (1000) 的对应描述"
+                  ]
+                },
+                "percentage": {
+                  "passed": true,
+                  "issues": [],
+                  "checked_patterns": 2
+                }
+              }
+            }
+          }
+        },
+        "timestamp": "2026-05-06T22:33:00.645199",
+        "report_preview": "[Mock Report] 舆情分析报告：赣南医科大学第一附属医院患者网络维权争议事件舆情分析\n\n摘要：\n本报告针对「赣南医科大学第一附属医院患者网络维权争议事件舆情分析」进行舆情分析，梳理了事件发展脉络和舆论关注点。\n\n事件回顾：\n事件起因于近期网络热议，涉及多个利益相关方，引发广泛社会关注。\n\n舆情分析：\n1. 主流媒体观点：客观报道，关注事件进展\n2. 社交媒体情绪：呈现多元化态势\n3. 专..."
+      },
+      {
+        "case_id": "case_02_panda",
+        "score": 40.5,
+        "max_score": 100,
+        "percentage": 40.5,
+        "status": "failed",
+        "summary": "报告质量评级：不合格（40.5%）。最强维度：structure（50.0%）；最弱维度：evidence（12.0%）。未达标维度：structure, fields, evidence, consistency。",
+        "recommendations": [
+          "完善报告结构，确保包含摘要、事件、舆情、分析、趋势、建议等章节",
+          "补充关键数据字段，如事件标题、时间范围、数据量、情感倾向等",
+          "增加数据引用和来源标注，提升论据可信度",
+          "检查数值逻辑一致性，确保时间、百分比等描述准确无误"
+        ],
+        "breakdown": {
+          "structure": {
+            "score": 12.500000000000002,
+            "max_score": 25,
+            "percentage": 50.0,
+            "passed": false,
+            "level": "fail",
+            "issues": [
+              "报告内容过短 (290 字符)"
+            ],
+            "details": {
+              "found_sections": [
+                "摘要",
+                "事件",
+                "舆情",
+                "分析",
+                "趋势",
+                "建议"
+              ],
+              "missing_sections": [],
+              "char_count": 290
+            }
+          },
+          "fields": {
+            "score": 12.500000000000002,
+            "max_score": 25,
+            "percentage": 50.0,
+            "passed": false,
+            "level": "fail",
+            "issues": [
+              "字段 'event_title' 覆盖不完整 (50%)",
+              "字段 'time_range' 覆盖不完整 (50%)",
+              "字段 'data_volume' 覆盖不完整 (50%)",
+              "缺少必需字段: key_points",
+              "字段 'sources' 覆盖不完整 (50%)"
+            ],
+            "details": {
+              "found_fields": [
+                "event_title",
+                "time_range",
+                "data_volume",
+                "sentiment",
+                "sources"
+              ],
+              "missing_fields": [
+                "key_points"
+              ],
+              "field_coverage": {
+                "event_title": 50,
+                "time_range": 50,
+                "data_volume": 50,
+                "sentiment": 100,
+                "key_points": 0,
+                "sources": 50
+              }
+            }
+          },
+          "evidence": {
+            "score": 3.0,
+            "max_score": 25,
+            "percentage": 12.0,
+            "passed": false,
+            "level": "fail",
+            "issues": [
+              "数据引用不足，建议增加统计数据支撑",
+              "来源标注不足，建议明确信息来源",
+              "论点证据支持率较低 (0.0%)"
+            ],
+            "details": {
+              "evidence_stats": {
+                "data": 0,
+                "quote": 2,
+                "source": 0,
+                "example": 0
+              },
+              "paragraph_analysis": [
+                {
+                  "length": 65,
+                  "has_claim": true,
+                  "has_evidence": false
+                }
+              ],
+              "claim_count": 1,
+              "evidence_supported": 0,
+              "support_rate": 0.0
+            }
+          },
+          "consistency": {
+            "score": 12.5,
+            "max_score": 25,
+            "percentage": 50.0,
+            "passed": false,
+            "level": "fail",
+            "issues": [
+              "数据量过少 (1.0)，可能影响分析代表性",
+              "文本中未找到数据量 (1000) 的对应描述"
+            ],
+            "details": {
+              "numbers_found": [
+                {
+                  "value": "1",
+                  "type": "number",
+                  "context": "注。\n\n舆情分析：\n1. 主流媒体观点：客",
+                  "position": 164
+                },
+                {
+                  "value": "2",
+                  "type": "number",
+                  "context": "报道，关注事件进展\n2. 社交媒体情绪：呈",
+                  "position": 186
+                },
+                {
+                  "value": "3",
+                  "type": "number",
+                  "context": "绪：呈现多元化态势\n3. 专家意见：存在不",
+                  "position": 204
+                },
+                {
+                  "value": "1",
+                  "type": "number",
+                  "context": "续发展。\n\n建议：\n1. 加强信息监测\n2",
+                  "position": 258
+                },
+                {
+                  "value": "2",
+                  "type": "number",
+                  "context": "1. 加强信息监测\n2. 及时回应公众关切",
+                  "position": 268
+                },
+                {
+                  "value": "3",
+                  "type": "number",
+                  "context": " 及时回应公众关切\n3. 做好风险预案\n",
+                  "position": 280
+                }
+              ],
+              "inconsistencies": [],
+              "checks": {
+                "time": {
+                  "passed": true,
+                  "issues": [],
+                  "time_refs": []
+                },
+                "logic": {
+                  "passed": false,
+                  "issues": [
+                    "数据量过少 (1.0)，可能影响分析代表性"
+                  ],
+                  "percentages": []
+                },
+                "data": {
+                  "passed": false,
+                  "issues": [
+                    "文本中未找到数据量 (1000) 的对应描述"
+                  ]
+                },
+                "percentage": {
+                  "passed": true,
+                  "issues": [],
+                  "checked_patterns": 2
+                }
+              }
+            }
+          }
+        },
+        "timestamp": "2026-05-06T22:33:00.646358",
+        "report_preview": "[Mock Report] 舆情分析报告：导游称大熊猫'花花'残疾引发粉丝不满及旅行社致歉事件舆情分析\n\n摘要：\n本报告针对「导游称大熊猫'花花'残疾引发粉丝不满及旅行社致歉事件舆情分析」进行舆情分析，梳理了事件发展脉络和舆论关注点。\n\n事件回顾：\n事件起因于近期网络热议，涉及多个利益相关方，引发广泛社会关注。\n\n舆情分析：\n1. 主流媒体观点：客观报道，关注事件进展\n2. 社交媒体情绪：呈现多元..."
+      },
+      {
+        "case_id": "case_02_tourism",
+        "score": 37.5,
+        "max_score": 100,
+        "percentage": 37.5,
+        "status": "failed",
+        "summary": "报告质量评级：不合格（37.5%）。最强维度：structure（50.0%）；最弱维度：evidence（0.0%）。未达标维度：structure, fields, evidence, consistency。",
+        "recommendations": [
+          "完善报告结构，确保包含摘要、事件、舆情、分析、趋势、建议等章节",
+          "补充关键数据字段，如事件标题、时间范围、数据量、情感倾向等",
+          "增加数据引用和来源标注，提升论据可信度",
+          "检查数值逻辑一致性，确保时间、百分比等描述准确无误"
+        ],
+        "breakdown": {
+          "structure": {
+            "score": 12.500000000000002,
+            "max_score": 25,
+            "percentage": 50.0,
+            "passed": false,
+            "level": "fail",
+            "issues": [
+              "报告内容过短 (292 字符)"
+            ],
+            "details": {
+              "found_sections": [
+                "摘要",
+                "事件",
+                "舆情",
+                "分析",
+                "趋势",
+                "建议"
+              ],
+              "missing_sections": [],
+              "char_count": 292
+            }
+          },
+          "fields": {
+            "score": 12.500000000000002,
+            "max_score": 25,
+            "percentage": 50.0,
+            "passed": false,
+            "level": "fail",
+            "issues": [
+              "字段 'event_title' 覆盖不完整 (50%)",
+              "字段 'time_range' 覆盖不完整 (50%)",
+              "字段 'data_volume' 覆盖不完整 (50%)",
+              "缺少必需字段: key_points",
+              "字段 'sources' 覆盖不完整 (50%)"
+            ],
+            "details": {
+              "found_fields": [
+                "event_title",
+                "time_range",
+                "data_volume",
+                "sentiment",
+                "sources"
+              ],
+              "missing_fields": [
+                "key_points"
+              ],
+              "field_coverage": {
+                "event_title": 50,
+                "time_range": 50,
+                "data_volume": 50,
+                "sentiment": 100,
+                "key_points": 0,
+                "sources": 50
+              }
+            }
+          },
+          "evidence": {
+            "score": 0.0,
+            "max_score": 25,
+            "percentage": 0.0,
+            "passed": false,
+            "level": "fail",
+            "issues": [
+              "数据引用不足，建议增加统计数据支撑",
+              "来源标注不足，建议明确信息来源",
+              "论点证据支持率较低 (0.0%)"
+            ],
+            "details": {
+              "evidence_stats": {
+                "data": 0,
+                "quote": 0,
+                "source": 0,
+                "example": 0
+              },
+              "paragraph_analysis": [
+                {
+                  "length": 65,
+                  "has_claim": true,
+                  "has_evidence": false
+                }
+              ],
+              "claim_count": 1,
+              "evidence_supported": 0,
+              "support_rate": 0.0
+            }
+          },
+          "consistency": {
+            "score": 12.5,
+            "max_score": 25,
+            "percentage": 50.0,
+            "passed": false,
+            "level": "fail",
+            "issues": [
+              "数据量过少 (1.0)，可能影响分析代表性",
+              "文本中未找到数据量 (1000) 的对应描述"
+            ],
+            "details": {
+              "numbers_found": [
+                {
+                  "value": "1",
+                  "type": "number",
+                  "context": "注。\n\n舆情分析：\n1. 主流媒体观点：客",
+                  "position": 166
+                },
+                {
+                  "value": "2",
+                  "type": "number",
+                  "context": "报道，关注事件进展\n2. 社交媒体情绪：呈",
+                  "position": 188
+                },
+                {
+                  "value": "3",
+                  "type": "number",
+                  "context": "绪：呈现多元化态势\n3. 专家意见：存在不",
+                  "position": 206
+                },
+                {
+                  "value": "1",
+                  "type": "number",
+                  "context": "续发展。\n\n建议：\n1. 加强信息监测\n2",
+                  "position": 260
+                },
+                {
+                  "value": "2",
+                  "type": "number",
+                  "context": "1. 加强信息监测\n2. 及时回应公众关切",
+                  "position": 270
+                },
+                {
+                  "value": "3",
+                  "type": "number",
+                  "context": " 及时回应公众关切\n3. 做好风险预案\n",
+                  "position": 282
+                }
+              ],
+              "inconsistencies": [],
+              "checks": {
+                "time": {
+                  "passed": true,
+                  "issues": [],
+                  "time_refs": []
+                },
+                "logic": {
+                  "passed": false,
+                  "issues": [
+                    "数据量过少 (1.0)，可能影响分析代表性"
+                  ],
+                  "percentages": []
+                },
+                "data": {
+                  "passed": false,
+                  "issues": [
+                    "文本中未找到数据量 (1000) 的对应描述"
+                  ]
+                },
+                "percentage": {
+                  "passed": true,
+                  "issues": [],
+                  "checked_patterns": 2
+                }
+              }
+            }
+          }
+        },
+        "timestamp": "2026-05-06T22:33:00.647362",
+        "report_preview": "[Mock Report] 舆情分析报告：游客吐槽壶口瀑布门票贵被景区投诉侵犯名誉权引发舆论反弹事件分析\n\n摘要：\n本报告针对「游客吐槽壶口瀑布门票贵被景区投诉侵犯名誉权引发舆论反弹事件分析」进行舆情分析，梳理了事件发展脉络和舆论关注点。\n\n事件回顾：\n事件起因于近期网络热议，涉及多个利益相关方，引发广泛社会关注。\n\n舆情分析：\n1. 主流媒体观点：客观报道，关注事件进展\n2. 社交媒体情绪：呈现..."
+      },
+      {
+        "case_id": "case_02_traffic",
+        "score": 43.75,
+        "max_score": 100,
+        "percentage": 43.75,
+        "status": "failed",
+        "summary": "报告质量评级：不合格（43.8%）。最强维度：consistency（75.0%）；最弱维度：evidence（0.0%）。未达标维度：structure, fields, evidence。",
+        "recommendations": [
+          "完善报告结构，确保包含摘要、事件、舆情、分析、趋势、建议等章节",
+          "补充关键数据字段，如事件标题、时间范围、数据量、情感倾向等",
+          "增加数据引用和来源标注，提升论据可信度"
+        ],
+        "breakdown": {
+          "structure": {
+            "score": 12.500000000000002,
+            "max_score": 25,
+            "percentage": 50.0,
+            "passed": false,
+            "level": "fail",
+            "issues": [
+              "报告内容过短 (294 字符)"
+            ],
+            "details": {
+              "found_sections": [
+                "摘要",
+                "事件",
+                "舆情",
+                "分析",
+                "趋势",
+                "建议"
+              ],
+              "missing_sections": [],
+              "char_count": 294
+            }
+          },
+          "fields": {
+            "score": 12.500000000000002,
+            "max_score": 25,
+            "percentage": 50.0,
+            "passed": false,
+            "level": "fail",
+            "issues": [
+              "字段 'event_title' 覆盖不完整 (50%)",
+              "字段 'time_range' 覆盖不完整 (50%)",
+              "字段 'data_volume' 覆盖不完整 (50%)",
+              "缺少必需字段: key_points",
+              "字段 'sources' 覆盖不完整 (50%)"
+            ],
+            "details": {
+              "found_fields": [
+                "event_title",
+                "time_range",
+                "data_volume",
+                "sentiment",
+                "sources"
+              ],
+              "missing_fields": [
+                "key_points"
+              ],
+              "field_coverage": {
+                "event_title": 50,
+                "time_range": 50,
+                "data_volume": 50,
+                "sentiment": 100,
+                "key_points": 0,
+                "sources": 50
+              }
+            }
+          },
+          "evidence": {
+            "score": 0.0,
+            "max_score": 25,
+            "percentage": 0.0,
+            "passed": false,
+            "level": "fail",
+            "issues": [
+              "数据引用不足，建议增加统计数据支撑",
+              "来源标注不足，建议明确信息来源",
+              "论点证据支持率较低 (0.0%)"
+            ],
+            "details": {
+              "evidence_stats": {
+                "data": 0,
+                "quote": 0,
+                "source": 0,
+                "example": 0
+              },
+              "paragraph_analysis": [
+                {
+                  "length": 65,
+                  "has_claim": true,
+                  "has_evidence": false
+                }
+              ],
+              "claim_count": 1,
+              "evidence_supported": 0,
+              "support_rate": 0.0
+            }
+          },
+          "consistency": {
+            "score": 18.75,
+            "max_score": 25,
+            "percentage": 75.0,
+            "passed": true,
+            "level": "pass",
+            "issues": [
+              "文本中未找到数据量 (1000) 的对应描述"
+            ],
+            "details": {
+              "numbers_found": [
+                {
+                  "value": "198",
+                  "type": "number",
+                  "context": "分析报告：杭州南站D198次列车工作人员站台吸",
+                  "position": 26
+                },
+                {
+                  "value": "198",
+                  "type": "number",
+                  "context": "报告针对「杭州南站D198次列车工作人员站台吸",
+                  "position": 70
+                },
+                {
+                  "value": "1",
+                  "type": "number",
+                  "context": "注。\n\n舆情分析：\n1. 主流媒体观点：客",
+                  "position": 168
+                },
+                {
+                  "value": "2",
+                  "type": "number",
+                  "context": "报道，关注事件进展\n2. 社交媒体情绪：呈",
+                  "position": 190
+                },
+                {
+                  "value": "3",
+                  "type": "number",
+                  "context": "绪：呈现多元化态势\n3. 专家意见：存在不",
+                  "position": 208
+                },
+                {
+                  "value": "1",
+                  "type": "number",
+                  "context": "续发展。\n\n建议：\n1. 加强信息监测\n2",
+                  "position": 262
+                },
+                {
+                  "value": "2",
+                  "type": "number",
+                  "context": "1. 加强信息监测\n2. 及时回应公众关切",
+                  "position": 272
+                },
+                {
+                  "value": "3",
+                  "type": "number",
+                  "context": " 及时回应公众关切\n3. 做好风险预案\n",
+                  "position": 284
+                }
+              ],
+              "inconsistencies": [],
+              "checks": {
+                "time": {
+                  "passed": true,
+                  "issues": [],
+                  "time_refs": []
+                },
+                "logic": {
+                  "passed": true,
+                  "issues": [],
+                  "percentages": []
+                },
+                "data": {
+                  "passed": false,
+                  "issues": [
+                    "文本中未找到数据量 (1000) 的对应描述"
+                  ]
+                },
+                "percentage": {
+                  "passed": true,
+                  "issues": [],
+                  "checked_patterns": 2
+                }
+              }
+            }
+          }
+        },
+        "timestamp": "2026-05-06T22:33:00.648362",
+        "report_preview": "[Mock Report] 舆情分析报告：杭州南站D198次列车工作人员站台吸烟事件及控烟立法盲区舆情分析\n\n摘要：\n本报告针对「杭州南站D198次列车工作人员站台吸烟事件及控烟立法盲区舆情分析」进行舆情分析，梳理了事件发展脉络和舆论关注点。\n\n事件回顾：\n事件起因于近期网络热议，涉及多个利益相关方，引发广泛社会关注。\n\n舆情分析：\n1. 主流媒体观点：客观报道，关注事件进展\n2. 社交媒体情绪：..."
+      },
+      {
+        "case_id": "case_03_consumption",
+        "score": 37.5,
+        "max_score": 100,
+        "percentage": 37.5,
+        "status": "failed",
+        "summary": "报告质量评级：不合格（37.5%）。最强维度：structure（50.0%）；最弱维度：evidence（0.0%）。未达标维度：structure, fields, evidence, consistency。",
+        "recommendations": [
+          "完善报告结构，确保包含摘要、事件、舆情、分析、趋势、建议等章节",
+          "补充关键数据字段，如事件标题、时间范围、数据量、情感倾向等",
+          "增加数据引用和来源标注，提升论据可信度",
+          "检查数值逻辑一致性，确保时间、百分比等描述准确无误"
+        ],
+        "breakdown": {
+          "structure": {
+            "score": 12.500000000000002,
+            "max_score": 25,
+            "percentage": 50.0,
+            "passed": false,
+            "level": "fail",
+            "issues": [
+              "报告内容过短 (294 字符)"
+            ],
+            "details": {
+              "found_sections": [
+                "摘要",
+                "事件",
+                "舆情",
+                "分析",
+                "趋势",
+                "建议"
+              ],
+              "missing_sections": [],
+              "char_count": 294
+            }
+          },
+          "fields": {
+            "score": 12.500000000000002,
+            "max_score": 25,
+            "percentage": 50.0,
+            "passed": false,
+            "level": "fail",
+            "issues": [
+              "字段 'event_title' 覆盖不完整 (50%)",
+              "字段 'time_range' 覆盖不完整 (50%)",
+              "字段 'data_volume' 覆盖不完整 (50%)",
+              "缺少必需字段: key_points",
+              "字段 'sources' 覆盖不完整 (50%)"
+            ],
+            "details": {
+              "found_fields": [
+                "event_title",
+                "time_range",
+                "data_volume",
+                "sentiment",
+                "sources"
+              ],
+              "missing_fields": [
+                "key_points"
+              ],
+              "field_coverage": {
+                "event_title": 50,
+                "time_range": 50,
+                "data_volume": 50,
+                "sentiment": 100,
+                "key_points": 0,
+                "sources": 50
+              }
+            }
+          },
+          "evidence": {
+            "score": 0.0,
+            "max_score": 25,
+            "percentage": 0.0,
+            "passed": false,
+            "level": "fail",
+            "issues": [
+              "数据引用不足，建议增加统计数据支撑",
+              "来源标注不足，建议明确信息来源",
+              "论点证据支持率较低 (0.0%)"
+            ],
+            "details": {
+              "evidence_stats": {
+                "data": 0,
+                "quote": 0,
+                "source": 0,
+                "example": 0
+              },
+              "paragraph_analysis": [
+                {
+                  "length": 65,
+                  "has_claim": true,
+                  "has_evidence": false
+                }
+              ],
+              "claim_count": 1,
+              "evidence_supported": 0,
+              "support_rate": 0.0
+            }
+          },
+          "consistency": {
+            "score": 12.5,
+            "max_score": 25,
+            "percentage": 50.0,
+            "passed": false,
+            "level": "fail",
+            "issues": [
+              "数据量过少 (1.0)，可能影响分析代表性",
+              "文本中未找到数据量 (1000) 的对应描述"
+            ],
+            "details": {
+              "numbers_found": [
+                {
+                  "value": "1",
+                  "type": "number",
+                  "context": "注。\n\n舆情分析：\n1. 主流媒体观点：客",
+                  "position": 168
+                },
+                {
+                  "value": "2",
+                  "type": "number",
+                  "context": "报道，关注事件进展\n2. 社交媒体情绪：呈",
+                  "position": 190
+                },
+                {
+                  "value": "3",
+                  "type": "number",
+                  "context": "绪：呈现多元化态势\n3. 专家意见：存在不",
+                  "position": 208
+                },
+                {
+                  "value": "1",
+                  "type": "number",
+                  "context": "续发展。\n\n建议：\n1. 加强信息监测\n2",
+                  "position": 262
+                },
+                {
+                  "value": "2",
+                  "type": "number",
+                  "context": "1. 加强信息监测\n2. 及时回应公众关切",
+                  "position": 272
+                },
+                {
+                  "value": "3",
+                  "type": "number",
+                  "context": " 及时回应公众关切\n3. 做好风险预案\n",
+                  "position": 284
+                }
+              ],
+              "inconsistencies": [],
+              "checks": {
+                "time": {
+                  "passed": true,
+                  "issues": [],
+                  "time_refs": []
+                },
+                "logic": {
+                  "passed": false,
+                  "issues": [
+                    "数据量过少 (1.0)，可能影响分析代表性"
+                  ],
+                  "percentages": []
+                },
+                "data": {
+                  "passed": false,
+                  "issues": [
+                    "文本中未找到数据量 (1000) 的对应描述"
+                  ]
+                },
+                "percentage": {
+                  "passed": true,
+                  "issues": [],
+                  "checked_patterns": 2
+                }
+              }
+            }
+          }
+        },
+        "timestamp": "2026-05-06T22:33:00.648362",
+        "report_preview": "[Mock Report] 舆情分析报告：二次元\"谷子经济\"消费热潮下售后维权难及权益保护规则缺失舆情分析\n\n摘要：\n本报告针对「二次元\"谷子经济\"消费热潮下售后维权难及权益保护规则缺失舆情分析」进行舆情分析，梳理了事件发展脉络和舆论关注点。\n\n事件回顾：\n事件起因于近期网络热议，涉及多个利益相关方，引发广泛社会关注。\n\n舆情分析：\n1. 主流媒体观点：客观报道，关注事件进展\n2. 社交媒体情绪：..."
+      }
+    ]
+  }
+}

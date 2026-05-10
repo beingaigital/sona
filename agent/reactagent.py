@@ -9,7 +9,35 @@ import queue
 import threading
 from datetime import datetime
 
-from langchain.agents import create_agent
+try:
+    from langgraph.prebuilt import create_react_agent as create_agent
+except ImportError:
+    # 如果新API也不存在，使用兼容层
+    def create_agent(model, tools, prompt=None):
+        """兼容层：直接使用 LLM 和工具列表"""
+        from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+        from langchain.agents.format_scratchpad.openai_tools import format_to_openai_tool_messages
+        from langchain.agents.output_parsers.openai_tools import OpenAIToolsAgentOutputParser
+        
+        system_prompt = prompt or ""
+        p = ChatPromptTemplate.from_messages([
+            ("system", system_prompt),
+            MessagesPlaceholder(variable_name="chat_history"),
+            ("user", "{input}"),
+            MessagesPlaceholder(variable_name="agent_scratchpad"),
+        ])
+        
+        agent = (
+            {
+                "input": lambda x: x["input"],
+                "agent_scratchpad": lambda x: format_to_openai_tool_messages(x.get("intermediate_steps", [])),
+                "chat_history": lambda x: x.get("chat_history", []),
+            }
+            | p
+            | model
+            | OpenAIToolsAgentOutputParser()
+        )
+        return agent
 from langchain_core.callbacks import BaseCallbackHandler
 from langchain_core.runnables.history import RunnableWithMessageHistory
 from langchain_core.chat_history import BaseChatMessageHistory
@@ -143,11 +171,19 @@ def _get_session_history(task_id: str) -> BaseChatMessageHistory:
 # 实例化 system prompt、LLM、ReAct Agent
 _system_prompt = get_system_prompt_with_tools(AGENT_TOOLS)
 _llm = get_react_model()
-react_agent = create_agent(
-    model=_llm,
-    tools=AGENT_TOOLS,
-    system_prompt=_system_prompt,
-)
+
+# 创建 ReAct Agent
+# 注意：create_react_agent 需要 prompt 参数，我们使用简单的字符串 prompt
+try:
+    react_agent = create_agent(
+        model=_llm,
+        tools=AGENT_TOOLS,
+        prompt=_system_prompt,
+    )
+except Exception as e:
+    # 如果创建失败，使用简单的 Runnable 作为 fallback
+    print(f"[WARN] Failed to create ReAct agent: {e}")
+    react_agent = _llm
 
 # 创建带消息历史的 Agent
 # 注意：此函数目前未使用，保留作为预留功能，用于未来可能需要直接使用带历史管理的 Agent 的场景

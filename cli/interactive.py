@@ -705,6 +705,7 @@ def run_session_loop(
     *,
     force_event_workflow: bool = False,
     preset_initial_query: Optional[str] = None,
+    eval_mode: bool = False,
 ) -> None:
     """
     运行会话循环
@@ -713,6 +714,7 @@ def run_session_loop(
         task_id: 任务 ID，如果为 None 则创建新会话
         force_event_workflow: 是否强制使用事件分析工作流（由 /event 触发）
         preset_initial_query: 预置首条查询（由主命令直接传入）
+        eval_mode: 是否启用评测模式（生成报告后自动评分）
     """
     session_manager = get_session_manager()
     previous_messages = []
@@ -916,7 +918,8 @@ def run_session_loop(
                     session_manager, 
                     debug=True,
                     existing_data_path=existing_data_path,
-                    skip_data_collect=skip_data_collect
+                    skip_data_collect=skip_data_collect,
+                    eval_mode=eval_mode,
                 )
             elif use_hot_workflow:
                 run_hot_command()

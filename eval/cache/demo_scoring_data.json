@@ -1,0 +1,23 @@
+{
+  "event_title": "某品牌新品发布事件",
+  "time_range": "2024-03-15 至 2024-03-16",
+  "data_volume": 158000,
+  "sentiment": "neutral",
+  "key_points": [
+    "产品定价争议",
+    "性能配置评价",
+    "品牌形象讨论"
+  ],
+  "sources": ["微博", "知乎", "抖音", "B站"],
+  "sentiment_distribution": {
+    "positive": 42,
+    "negative": 35,
+    "neutral": 23
+  },
+  "platform_stats": {
+    "微博": 82000,
+    "知乎": 1200,
+    "抖音": 35000000,
+    "B站": 200
+  }
+}

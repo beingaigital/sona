@@ -1,0 +1,53 @@
+{
+  "case_id": "case_02_health",
+  "domain": "health",
+  "query": "赣南医科大学第一附属医院患者网络维权争议事件舆情分析",
+  "description": "测试工具对医患纠纷类复杂舆情事件的分析能力，涉及事实甄别、双方观点平衡、法律与情感维度",
+  
+  "expected_key_points": [
+    "事件核心争议：患者指控过度诊疗 vs 医院否认违规",
+    "关键证据链：司法鉴定意见、行政部门调查结果",
+    "双方立场梳理：患者诉求（高额赔偿）vs 医院回应（合法途径）",
+    "网络传播特征：视频发酵、不实信息界定、网络暴力争议",
+    "次生议题延伸：医患信任、维权方式合法性、医护人员权益保护",
+    "处置进展：医院声明内容、建议的法律解决渠道"
+  ],
+  
+  "red_lines": [
+    "严禁在未核实的情况下采信患者单方说法",
+    "严禁将司法鉴定结论表述为'医院存在过错'",
+    "严禁虚构医院或患者未提及的细节（如具体赔偿金额）",
+    "严禁将行政调查结果表述为'医院被处罚'"
+  ],
+  
+  "reference_materials": [
+    "data/references/health/gannan_hospital_statement_20250825.txt"
+  ],
+  
+  "rubric": {
+    "completeness": {
+      "description": "要点覆盖度",
+      "max_score": 30,
+      "criteria": "6个要点各5分，部分覆盖2.5分，未覆盖0分"
+    },
+    "accuracy": {
+      "description": "事实准确性",
+      "max_score": 40,
+      "criteria": "每条红线触碰扣10分，扣完为止"
+    },
+    "structure": {
+      "description": "报告结构完整性",
+      "max_score": 20,
+      "criteria": "需包含摘要、事件回顾、双方观点、证据分析、舆情趋势、建议六部分"
+    },
+    "insight": {
+      "description": "洞察深度",
+      "max_score": 10,
+      "criteria": "是否有对医患关系、网络维权边界的趋势判断"
+    }
+  },
+  
+  "target": "tool",
+  "stage": "day1",
+  "mode": "live"
+}
