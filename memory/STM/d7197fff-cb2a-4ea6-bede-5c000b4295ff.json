@@ -1,0 +1,25 @@
+{
+  "task_id": "d7197fff-cb2a-4ea6-bede-5c000b4295ff",
+  "created_at": "2026-05-05T12:16:19.812590",
+  "updated_at": "2026-05-05T12:35:37.508615",
+  "description": "分析浏阳烟花厂爆炸舆情",
+  "initial_query": "浏阳烟花厂爆炸舆情",
+  "messages": [
+    {
+      "role": "user",
+      "content": "浏阳烟花厂爆炸舆情",
+      "timestamp": "2026-05-05T12:16:19.821631"
+    },
+    {
+      "role": "assistant",
+      "content": "已完成舆情事件分析工作流。报告：file:///E:/Trae%20CN/Projects/sona-main/sandbox/d7197fff-cb2a-4ea6-bede-5c000b4295ff/%E7%BB%93%E6%9E%9C%E6%96%87%E4%BB%B6/report_20260505_123537.html",
+      "timestamp": "2026-05-05T12:35:37.508615"
+    }
+  ],
+  "token_usage": {
+    "total_tokens": 0,
+    "prompt_tokens": 0,
+    "completion_tokens": 0,
+    "steps": []
+  }
+}

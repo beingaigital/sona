@@ -1,0 +1,25 @@
+{
+  "task_id": "3ea1f115-3dec-4364-bd97-4d3100bea965",
+  "created_at": "2026-05-06T22:12:45.674502",
+  "updated_at": "2026-05-06T22:25:39.021666",
+  "description": "分析315晚会舆情分析",
+  "initial_query": "315晚会舆情分析",
+  "messages": [
+    {
+      "role": "user",
+      "content": "315晚会舆情分析",
+      "timestamp": "2026-05-06T22:13:08.923662"
+    },
+    {
+      "role": "assistant",
+      "content": "已完成舆情事件分析工作流。报告：file:///C:/Users/smc/AppData/Roaming/TRAE%20SOLO%20CN/ModularData/ai-agent/work-mode-projects/69fb4556e49aa253047e74b0/sona-main/sandbox/3ea1f115-3dec-4364-bd97-4d3100bea965/%E7%BB%93%E6%9E%9C%E6%96%87%E4%BB%B6/report_20260506_222538.html",
+      "timestamp": "2026-05-06T22:25:39.021666"
+    }
+  ],
+  "token_usage": {
+    "total_tokens": 0,
+    "prompt_tokens": 0,
+    "completion_tokens": 0,
+    "steps": []
+  }
+}

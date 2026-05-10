@@ -1,0 +1,25 @@
+{
+  "task_id": "65546807-08ff-4647-bebf-bec8f40fa439",
+  "created_at": "2026-05-02T08:39:48.382633",
+  "updated_at": "2026-05-02T08:52:45.287475",
+  "description": "分析游戏《异环》公测",
+  "initial_query": "游戏《异环》公测",
+  "messages": [
+    {
+      "role": "user",
+      "content": "游戏《异环》公测",
+      "timestamp": "2026-05-02T08:39:48.392882"
+    },
+    {
+      "role": "assistant",
+      "content": "已完成舆情事件分析工作流。报告：file:///C:/Users/16330/Desktop/sona-main%20%281%29/sona-main/sandbox/65546807-08ff-4647-bebf-bec8f40fa439/%E7%BB%93%E6%9E%9C%E6%96%87%E4%BB%B6/report_20260502_085245.html",
+      "timestamp": "2026-05-02T08:52:45.287467"
+    }
+  ],
+  "token_usage": {
+    "total_tokens": 0,
+    "prompt_tokens": 0,
+    "completion_tokens": 0,
+    "steps": []
+  }
+}

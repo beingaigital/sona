@@ -1,0 +1,25 @@
+{
+  "task_id": "ef2acd3f-8915-4f12-9f28-e4e1f85256ba",
+  "created_at": "2026-05-07T23:31:03.199377",
+  "updated_at": "2026-05-07T23:34:54.105508",
+  "description": "分析乘风破浪的姐姐第七季直播舆情分析",
+  "initial_query": "乘风破浪的姐姐第七季直播舆情分析",
+  "messages": [
+    {
+      "role": "user",
+      "content": "乘风破浪的姐姐第七季直播舆情分析",
+      "timestamp": "2026-05-07T23:31:35.271922"
+    },
+    {
+      "role": "assistant",
+      "content": "已完成舆情事件分析工作流。报告：file:///C:/Users/Joan/Downloads/%E7%AC%AC%E4%B8%89%E6%AD%A5/sona-main/sandbox/ef2acd3f-8915-4f12-9f28-e4e1f85256ba/%E7%BB%93%E6%9E%9C%E6%96%87%E4%BB%B6/report_20260507_233454.html",
+      "timestamp": "2026-05-07T23:34:54.105508"
+    }
+  ],
+  "token_usage": {
+    "total_tokens": 0,
+    "prompt_tokens": 0,
+    "completion_tokens": 0,
+    "steps": []
+  }
+}

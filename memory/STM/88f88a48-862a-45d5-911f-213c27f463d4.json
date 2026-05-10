@@ -1,0 +1,30 @@
+{
+  "task_id": "88f88a48-862a-45d5-911f-213c27f463d4",
+  "created_at": "2026-05-05T12:00:07.272523",
+  "updated_at": "2026-05-05T12:05:18.188875",
+  "description": "分析浏阳烟花爆炸相关舆情信息",
+  "initial_query": "浏阳烟花厂爆炸舆情",
+  "messages": [
+    {
+      "role": "user",
+      "content": "浏阳烟花厂爆炸舆情",
+      "timestamp": "2026-05-05T12:00:07.283288"
+    },
+    {
+      "role": "user",
+      "content": "调查浏阳烟花厂爆炸舆情",
+      "timestamp": "2026-05-05T12:02:28.454567"
+    },
+    {
+      "role": "user",
+      "content": "浏阳烟花爆炸相关舆情信息",
+      "timestamp": "2026-05-05T12:04:25.560713"
+    }
+  ],
+  "token_usage": {
+    "total_tokens": 0,
+    "prompt_tokens": 0,
+    "completion_tokens": 0,
+    "steps": []
+  }
+}

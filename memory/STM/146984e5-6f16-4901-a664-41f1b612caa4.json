@@ -1,0 +1,35 @@
+{
+  "task_id": "146984e5-6f16-4901-a664-41f1b612caa4",
+  "created_at": "2026-05-08T22:11:49.510077",
+  "updated_at": "2026-05-08T22:43:25.250185",
+  "description": "分析全国油价上涨",
+  "initial_query": "全国油价上涨",
+  "messages": [
+    {
+      "role": "user",
+      "content": "全国油价上涨",
+      "timestamp": "2026-05-08T22:11:49.517916"
+    },
+    {
+      "role": "assistant",
+      "content": "已完成舆情事件分析工作流。报告：file:///C:/Users/16330/Desktop/A/A/sona-main/sandbox/146984e5-6f16-4901-a664-41f1b612caa4/%E7%BB%93%E6%9E%9C%E6%96%87%E4%BB%B6/report_20260508_222358.html",
+      "timestamp": "2026-05-08T22:23:59.035957"
+    },
+    {
+      "role": "user",
+      "content": "全国油价上涨",
+      "timestamp": "2026-05-08T22:27:04.451561"
+    },
+    {
+      "role": "assistant",
+      "content": "已完成舆情事件分析工作流。报告：file:///C:/Users/16330/Desktop/A/A/sona-main/sandbox/146984e5-6f16-4901-a664-41f1b612caa4/%E7%BB%93%E6%9E%9C%E6%96%87%E4%BB%B6/report_20260508_224325.html",
+      "timestamp": "2026-05-08T22:43:25.250179"
+    }
+  ],
+  "token_usage": {
+    "total_tokens": 0,
+    "prompt_tokens": 0,
+    "completion_tokens": 0,
+    "steps": []
+  }
+}

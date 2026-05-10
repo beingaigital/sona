@@ -1,0 +1,14 @@
+{
+  "task_id": "ec2c60ec-edb1-47d6-b54e-c23d4a94f9d4",
+  "created_at": "2026-05-06T22:09:24.769943",
+  "updated_at": "2026-05-06T22:09:24.769943",
+  "description": "初始对话：新会话",
+  "initial_query": "新会话",
+  "messages": [],
+  "token_usage": {
+    "total_tokens": 0,
+    "prompt_tokens": 0,
+    "completion_tokens": 0,
+    "steps": []
+  }
+}

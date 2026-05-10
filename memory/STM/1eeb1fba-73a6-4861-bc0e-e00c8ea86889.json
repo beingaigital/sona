@@ -1,0 +1,25 @@
+{
+  "task_id": "1eeb1fba-73a6-4861-bc0e-e00c8ea86889",
+  "created_at": "2026-05-07T23:13:28.562160",
+  "updated_at": "2026-05-07T23:17:24.886379",
+  "description": "分析浪姐第七季直播舆情分析",
+  "initial_query": "浪姐第七季直播舆情分析",
+  "messages": [
+    {
+      "role": "user",
+      "content": "浪姐第七季直播舆情分析",
+      "timestamp": "2026-05-07T23:13:50.342048"
+    },
+    {
+      "role": "assistant",
+      "content": "已完成舆情事件分析工作流。报告：file:///C:/Users/Joan/Downloads/%E7%AC%AC%E4%B8%89%E6%AD%A5/sona-main/sandbox/1eeb1fba-73a6-4861-bc0e-e00c8ea86889/%E7%BB%93%E6%9E%9C%E6%96%87%E4%BB%B6/report_20260507_231724.html",
+      "timestamp": "2026-05-07T23:17:24.886379"
+    }
+  ],
+  "token_usage": {
+    "total_tokens": 0,
+    "prompt_tokens": 0,
+    "completion_tokens": 0,
+    "steps": []
+  }
+}
