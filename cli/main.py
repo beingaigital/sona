@@ -80,6 +80,18 @@ def interactive() -> None:
                     custom_config_path = parts[1] if len(parts) > 1 else None
                     run_hot_command(custom_config_path)
                     continue
+
+                # 处理 /eval 命令：评测模式（生成报告后自动评分）
+                if user_input.strip().startswith("/eval"):
+                    parts = user_input.strip().split(maxsplit=1)
+                    eval_query = parts[1].strip() if len(parts) > 1 else None
+                    run_session_loop(
+                        task_id=None,
+                        force_event_workflow=True,
+                        preset_initial_query=eval_query,
+                        eval_mode=True,
+                    )
+                    continue
                 
                 # 处理其他未知命令
                 console.print(f"[yellow]未知命令: {user_input}[/yellow]")
@@ -87,6 +99,8 @@ def interactive() -> None:
                 console.print("  [cyan]/new[/cyan]     - 开启新的分析会话")
                 console.print("  [cyan]/event[/cyan]   - 强制进入事件分析工作流（可带 query）")
                 console.print("  [dim]                 示例: /event 315晚会舆情分析[/dim]")
+                console.print("  [cyan]/eval[/cyan]    - 评测模式：生成报告后自动评分")
+                console.print("  [dim]                 示例: /eval 沈阳师范大学诺如病毒感染事件[/dim]")
                 console.print("  [cyan]/memory[/cyan]  - 查看并恢复之前的会话")
                 console.print("  [cyan]/models[/cyan]  - 查看所有模型配置")
                 console.print("  [cyan]/tools[/cyan]   - 查看所有可用工具")

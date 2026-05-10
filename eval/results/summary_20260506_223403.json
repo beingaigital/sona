@@ -1,0 +1,285 @@
+{
+  "total_cases": 1,
+  "run_cases": 1,
+  "passed_cases": 1,
+  "failed_cases": 0,
+  "error_cases": 0,
+  "average_score": 90.33,
+  "average_percentage": 90.33,
+  "timestamp": "2026-05-06T22:34:03.304605",
+  "details": [
+    {
+      "case_id": "demo_scoring",
+      "score": 90.33,
+      "max_score": 100,
+      "percentage": 90.33,
+      "status": "passed",
+      "summary": "报告质量评级：优秀（90.3%）。最强维度：structure（100.0%）；最弱维度：evidence（78.0%）。",
+      "recommendations": [],
+      "breakdown": {
+        "structure": {
+          "score": 25.000000000000004,
+          "max_score": 25,
+          "percentage": 100.0,
+          "passed": true,
+          "level": "excellent",
+          "issues": [],
+          "details": {
+            "found_sections": [
+              "摘要",
+              "事件",
+              "舆情",
+              "分析",
+              "趋势",
+              "建议"
+            ],
+            "missing_sections": [],
+            "char_count": 1210
+          }
+        },
+        "fields": {
+          "score": 20.833333333333336,
+          "max_score": 25,
+          "percentage": 83.33,
+          "passed": true,
+          "level": "good",
+          "issues": [
+            "字段 'event_title' 覆盖不完整 (50%)",
+            "字段 'key_points' 覆盖不完整 (50%)"
+          ],
+          "details": {
+            "found_fields": [
+              "event_title",
+              "time_range",
+              "data_volume",
+              "sentiment",
+              "key_points",
+              "sources"
+            ],
+            "missing_fields": [],
+            "field_coverage": {
+              "event_title": 50,
+              "time_range": 100,
+              "data_volume": 100,
+              "sentiment": 100,
+              "key_points": 50,
+              "sources": 100
+            }
+          }
+        },
+        "evidence": {
+          "score": 19.5,
+          "max_score": 25,
+          "percentage": 78.0,
+          "passed": true,
+          "level": "pass",
+          "issues": [],
+          "details": {
+            "evidence_stats": {
+              "data": 4,
+              "quote": 2,
+              "source": 6,
+              "example": 1
+            },
+            "paragraph_analysis": [
+              {
+                "length": 108,
+                "has_claim": true,
+                "has_evidence": true
+              },
+              {
+                "length": 101,
+                "has_claim": true,
+                "has_evidence": true
+              },
+              {
+                "length": 109,
+                "has_claim": true,
+                "has_evidence": true
+              },
+              {
+                "length": 61,
+                "has_claim": true,
+                "has_evidence": false
+              },
+              {
+                "length": 107,
+                "has_claim": true,
+                "has_evidence": false
+              }
+            ],
+            "claim_count": 5,
+            "evidence_supported": 3,
+            "support_rate": 0.6
+          }
+        },
+        "consistency": {
+          "score": 25,
+          "max_score": 25,
+          "percentage": 100.0,
+          "passed": true,
+          "level": "excellent",
+          "issues": [],
+          "details": {
+            "numbers_found": [
+              {
+                "value": "42",
+                "type": "percentage",
+                "context": "下：\n- 正面评价：42%（主要集中在产品设计",
+                "position": 286
+              },
+              {
+                "value": "35",
+                "type": "percentage",
+                "context": "置）\n- 负面评价：35%（主要围绕定价过高、",
+                "position": 313
+              },
+              {
+                "value": "23",
+                "type": "percentage",
+                "context": "足）\n- 中性评价：23%（以客观转发、资讯分",
+                "position": 339
+              },
+              {
+                "value": "15.8",
+                "type": "wan",
+                "context": "据统计，相关讨论量达15.8万条，覆盖微博、知乎、",
+                "position": 75
+              },
+              {
+                "value": "15",
+                "type": "wan",
+                "context": "突破5亿，讨论量超过15万条。\n\n## 舆情分",
+                "position": 239
+              },
+              {
+                "value": "8.2",
+                "type": "wan",
+                "context": "：\n- 微博：讨论量8.2万条，为主要发酵平台\n",
+                "position": 385
+              },
+              {
+                "value": "500",
+                "type": "wan",
+                "context": "：相关视频播放量3,500万次\n- B站：评测视",
+                "position": 437
+              },
+              {
+                "value": "10",
+                "type": "wan",
+                "context": "00余条，平均播放量10万+\n\n### 关键观",
+                "position": 463
+              },
+              {
+                "value": "15.8",
+                "type": "wan",
+                "context": "台*  \n*样本量：15.8万条相关讨论*\n",
+                "position": 1198
+              },
+              {
+                "value": "5",
+                "type": "yi",
+                "context": "，相关话题阅读量突破5亿，讨论量超过15万条",
+                "position": 231
+              },
+              {
+                "value": "2024",
+                "type": "year",
+                "context": "\n本报告针对某品牌于2024年3月15日发布新款智",
+                "position": 35
+              },
+              {
+                "value": "2024",
+                "type": "year",
+                "context": "\n\n## 事件回顾\n2024年3月15日，某知名品",
+                "position": 138
+              },
+              {
+                "value": "2024",
+                "type": "year",
+                "context": "-\n*报告生成时间：2024年3月16日*  \n*",
+                "position": 1153
+              },
+              {
+                "value": "3",
+                "type": "month",
+                "context": "对某品牌于2024年3月15日发布新款智能手",
+                "position": 40
+              },
+              {
+                "value": "3",
+                "type": "month",
+                "context": "事件回顾\n2024年3月15日，某知名品牌召",
+                "position": 143
+              },
+              {
+                "value": "3",
+                "type": "month",
+                "context": "生成时间：2024年3月16日*  \n*数据",
+                "position": 1158
+              },
+              {
+                "value": "15",
+                "type": "day",
+                "context": "品牌于2024年3月15日发布新款智能手机引发",
+                "position": 42
+              },
+              {
+                "value": "15",
+                "type": "day",
+                "context": "回顾\n2024年3月15日，某知名品牌召开春季",
+                "position": 145
+              },
+              {
+                "value": "16",
+                "type": "day",
+                "context": "时间：2024年3月16日*  \n*数据来源：",
+                "position": 1160
+              },
+              {
+                "value": "2024",
+                "type": "number",
+                "context": "\n本报告针对某品牌于2024年3月15日发布新款",
+                "position": 35
+              }
+            ],
+            "inconsistencies": [],
+            "checks": {
+              "time": {
+                "passed": true,
+                "issues": [],
+                "time_refs": [
+                  "2024年3月15",
+                  "2024年3月15",
+                  "2024年3月16",
+                  "2024年3",
+                  "2024年3"
+                ]
+              },
+              "logic": {
+                "passed": true,
+                "issues": [],
+                "percentages": [
+                  42.0,
+                  35.0,
+                  23.0
+                ]
+              },
+              "data": {
+                "passed": true,
+                "issues": []
+              },
+              "percentage": {
+                "passed": true,
+                "issues": [],
+                "checked_patterns": 2
+              }
+            }
+          }
+        }
+      },
+      "timestamp": "2026-05-06T22:34:03.304094",
+      "report_preview": "# 舆情分析报告：某品牌新品发布事件\n\n## 摘要\n本报告针对某品牌于2024年3月15日发布新款智能手机引发的舆情进行深度分析。据统计，相关讨论量达15.8万条，覆盖微博、知乎、抖音等主要社交平台。事件整体呈现中性偏正面态势，但价格争议成为主要讨论焦点。\n\n## 事件回顾\n2024年3月15日，某知名品牌召开春季新品发布会，正式发布旗舰手机X20系列。该产品搭载最新处理器，配备6.7英寸OLED..."
+    }
+  ]
+}

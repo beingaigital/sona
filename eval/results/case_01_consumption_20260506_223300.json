@@ -1,0 +1,181 @@
+{
+  "case_id": "case_01_consumption",
+  "score": 37.5,
+  "max_score": 100,
+  "percentage": 37.5,
+  "status": "failed",
+  "summary": "报告质量评级：不合格（37.5%）。最强维度：structure（50.0%）；最弱维度：evidence（0.0%）。未达标维度：structure, fields, evidence, consistency。",
+  "recommendations": [
+    "完善报告结构，确保包含摘要、事件、舆情、分析、趋势、建议等章节",
+    "补充关键数据字段，如事件标题、时间范围、数据量、情感倾向等",
+    "增加数据引用和来源标注，提升论据可信度",
+    "检查数值逻辑一致性，确保时间、百分比等描述准确无误"
+  ],
+  "breakdown": {
+    "structure": {
+      "score": 12.500000000000002,
+      "max_score": 25,
+      "percentage": 50.0,
+      "passed": false,
+      "level": "fail",
+      "issues": [
+        "报告内容过短 (290 字符)"
+      ],
+      "details": {
+        "found_sections": [
+          "摘要",
+          "事件",
+          "舆情",
+          "分析",
+          "趋势",
+          "建议"
+        ],
+        "missing_sections": [],
+        "char_count": 290
+      }
+    },
+    "fields": {
+      "score": 12.500000000000002,
+      "max_score": 25,
+      "percentage": 50.0,
+      "passed": false,
+      "level": "fail",
+      "issues": [
+        "字段 'event_title' 覆盖不完整 (50%)",
+        "字段 'time_range' 覆盖不完整 (50%)",
+        "字段 'data_volume' 覆盖不完整 (50%)",
+        "缺少必需字段: key_points",
+        "字段 'sources' 覆盖不完整 (50%)"
+      ],
+      "details": {
+        "found_fields": [
+          "event_title",
+          "time_range",
+          "data_volume",
+          "sentiment",
+          "sources"
+        ],
+        "missing_fields": [
+          "key_points"
+        ],
+        "field_coverage": {
+          "event_title": 50,
+          "time_range": 50,
+          "data_volume": 50,
+          "sentiment": 100,
+          "key_points": 0,
+          "sources": 50
+        }
+      }
+    },
+    "evidence": {
+      "score": 0.0,
+      "max_score": 25,
+      "percentage": 0.0,
+      "passed": false,
+      "level": "fail",
+      "issues": [
+        "数据引用不足，建议增加统计数据支撑",
+        "来源标注不足，建议明确信息来源",
+        "论点证据支持率较低 (0.0%)"
+      ],
+      "details": {
+        "evidence_stats": {
+          "data": 0,
+          "quote": 0,
+          "source": 0,
+          "example": 0
+        },
+        "paragraph_analysis": [
+          {
+            "length": 65,
+            "has_claim": true,
+            "has_evidence": false
+          }
+        ],
+        "claim_count": 1,
+        "evidence_supported": 0,
+        "support_rate": 0.0
+      }
+    },
+    "consistency": {
+      "score": 12.5,
+      "max_score": 25,
+      "percentage": 50.0,
+      "passed": false,
+      "level": "fail",
+      "issues": [
+        "数据量过少 (1.0)，可能影响分析代表性",
+        "文本中未找到数据量 (1000) 的对应描述"
+      ],
+      "details": {
+        "numbers_found": [
+          {
+            "value": "1",
+            "type": "number",
+            "context": "注。\n\n舆情分析：\n1. 主流媒体观点：客",
+            "position": 164
+          },
+          {
+            "value": "2",
+            "type": "number",
+            "context": "报道，关注事件进展\n2. 社交媒体情绪：呈",
+            "position": 186
+          },
+          {
+            "value": "3",
+            "type": "number",
+            "context": "绪：呈现多元化态势\n3. 专家意见：存在不",
+            "position": 204
+          },
+          {
+            "value": "1",
+            "type": "number",
+            "context": "续发展。\n\n建议：\n1. 加强信息监测\n2",
+            "position": 258
+          },
+          {
+            "value": "2",
+            "type": "number",
+            "context": "1. 加强信息监测\n2. 及时回应公众关切",
+            "position": 268
+          },
+          {
+            "value": "3",
+            "type": "number",
+            "context": " 及时回应公众关切\n3. 做好风险预案\n",
+            "position": 280
+          }
+        ],
+        "inconsistencies": [],
+        "checks": {
+          "time": {
+            "passed": true,
+            "issues": [],
+            "time_refs": []
+          },
+          "logic": {
+            "passed": false,
+            "issues": [
+              "数据量过少 (1.0)，可能影响分析代表性"
+            ],
+            "percentages": []
+          },
+          "data": {
+            "passed": false,
+            "issues": [
+              "文本中未找到数据量 (1000) 的对应描述"
+            ]
+          },
+          "percentage": {
+            "passed": true,
+            "issues": [],
+            "checked_patterns": 2
+          }
+        }
+      }
+    }
+  },
+  "timestamp": "2026-05-06T22:33:00.637300",
+  "report_preview": "[Mock Report] 舆情分析报告：App自动续费乱象及《消费者权益保护法实施条例》规范舆情分析\n\n摘要：\n本报告针对「App自动续费乱象及《消费者权益保护法实施条例》规范舆情分析」进行舆情分析，梳理了事件发展脉络和舆论关注点。\n\n事件回顾：\n事件起因于近期网络热议，涉及多个利益相关方，引发广泛社会关注。\n\n舆情分析：\n1. 主流媒体观点：客观报道，关注事件进展\n2. 社交媒体情绪：呈现多元..."
+}

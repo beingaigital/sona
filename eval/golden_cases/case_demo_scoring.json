@@ -1,0 +1,61 @@
+{
+  "case_id": "demo_scoring",
+  "domain": "演示",
+  "target": "workflow",
+  "stage": "report",
+  "mode": "replay",
+  "query": "演示自动评分器功能的测试案例",
+  "description": "本案例用于演示 AutoScorer 的四维度评分功能",
+  "scoring_weights": {
+    "structure": 25,
+    "fields": 25,
+    "evidence": 25,
+    "consistency": 25
+  },
+  "required_sections": [
+    ["摘要", ["摘要", "概述"]],
+    ["事件", ["事件", "背景"]],
+    ["舆情", ["舆情", "舆论"]],
+    ["分析", ["分析", "研判"]],
+    ["趋势", ["趋势", "预测"]],
+    ["建议", ["建议", "对策"]]
+  ],
+  "required_fields": [
+    ["event_title", ["事件标题", "标题"]],
+    ["time_range", ["时间范围", "时间"]],
+    ["data_volume", ["数据量", "样本量"]],
+    ["sentiment", ["情感", "情绪"]],
+    ["key_points", ["要点", "重点"]],
+    ["sources", ["来源", "渠道"]]
+  ],
+  "expected_key_points": [
+    "事件背景介绍",
+    "舆情数据统计",
+    "情感倾向分析",
+    "趋势预测判断",
+    "应对建议措施"
+  ],
+  "red_lines": [
+    "泄露个人隐私信息",
+    "传播未经证实的谣言",
+    "包含歧视性言论"
+  ],
+  "rubric": {
+    "structure": {
+      "max_score": 25,
+      "description": "结构完整性 - 检查必需章节是否齐全"
+    },
+    "fields": {
+      "max_score": 25,
+      "description": "字段完整性 - 检查关键数据字段"
+    },
+    "evidence": {
+      "max_score": 25,
+      "description": "证据充分性 - 检查数据引用和来源"
+    },
+    "consistency": {
+      "max_score": 25,
+      "description": "数值一致性 - 检查逻辑和计算"
+    }
+  }
+}

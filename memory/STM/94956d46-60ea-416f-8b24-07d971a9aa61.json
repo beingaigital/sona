@@ -1,0 +1,20 @@
+{
+  "task_id": "94956d46-60ea-416f-8b24-07d971a9aa61",
+  "created_at": "2026-05-07T20:10:56.321023",
+  "updated_at": "2026-05-07T20:14:41.121922",
+  "description": "分析浪姐直播舆情分析",
+  "initial_query": "浪姐直播舆情分析",
+  "messages": [
+    {
+      "role": "user",
+      "content": "浪姐直播舆情分析",
+      "timestamp": "2026-05-07T20:11:26.861484"
+    }
+  ],
+  "token_usage": {
+    "total_tokens": 0,
+    "prompt_tokens": 0,
+    "completion_tokens": 0,
+    "steps": []
+  }
+}

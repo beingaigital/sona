@@ -35,3 +35,9 @@
 2. event_type/domain/theory_names 可以为 None 或空字符串，但指标维度必须给出至少1条。
 3. key_events 与 key_risks 必须与上面的时间线与情感/统计结论一致。
 4. theory_names 需优先从“舆情智库与参考资料”中选择与本事件强相关项，避免机械重复固定理论组合。
+
+## Harness附加规则（必须遵守）
+1. 事实可追溯：narrative_summary/key_events/key_risks/stage 必须可由输入 JSON 证据支持。
+2. 证据不足：输入无法支撑的结论必须写“证据不足”，不得补齐推断。
+3. 不可编造：不得新增不存在的时间线节点、情感拐点、风险事件。
+4. 低样本中止协同：若样本不足以支撑阶段判断，stage 输出“证据不足”，并降低结论确定性。

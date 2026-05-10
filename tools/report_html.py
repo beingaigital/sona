@@ -1448,6 +1448,19 @@ def report_html(
     html_content = _fix_chart_title_legend_overlap(html_content)
     html_content = _fix_sentiment_colors_and_volume_spacing(html_content)
     
+    # ============ 添加评分模块到报告末尾 ============
+    try:
+        score_module_html = _generate_score_module(html_content, json_files, task_id)
+        if score_module_html:
+            # 在 </body> 前插入评分模块
+            if "</body>" in html_content:
+                html_content = html_content.replace("</body>", f"{score_module_html}\n</body>")
+            else:
+                html_content += score_module_html
+    except Exception as e:
+        # 评分失败不影响主报告生成
+        pass
+    
     # 确保结果文件夹存在
     result_dir = get_task_result_dir(task_id)
     result_dir.mkdir(parents=True, exist_ok=True)

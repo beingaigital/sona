@@ -1,0 +1,36 @@
+# .env 与模型配置
+python-dotenv>=1.0.0
+PyYAML>=6.0
+requests>=2.28.0
+pytz>=2024.1
+
+# LangChain - 兼容 Python 3.9 的版本
+langchain==0.2.17
+langchain-core==0.2.43
+langchain-community==0.2.19
+langchain-openai==0.1.25
+langchain-google-genai==1.0.10
+langgraph==0.1.19
+
+# Qwen / DashScope
+dashscope>=1.20.0
+
+# 网页搜索 - MCP 适配器暂时注释，需要 Python 3.10+
+# langchain-mcp-adapters>=0.1.0
+
+# 中文分词与高频词统计
+jieba>=0.42.1
+
+# 浏览器自动化（用于 NetInsight 登录）
+playwright>=1.40.0
+
+# CLI 颜色支持
+colorama>=0.4.6
+
+# CLI 框架和美化
+typer>=0.9.0
+rich>=13.7.0
+prompt-toolkit>=3.0.43
+
+# 测试
+pytest>=8.0.0

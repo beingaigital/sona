@@ -1,0 +1,35 @@
+{
+  "task_id": "387d715d-600c-4191-8101-ebe8971b0a1a",
+  "created_at": "2026-05-07T23:51:42.575478",
+  "updated_at": "2026-05-07T23:59:42.485945",
+  "description": "分析电视剧白日提灯",
+  "initial_query": "田栩宁女友舆情",
+  "messages": [
+    {
+      "role": "user",
+      "content": "田栩宁女友舆情",
+      "timestamp": "2026-05-07T23:52:52.552450"
+    },
+    {
+      "role": "user",
+      "content": "电视剧白日提灯",
+      "timestamp": "2026-05-07T23:54:55.324497"
+    },
+    {
+      "role": "user",
+      "content": "电视剧白日提灯",
+      "timestamp": "2026-05-07T23:55:39.562279"
+    },
+    {
+      "role": "assistant",
+      "content": "已完成舆情事件分析工作流。报告：file:///C:/Users/Joan/Downloads/%E7%AC%AC%E4%B8%89%E6%AD%A5/sona-main/sandbox/387d715d-600c-4191-8101-ebe8971b0a1a/%E7%BB%93%E6%9E%9C%E6%96%87%E4%BB%B6/report_20260507_235942.html",
+      "timestamp": "2026-05-07T23:59:42.485945"
+    }
+  ],
+  "token_usage": {
+    "total_tokens": 0,
+    "prompt_tokens": 0,
+    "completion_tokens": 0,
+    "steps": []
+  }
+}

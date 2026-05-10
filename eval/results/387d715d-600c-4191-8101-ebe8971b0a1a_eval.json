@@ -1,0 +1,291 @@
+{
+  "case_id": "387d715d-600c-4191-8101-ebe8971b0a1a",
+  "score": 67.95,
+  "max_score": 100,
+  "percentage": 67.95,
+  "status": "failed",
+  "summary": "报告质量评级：合格（68.0%）。最强维度：structure（100.0%）；最弱维度：evidence（29.3%）。未达标维度：evidence。",
+  "recommendations": [
+    "增加数据引用和来源标注，提升论据可信度"
+  ],
+  "breakdown": {
+    "structure": {
+      "score": 25.000000000000004,
+      "max_score": 25,
+      "percentage": 100.0,
+      "passed": true,
+      "level": "excellent",
+      "issues": [],
+      "details": {
+        "found_sections": [
+          "摘要",
+          "事件",
+          "舆情",
+          "分析",
+          "趋势",
+          "建议"
+        ],
+        "missing_sections": [],
+        "char_count": 23322
+      }
+    },
+    "fields": {
+      "score": 16.875,
+      "max_score": 25,
+      "percentage": 67.5,
+      "passed": true,
+      "level": "pass",
+      "issues": [
+        "字段 'event_title' 覆盖不完整 (50%)",
+        "字段 'data_volume' 覆盖不完整 (50%)",
+        "字段 'key_points' 覆盖不完整 (50%)",
+        "存在空值字段: theories, results, positive_summary, negative_summary, timeline"
+      ],
+      "details": {
+        "found_fields": [
+          "event_title",
+          "time_range",
+          "data_volume",
+          "sentiment",
+          "key_points",
+          "sources"
+        ],
+        "missing_fields": [],
+        "field_coverage": {
+          "event_title": 50,
+          "time_range": 100,
+          "data_volume": 50,
+          "sentiment": 100,
+          "key_points": 50,
+          "sources": 100
+        }
+      }
+    },
+    "evidence": {
+      "score": 7.33,
+      "max_score": 25,
+      "percentage": 29.32,
+      "passed": false,
+      "level": "fail",
+      "issues": [
+        "数据引用不足，建议增加统计数据支撑",
+        "论点证据支持率较低 (33.3%)"
+      ],
+      "details": {
+        "evidence_stats": {
+          "data": 0,
+          "quote": 1,
+          "source": 8,
+          "example": 1
+        },
+        "paragraph_analysis": [
+          {
+            "length": 495,
+            "has_claim": true,
+            "has_evidence": false
+          },
+          {
+            "length": 783,
+            "has_claim": true,
+            "has_evidence": false
+          },
+          {
+            "length": 764,
+            "has_claim": true,
+            "has_evidence": false
+          },
+          {
+            "length": 787,
+            "has_claim": true,
+            "has_evidence": false
+          },
+          {
+            "length": 802,
+            "has_claim": true,
+            "has_evidence": true
+          },
+          {
+            "length": 238,
+            "has_claim": true,
+            "has_evidence": true
+          }
+        ],
+        "claim_count": 6,
+        "evidence_supported": 2,
+        "support_rate": 0.3333333333333333
+      }
+    },
+    "consistency": {
+      "score": 18.75,
+      "max_score": 25,
+      "percentage": 75.0,
+      "passed": true,
+      "level": "pass",
+      "issues": [
+        "百分比总和超过100%: 345.0%",
+        "数据量过少 (8.0)，可能影响分析代表性"
+      ],
+      "details": {
+        "numbers_found": [
+          {
+            "value": "0",
+            "type": "percentage",
+            "context": "ad-start) 0%, var(--bg",
+            "position": 999
+          },
+          {
+            "value": "100",
+            "type": "percentage",
+            "context": "grad-end) 100%);\n       ",
+            "position": 1022
+          },
+          {
+            "value": "100",
+            "type": "percentage",
+            "context": "x; width: 100%; margin-t",
+            "position": 3564
+          },
+          {
+            "value": "0.0",
+            "type": "percentage",
+            "context": "#4ecdc4;\">0.0%</div></di",
+            "position": 5129
+          },
+          {
+            "value": "0.0",
+            "type": "percentage",
+            "context": "#ff6b6b;\">0.0%</div></di",
+            "position": 5258
+          },
+          {
+            "value": "5",
+            "type": "percentage",
+            "context": " bottom: '5%', left: '",
+            "position": 13796
+          },
+          {
+            "value": "40",
+            "type": "percentage",
+            "context": "radius: ['40%', '70%'],",
+            "position": 13881
+          },
+          {
+            "value": "70",
+            "type": "percentage",
+            "context": " ['40%', '70%'],\n      ",
+            "position": 13888
+          },
+          {
+            "value": "2",
+            "type": "percentage",
+            "context": ": { top: '2%', left: '",
+            "position": 14276
+          },
+          {
+            "value": "2",
+            "type": "percentage",
+            "context": ": { top: '2%', left: '",
+            "position": 14913
+          },
+          {
+            "value": "2",
+            "type": "percentage",
+            "context": ": { top: '2%', left: '",
+            "position": 15431
+          },
+          {
+            "value": "20",
+            "type": "percentage",
+            "context": " { left: '20%' },\n     ",
+            "position": 15498
+          },
+          {
+            "value": "2",
+            "type": "percentage",
+            "context": ": { top: '2%', left: '",
+            "position": 16005
+          },
+          {
+            "value": "2",
+            "type": "percentage",
+            "context": ": { top: '2%', left: '",
+            "position": 16504
+          },
+          {
+            "value": "8",
+            "type": "number",
+            "context": "rset=\"UTF-8\">\n    <me",
+            "position": 66
+          },
+          {
+            "value": "1.0",
+            "type": "number",
+            "context": "ial-scale=1.0\">\n    <ti",
+            "position": 139
+          },
+          {
+            "value": "429",
+            "type": "number",
+            "context": "ror code: 429 - {&#x27;",
+            "position": 173
+          },
+          {
+            "value": "27",
+            "type": "number",
+            "context": "429 - {&#x27;error&#x2",
+            "position": 183
+          },
+          {
+            "value": "27",
+            "type": "number",
+            "context": "7;error&#x27;: {&#x27;",
+            "position": 194
+          },
+          {
+            "value": "27",
+            "type": "number",
+            "context": "x27;: {&#x27;messa | 舆",
+            "position": 203
+          }
+        ],
+        "inconsistencies": [],
+        "checks": {
+          "time": {
+            "passed": true,
+            "issues": [],
+            "time_refs": [
+              "2026-05-07",
+              "2026-04-07",
+              "2026-04-08",
+              "2026-04-09",
+              "2026-04-10"
+            ]
+          },
+          "logic": {
+            "passed": false,
+            "issues": [
+              "百分比总和超过100%: 345.0%",
+              "数据量过少 (8.0)，可能影响分析代表性"
+            ],
+            "percentages": [
+              0.0,
+              100.0,
+              100.0,
+              0.0,
+              0.0
+            ]
+          },
+          "data": {
+            "passed": true,
+            "issues": []
+          },
+          "percentage": {
+            "passed": true,
+            "issues": [],
+            "checked_patterns": 2
+          }
+        }
+      }
+    }
+  }
+}

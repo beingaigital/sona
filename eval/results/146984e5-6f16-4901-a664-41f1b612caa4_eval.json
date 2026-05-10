@@ -1,0 +1,300 @@
+{
+  "case_id": "146984e5-6f16-4901-a664-41f1b612caa4",
+  "score": 73.51,
+  "max_score": 100,
+  "percentage": 73.51,
+  "status": "passed",
+  "summary": "报告质量评级：合格（73.5%）。最强维度：structure（100.0%）；最弱维度：evidence（51.5%）。未达标维度：evidence。",
+  "recommendations": [
+    "增加数据引用和来源标注，提升论据可信度"
+  ],
+  "breakdown": {
+    "structure": {
+      "score": 25.000000000000004,
+      "max_score": 25,
+      "percentage": 100.0,
+      "passed": true,
+      "level": "excellent",
+      "issues": [],
+      "details": {
+        "found_sections": [
+          "摘要",
+          "事件",
+          "舆情",
+          "分析",
+          "趋势",
+          "建议"
+        ],
+        "missing_sections": [],
+        "char_count": 23861
+      }
+    },
+    "fields": {
+      "score": 16.875,
+      "max_score": 25,
+      "percentage": 67.5,
+      "passed": true,
+      "level": "pass",
+      "issues": [
+        "字段 'event_title' 覆盖不完整 (50%)",
+        "字段 'data_volume' 覆盖不完整 (50%)",
+        "字段 'key_points' 覆盖不完整 (50%)",
+        "存在空值字段: results, statistics, positive_summary, negative_summary, expert_note"
+      ],
+      "details": {
+        "found_fields": [
+          "event_title",
+          "time_range",
+          "data_volume",
+          "sentiment",
+          "key_points",
+          "sources"
+        ],
+        "missing_fields": [],
+        "field_coverage": {
+          "event_title": 50,
+          "time_range": 100,
+          "data_volume": 50,
+          "sentiment": 100,
+          "key_points": 50,
+          "sources": 100
+        }
+      }
+    },
+    "evidence": {
+      "score": 12.88,
+      "max_score": 25,
+      "percentage": 51.52,
+      "passed": false,
+      "level": "fail",
+      "issues": [
+        "数据引用不足，建议增加统计数据支撑"
+      ],
+      "details": {
+        "evidence_stats": {
+          "data": 0,
+          "quote": 4,
+          "source": 37,
+          "example": 2
+        },
+        "paragraph_analysis": [
+          {
+            "length": 494,
+            "has_claim": true,
+            "has_evidence": false
+          },
+          {
+            "length": 623,
+            "has_claim": true,
+            "has_evidence": true
+          },
+          {
+            "length": 825,
+            "has_claim": true,
+            "has_evidence": true
+          },
+          {
+            "length": 794,
+            "has_claim": true,
+            "has_evidence": true
+          },
+          {
+            "length": 864,
+            "has_claim": true,
+            "has_evidence": true
+          },
+          {
+            "length": 700,
+            "has_claim": true,
+            "has_evidence": true
+          },
+          {
+            "length": 274,
+            "has_claim": true,
+            "has_evidence": true
+          },
+          {
+            "length": 3175,
+            "has_claim": true,
+            "has_evidence": false
+          }
+        ],
+        "claim_count": 8,
+        "evidence_supported": 6,
+        "support_rate": 0.75
+      }
+    },
+    "consistency": {
+      "score": 18.75,
+      "max_score": 25,
+      "percentage": 75.0,
+      "passed": true,
+      "level": "pass",
+      "issues": [
+        "百分比总和超过100%: 345.0%",
+        "数据量过少 (8.0)，可能影响分析代表性"
+      ],
+      "details": {
+        "numbers_found": [
+          {
+            "value": "0",
+            "type": "percentage",
+            "context": "ad-start) 0%, var(--bg",
+            "position": 956
+          },
+          {
+            "value": "100",
+            "type": "percentage",
+            "context": "grad-end) 100%);\n       ",
+            "position": 979
+          },
+          {
+            "value": "100",
+            "type": "percentage",
+            "context": "x; width: 100%; margin-t",
+            "position": 3521
+          },
+          {
+            "value": "0.0",
+            "type": "percentage",
+            "context": "#4ecdc4;\">0.0%</div></di",
+            "position": 5015
+          },
+          {
+            "value": "0.0",
+            "type": "percentage",
+            "context": "#ff6b6b;\">0.0%</div></di",
+            "position": 5144
+          },
+          {
+            "value": "5",
+            "type": "percentage",
+            "context": " bottom: '5%', left: '",
+            "position": 14335
+          },
+          {
+            "value": "40",
+            "type": "percentage",
+            "context": "radius: ['40%', '70%'],",
+            "position": 14420
+          },
+          {
+            "value": "70",
+            "type": "percentage",
+            "context": " ['40%', '70%'],\n      ",
+            "position": 14427
+          },
+          {
+            "value": "2",
+            "type": "percentage",
+            "context": ": { top: '2%', left: '",
+            "position": 14815
+          },
+          {
+            "value": "2",
+            "type": "percentage",
+            "context": ": { top: '2%', left: '",
+            "position": 15452
+          },
+          {
+            "value": "2",
+            "type": "percentage",
+            "context": ": { top: '2%', left: '",
+            "position": 15970
+          },
+          {
+            "value": "20",
+            "type": "percentage",
+            "context": " { left: '20%' },\n     ",
+            "position": 16037
+          },
+          {
+            "value": "2",
+            "type": "percentage",
+            "context": ": { top: '2%', left: '",
+            "position": 16544
+          },
+          {
+            "value": "2",
+            "type": "percentage",
+            "context": ": { top: '2%', left: '",
+            "position": 17043
+          },
+          {
+            "value": "2026",
+            "type": "year",
+            "context": "><li>监测周期为2026年4月7日至5月7日，",
+            "position": 6602
+          },
+          {
+            "value": "4",
+            "type": "month",
+            "context": "监测周期为2026年4月7日至5月7日，但内",
+            "position": 6607
+          },
+          {
+            "value": "5",
+            "type": "month",
+            "context": "2026年4月7日至5月7日，但内部波动细节",
+            "position": 6612
+          },
+          {
+            "value": "5",
+            "type": "month",
+            "context": "超话\",\"5元\",\"5月8日24时\",\"29",
+            "position": 12134
+          },
+          {
+            "value": "7",
+            "type": "day",
+            "context": "周期为2026年4月7日至5月7日，但内部波",
+            "position": 6609
+          },
+          {
+            "value": "7",
+            "type": "day",
+            "context": "26年4月7日至5月7日，但内部波动细节无法",
+            "position": 6614
+          }
+        ],
+        "inconsistencies": [],
+        "checks": {
+          "time": {
+            "passed": true,
+            "issues": [],
+            "time_refs": [
+              "2026年4月7",
+              "2026-05-08",
+              "2026-04-07",
+              "2026-04-08",
+              "2026-04-09"
+            ]
+          },
+          "logic": {
+            "passed": false,
+            "issues": [
+              "百分比总和超过100%: 345.0%",
+              "数据量过少 (8.0)，可能影响分析代表性"
+            ],
+            "percentages": [
+              0.0,
+              100.0,
+              100.0,
+              0.0,
+              0.0
+            ]
+          },
+          "data": {
+            "passed": true,
+            "issues": []
+          },
+          "percentage": {
+            "passed": true,
+            "issues": [],
+            "checked_patterns": 2
+          }
+        }
+      }
+    }
+  }
+}

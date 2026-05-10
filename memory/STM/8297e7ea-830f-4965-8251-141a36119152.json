@@ -1,0 +1,20 @@
+{
+  "task_id": "8297e7ea-830f-4965-8251-141a36119152",
+  "created_at": "2026-05-02T20:13:44.144877",
+  "updated_at": "2026-05-02T20:13:44.154432",
+  "description": "分析亚航飞机上女子与乘客争吵导致飞机延误",
+  "initial_query": "亚航飞机上女子与乘客争吵导致飞机延误",
+  "messages": [
+    {
+      "role": "user",
+      "content": "亚航飞机上女子与乘客争吵导致飞机延误",
+      "timestamp": "2026-05-02T20:13:44.153715"
+    }
+  ],
+  "token_usage": {
+    "total_tokens": 0,
+    "prompt_tokens": 0,
+    "completion_tokens": 0,
+    "steps": []
+  }
+}

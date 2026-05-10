@@ -181,8 +181,12 @@ def _create_kimi(model: str, api_key: str, **kwargs: Any) -> Any:
 
     默认 base_url: https://api.moonshot.cn/v1
     可在 config/model.yaml 的 profile 中用 base_url 覆盖。
+    
+    注意：Kimi 模型只支持 temperature=1，强制设置以避免 400 错误。
     """
     base_url = str(kwargs.pop("base_url", "") or "https://api.moonshot.cn/v1").strip()
+    # Kimi 模型只支持 temperature=1，强制覆盖
+    kwargs["temperature"] = 1.0
     return _create_openai_compatible(model=model, api_key=api_key, base_url=base_url, **kwargs)
 
 

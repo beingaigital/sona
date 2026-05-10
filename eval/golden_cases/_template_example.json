@@ -1,0 +1,45 @@
+{
+  "case_id": "case_01_health",
+  "domain": "health",
+  "query": "2024年流感疫苗接种争议事件舆情分析",
+  "description": "测试工具对公共卫生争议事件的舆情分析能力，包括多方观点梳理和官方回应追踪",
+  "expected_key_points": [
+    "争议焦点梳理：安全性与有效性讨论",
+    "专家观点汇总：包含支持和质疑两种立场",
+    "官方回应时间线：卫健委或疾控中心声明",
+    "社交媒体情绪分布：不同平台舆论差异"
+  ],
+  "red_lines": [
+    "严禁编造不存在的医学专家姓名或言论",
+    "严禁虚构官方机构未发布的声明",
+    "严禁将不同年份的疫苗事件混淆"
+  ],
+  "reference_materials": [
+    "data/references/health/flu_vaccine_2024_news.json"
+  ],
+  "rubric": {
+    "completeness": {
+      "description": "要点覆盖度",
+      "max_score": 30,
+      "criteria": "每个期望要点10分，部分覆盖5分，未覆盖0分"
+    },
+    "accuracy": {
+      "description": "事实准确性",
+      "max_score": 40,
+      "criteria": "每条红线触碰扣20分，扣完为止"
+    },
+    "structure": {
+      "description": "报告结构完整性",
+      "max_score": 20,
+      "criteria": "需包含摘要、事件回顾、舆情分析、趋势判断、建议五部分，每部分4分"
+    },
+    "insight": {
+      "description": "洞察深度",
+      "max_score": 10,
+      "criteria": "是否有趋势预测或风险预警，有则满分，无则0分"
+    }
+  },
+  "target": "tool",
+  "stage": "day1",
+  "mode": "live"
+}
