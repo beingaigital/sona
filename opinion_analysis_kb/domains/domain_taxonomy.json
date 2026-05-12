@@ -1,0 +1,153 @@
+{
+  "version": "1.0",
+  "description": "Domain taxonomy for health, transport, and panda public opinion knowledge packages. This file guides members responsible for domain materials and keeps downstream Schema/Graph RAG fields consistent.",
+  "domains": {
+    "health": {
+      "name": "健康舆情",
+      "description": "Covers medical disputes, public health, tobacco control, doctor-patient relations, hospital management, and health policy communication.",
+      "subdomains": [
+        "medical_dispute",
+        "public_health",
+        "tobacco_control",
+        "hospital_management",
+        "doctor_patient_relationship",
+        "health_policy"
+      ],
+      "scenarios": [
+        "医疗纠纷",
+        "公共卫生事件",
+        "控烟政策争议",
+        "医患关系冲突",
+        "医院管理争议",
+        "健康政策传播"
+      ],
+      "key_risks": [
+        "信息不透明",
+        "专家信任危机",
+        "公共卫生恐慌",
+        "医患对立标签化",
+        "个案引发制度性质疑",
+        "控烟政策争议",
+        "谣言与事实混杂"
+      ],
+      "recommended_tactics": [
+        "专家解释介入",
+        "透明公布调查进展",
+        "风险沟通",
+        "医学事实科普",
+        "第三方调查背书",
+        "分阶段披露",
+        "避免简单压制质疑"
+      ],
+      "required_deliverables": {
+        "documents_min": 30,
+        "cases_min": 10,
+        "playbook": "health/playbook.md"
+      }
+    },
+    "transport": {
+      "name": "交通舆情",
+      "description": "Covers railway, high-speed rail, aviation, ride-hailing, bus, road safety, ticketing fairness, and transport service disputes.",
+      "subdomains": [
+        "railway",
+        "high_speed_rail",
+        "airline",
+        "ride_hailing",
+        "public_transport",
+        "road_safety",
+        "ticketing",
+        "service_dispute"
+      ],
+      "scenarios": [
+        "高铁服务争议",
+        "12306 票务争议",
+        "票务公平性质疑",
+        "延误处置争议",
+        "公共安全事件",
+        "客服口径冲突",
+        "网约车服务争议"
+      ],
+      "key_risks": [
+        "规则不透明",
+        "服务公平性质疑",
+        "延误处置争议",
+        "公共安全责任追问",
+        "客服口径冲突",
+        "平台解释不足",
+        "补偿机制争议"
+      ],
+      "recommended_tactics": [
+        "规则可视化解释",
+        "补偿机制说明",
+        "多平台统一口径",
+        "责任边界说明",
+        "服务流程复盘",
+        "用户体验改进承诺",
+        "高频问题集中回应"
+      ],
+      "required_deliverables": {
+        "documents_min": 30,
+        "cases_min": 10,
+        "playbook": "transport/playbook.md"
+      }
+    },
+    "panda": {
+      "name": "大熊猫舆情",
+      "description": "Covers animal welfare, zoo management, tourism branding, live streaming, fandom communities, cross-region sentiment, and animal ethics disputes.",
+      "subdomains": [
+        "animal_welfare",
+        "zoo_management",
+        "panda_fandom",
+        "tourism_brand",
+        "live_streaming",
+        "cross_region_sentiment",
+        "animal_ethics"
+      ],
+      "scenarios": [
+        "动物保护争议",
+        "园区管理质疑",
+        "熊猫直播争议",
+        "粉丝社群冲突",
+        "文旅品牌风险",
+        "跨地域情绪对立",
+        "动物伦理争议"
+      ],
+      "key_risks": [
+        "拟人化情绪放大",
+        "粉丝社群围观监督",
+        "园区信任危机",
+        "动物伦理争议",
+        "直播切片二次传播",
+        "跨地域情绪对立",
+        "文旅品牌连带损伤"
+      ],
+      "recommended_tactics": [
+        "动物健康状态透明披露",
+        "专业兽医解释",
+        "直播信息澄清",
+        "园区管理流程公开",
+        "粉丝社群沟通",
+        "避免冷冰冰行政话术",
+        "文旅品牌风险隔离"
+      ],
+      "required_deliverables": {
+        "documents_min": 20,
+        "cases_min": 8,
+        "playbook": "panda/playbook.md"
+      }
+    }
+  },
+  "template_mapping": {
+    "case": "domains/template/case_template.md",
+    "risk_pattern": "domains/template/risk_pattern_template.md",
+    "response_tactic": "domains/template/response_tactic_template.md",
+    "playbook": "domains/template/playbook_template.md"
+  },
+  "annotation_rules": [
+    "Every domain case should explicitly fill trigger_points, key_claims, public_sentiment, escalation_path, official_response, resolution, and lessons_learned when information is available.",
+    "Every domain risk pattern should explicitly fill trigger_conditions, early_warning_signals, typical_escalation_path, and recommended_tactics.",
+    "Every response tactic should explicitly fill stage, actions, message_templates, do_and_dont, success_metrics, and failure_modes.",
+    "Use confidence between 0.0 and 1.0. Use status=candidate before manual review and status=approved after review.",
+    "Keep source_path/source_url/evidence_refs whenever possible for traceability."
+  ]
+}

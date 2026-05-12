@@ -28,6 +28,15 @@ report:
   mode: "daily" # 可选: "daily"|"incremental"|"current"
   rank_threshold: 5 # 排名高亮阈值
 
+# Graph RAG / Neo4j（可选）
+# 连接密钥优先放在 .env；这里保留开关与空白配置，方便本地调试。
+graph_rag:
+  enabled: true
+  uri: ""
+  user: ""
+  password: ""
+  database: ""
+
 notification:
   enable_notification: true # 是否启用通知功能，如果 false，则不发送手机通知
   message_batch_size: 4000 # 消息分批大小（字节）(这个配置别动)

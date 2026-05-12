@@ -65,6 +65,7 @@ class InterpretationOutput:
     stage: Optional[str]
     indicators_dimensions: List[str]
     theory_names: List[str]
+    recommendations: Dict[str, Any]
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -76,6 +77,7 @@ class InterpretationOutput:
             "stage": self.stage or "",
             "indicators_dimensions": self.indicators_dimensions,
             "theory_names": self.theory_names,
+            "recommendations": self.recommendations,
         }
 
 
@@ -157,6 +159,7 @@ def generate_interpretation(
         response = model.invoke(messages)
         result_text = getattr(response, "content", None) or str(response)
         parsed = _extract_json_from_text(result_text)
+        recommendations = parsed.get("recommendations", {}) if isinstance(parsed, dict) else {}
     except Exception as e:
         return json.dumps(
             {"error": f"模型生成 interpretation 失败: {str(e)}", "result_file_path": "", "interpretation": {}},
@@ -189,6 +192,7 @@ def generate_interpretation(
             stage=str(stage) if stage else None,
             indicators_dimensions=[str(x) for x in indicators_dimensions][:6],
             theory_names=[str(x) for x in theory_names][:3],
+            recommendations=recommendations if isinstance(recommendations, dict) else {},
         )
         interpretation_dict = output.to_dict()
     except Exception as e:

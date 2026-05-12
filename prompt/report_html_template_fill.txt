@@ -28,22 +28,26 @@
 2) 不要求固定“三段论”写法（发现-风险-建议）。允许自然叙述风格，只要结论可核验、逻辑清晰即可。
 3) 图表对应结论数组（CHART_*_ANALYSIS）仍输出 3 条要点，但内容以“本次数据的描述性结论”为主；可写发现+解释，必要时再给风险/建议，不强制每条都含风险和建议。
 4) 语言必须“具体可核验”：不要空泛形容词堆砌（如“引发广泛关注/热议”），必须落到“谁在说、说什么、为何扩散、在哪些人群/地域/话题上集中”。
-5) 若输入材料中包含「用户协同输入与外部参考（结构化提炼）」或出现文件名 user_judgement_input.json / user_expert_notes.json：你必须在以下至少两处**显式引用并回应**（写出“用户判断/专家研判”里的关键观点，并说明你是否同意、数据是否支持、以及建议如何落地）：  
+5) 若输入材料中包含「用户协同输入与外部参考（结构化提炼）」或出现文件名 user_judgement_input.json / user_expert_notes.json：你必须在以下至少两处**吸收其中的实质观点并纳入论证**（说明数据是否支持、机制为何成立、建议如何落地），但**禁止**在正文中使用「用户研判指出」「专家研判指出」「协同输入认为」等元话语，不得暴露观点来自「填写的研判表单」；报告正文应以第三方研判口吻直接陈述判断与依据。须覆盖的占位符槽位：  
    - SUMMARY_BULLETS（概览研判结论）  
    - RESPONSE_ANALYSIS_BULLETS（回应观察与分析）  
    - RECAP_TRENDS / RECAP_DISCOURSE / RECAP_DRIVERS_BULLETS（复盘总结）  
-   若你未能在输出中体现，将视为不合格。
-6) PHASE_STATUS（若有证据）只能从以下五类中选择并给出简短判定依据：潜伏 / 爆发 / 扩散 / 衰退 / 结束；若证据不足写「待评估（证据不足）」。
+   若你未能在输出中体现协同观点的实质内容，将视为不合格。
+6) PHASE_STATUS（若有证据）只能从以下五类中选择：潜伏期 / 扩散期 / 爆发期 / 衰退期 / 结束期；它必须和生命周期图的最新阶段一致，不得写「待评估」来逃避判断。若过程文件完全没有声量/时间证据，才写「待评估（证据不足）」。
 7) INTRO_BACKGROUND 对应“事件概览”：优先基于本次时间线与数据结果；微博智搜仅可作外部线索补充，写成 200~600 字简练综述，禁止冗长背景堆砌。
 8) CHART_*_ANALYSIS 必须“仅基于本次数据”；SUMMARY/RESPONSE/RECAP 才允许在数据基础上辅以知识库观点。禁止把历史知识库内容写入基础数据描述段。
-9) 若 `analysis_results` 中出现「【优先阅读】本地 Wiki 知识库」：你必须在 THEORY_SILENCE / THEORY_AGENDA / THEORY_BUTTERFLY 中至少两处写出 **具体知识库路径或页面标题**（来自该段「路径」或「标题」），并说明与本次数据证据的关系；不得只写议程设置/沉默螺旋/蝴蝶效应等泛化表述。
-10) 若 `analysis_results` 中出现「【优先阅读】微博智搜」：可在 INTRO_BACKGROUND 或 SUMMARY_BULLETS 中吸收要点，并明确标注为外部讨论线索、需与本地数据交叉验证；不得用其替代基础图表数据结论。
+9) 若 `analysis_results` 中出现「【优先阅读】本地 Wiki 知识库」：你必须在 THEORY_SILENCE / THEORY_AGENDA / THEORY_BUTTERFLY 中至少两处吸收具体页面标题或概念，但正文不要写“引用知识库路径《...》中的...”这类工程痕迹；推荐写法是“根据‘偏颇吸收’理论，……”或“从‘波动周期’视角看，……”。不得只写议程设置/沉默螺旋/蝴蝶效应等泛化表述。
+10) 若 `analysis_results` 中出现「【优先阅读】微博智搜」且包含可用摘要片段：可在 INTRO_BACKGROUND 或 SUMMARY_BULLETS 中吸收要点，并明确标注为外部讨论线索、需与本地数据交叉验证；不得用其替代基础图表数据结论。若该段写明“没有提取到可用智搜片段”，不得写“微博智搜线索指出/外部智搜验证”。
 11) 若输入中存在“舆情智库知识快照（高优先级）”或 oprag_knowledge_snapshot.json（旧名 yqzk_knowledge_snapshot.json 亦同）：你必须在以下至少三处显式引用其概念/案例，并与本次数据做交叉验证后再给结论：
    - THEORY_SILENCE / THEORY_AGENDA / THEORY_BUTTERFLY（至少两处）
    - RESPONSE_ANALYSIS_BULLETS（至少一处）
    - RECAP_DISCOURSE / RECAP_TRENDS / RECAP_DRIVERS_BULLETS（至少一处）
    若未引用，视为不合格输出。
 12) RECAP_DISCOURSE 与 RECAP_TRENDS 必须写成“可执行复盘”风格：每段建议 120~260 字，至少包含 1 个数据证据、1 个机制解释与 1 条可落地建议；禁止输出“证据不足：请补充...”这类占位句。
+13) RESPONSE_ACTION_PLAN 必须输出四阶段行动清单：24小时内、3天内、7天内、复盘期。每阶段至少 1 条，优先包含 2 条；每条必须包含主体、动作、话术、风险、验证指标。话术要能直接复制使用，验证指标必须是可观察指标（如负面占比、转发评论比、投诉量、关键词回落、回应覆盖率等）。
+14) 总结复盘必须谨慎、现实、可落地。除非有监管或行业组织明确证据，不要建议涉事主体“转危为机”“联合行业协会制定标准”等过度拔高动作；优先建议内部审核、责任边界、第三方复核、话术校准、流程演练。避免“精准踩中”“完美契合”等过度确定措辞，优先使用“恰好触发”“较为符合”“可能表明”等审慎表达。
+15) 情感统计一致性：若 `analysis_results` 中 sentiment 统计同时给出顶层 count 与 `statistics.sampling.existing_distribution.counts`，且二者不一致时，**CHART_SENTIMENT_ANALYSIS 中的正面/中立/负面条数必须与后者（数据源标签）及饼图一致**；不得写出与 KPI「整体态度」、饼图相矛盾的条数或占比。
+16) RESPONSE_ACTION_PLAN 必须为**合法 JSON 对象**（键名与字符串一律使用英文双引号 `"`），禁止使用 Python 单引号字典写法；四阶段键名严格为："24小时内"、"3天内"、"7天内"、"复盘期"。
 
 所有 value 必须使用简体中文书写。
 - 禁止输出英文句子、英文短语、英文分析术语。
@@ -71,6 +75,7 @@
 - THEORY_AGENDA（注意：这是“理论槽位2”，可写任何最相关理论；若不适用写「证据不足」；须与槽位1为**不同理论**）
 - THEORY_BUTTERFLY（注意：这是“理论槽位3”，可写任何最相关理论；若不适用写「证据不足」；须与槽位1、2为**不同理论**）
 - RESPONSE_ANALYSIS_BULLETS（数组，3条）
+- RESPONSE_ACTION_PLAN（对象，必须包含四个键："24小时内"、"3天内"、"7天内"、"复盘期"。每个键对应数组，数组元素必须包含："主体"、"动作"、"话术"、"风险"、"验证指标"。必须按阶段、主体、动作、话术、风险、验证指标组织；如输入中有 DomainPlaybook、相似案例、OPRAG 或知识库经验，必须引用其可核验经验；无证据写「证据不足」，不得编造。）
 - RECAP_DISCOURSE
 - RECAP_TRENDS
 - RECAP_DRIVERS_BULLETS（数组，3条）
@@ -78,7 +83,7 @@
 另外请兼容输出以下旧键（保持字符串即可）：DATA_PERIOD, SAMPLE_SIZE, EFFECTIVE_VOLUME, NATURE, RISK_LEVEL, EVENT_BACKGROUND, 5W_WHO, 5W_WHAT, 5W_WHERE, 5W_WHEN, 5W_WHY, SENTIMENT_ANALYSIS, TREND_ANALYSIS, THEORY_RISK, STRATEGY_RISK, STRATEGY_SHORT, STRATEGY_GUIDE, STRATEGY_LONG, AUTHOR, DEPARTMENT。
 
 生命周期口径约束：
-- 阶段仅允许使用：潜伏期、成长期、成熟期、衰退期。
+- 阶段仅允许使用：潜伏期、扩散期、爆发期、衰退期、结束期。
 - PHASE_STATUS 必须使用上述阶段之一（可附简短括注）。
 - CHART_LIFECYCLE_ANALYSIS 的结论必须围绕“热度指数生命周期”解释，避免与发文量口径混淆。
 

@@ -229,6 +229,64 @@ def _should_use_existing_sentiment(
     return non_empty >= min_non_empty and ratio >= 0.6
 
 
+def _existing_sentiment_distribution(data: List[Dict[str, Any]], sentiment_col: Optional[str]) -> Dict[str, Any]:
+    counts = {"正面": 0, "中立": 0, "负面": 0}
+    recognizable = 0
+    if not sentiment_col:
+        return {"counts": counts, "recognizable": 0, "total": len(data), "ratios": {"正面": 0.0, "中立": 0.0, "负面": 0.0}}
+    for row in data:
+        label = _normalize_sentiment_label(row.get(sentiment_col, ""))
+        if label is None:
+            continue
+        recognizable += 1
+        counts[label] = counts.get(label, 0) + 1
+    denom = max(1, recognizable)
+    return {
+        "counts": counts,
+        "recognizable": recognizable,
+        "total": len(data),
+        "ratios": {k: round(v / denom, 4) for k, v in counts.items()},
+    }
+
+
+def _should_sample_check_existing_sentiment(distribution: Dict[str, Any]) -> bool:
+    """Detect distributions where vendor labels often undercount positive/critical nuance."""
+    ratios = distribution.get("ratios") if isinstance(distribution.get("ratios"), dict) else {}
+    recognizable = int(distribution.get("recognizable", 0) or 0)
+    if recognizable < 80:
+        return False
+    pos = float(ratios.get("正面", 0.0) or 0.0)
+    neu = float(ratios.get("中立", 0.0) or 0.0)
+    neg = float(ratios.get("负面", 0.0) or 0.0)
+    # 典型风险：大量“中立”承载态度判断，正面被压到极低；抽样重判可给出更可信的估计。
+    return (pos < 0.03 and neu >= 0.45 and neg >= 0.15) or (neu >= 0.75 and (pos < 0.08 or neg < 0.08))
+
+
+def _project_sample_statistics(total_rows: int, sampled_scores: Dict[int, int]) -> Dict[str, Any]:
+    values = [int(s) for s in sampled_scores.values() if s is not None]
+    if not values:
+        values = [5]
+    sample_scores = {i: s for i, s in enumerate(values)}
+    sample_stats = _build_statistics(len(values), sample_scores)
+    pos_ratio = float(sample_stats.get("positive_ratio", 0.0) or 0.0)
+    neg_ratio = float(sample_stats.get("negative_ratio", 0.0) or 0.0)
+    positive_count = int(round(total_rows * pos_ratio))
+    negative_count = int(round(total_rows * neg_ratio))
+    positive_count = max(0, min(positive_count, total_rows))
+    negative_count = max(0, min(negative_count, total_rows - positive_count))
+    neutral_count = max(0, total_rows - positive_count - negative_count)
+    return {
+        **sample_stats,
+        "total": total_rows,
+        "positive_count": positive_count,
+        "negative_count": negative_count,
+        "neutral_count": neutral_count,
+        "positive_ratio": round(positive_count / total_rows, 4) if total_rows else 0.0,
+        "negative_ratio": round(negative_count / total_rows, 4) if total_rows else 0.0,
+        "neutral_ratio": round(neutral_count / total_rows, 4) if total_rows else 0.0,
+    }
+
+
 def _to_bool(value: Any, default: bool = False) -> bool:
     if value is None:
         return default
@@ -596,6 +654,7 @@ def analysis_sentiment(
 
     n = len(all_data)
     sentiment_col = _identify_sentiment_column(all_data)
+    existing_distribution = _existing_sentiment_distribution(all_data, sentiment_col)
     prefer_existing_sentiment = _to_bool(preferExistingSentimentColumn, default=True)
     # 稳定性优先策略：
     # - 数据里存在“情感/倾向”列时，默认优先复用该列（避免 LLM 卡死/超时导致整段流程无结果）
@@ -634,16 +693,19 @@ def analysis_sentiment(
             else:
                 scores_by_row[i] = _label_to_score(norm_label)
 
-    # 快速抽样重判（可选）：在“已有情感列但不可信”场景，用 LLM 对抽样重判，避免全量耗时。
-    # - 默认关闭；开启方式：SONA_SENTIMENT_FAST_SAMPLE=1 且允许重判
+    # 快速抽样重判：在“已有情感列但分布可疑”场景，用 LLM 对抽样重判，避免全量耗时。
+    # - 默认 auto：仅在正面极低/中立过高等可疑分布下启用
     # - 抽样规模：max(min(n*rate, max_rows), min_rows)
-    fast_sample_enabled = str(os.environ.get("SONA_SENTIMENT_FAST_SAMPLE", "0")).strip().lower() in {
+    fast_sample_mode = str(os.environ.get("SONA_SENTIMENT_FAST_SAMPLE", "auto")).strip().lower()
+    fast_sample_enabled = fast_sample_mode in {
         "1",
         "true",
         "yes",
         "y",
         "on",
     }
+    if fast_sample_mode in {"auto", ""}:
+        fast_sample_enabled = _should_sample_check_existing_sentiment(existing_distribution)
     sample_rate_raw = str(os.environ.get("SONA_SENTIMENT_FAST_SAMPLE_RATE", "0.1")).strip()
     sample_max_raw = str(os.environ.get("SONA_SENTIMENT_FAST_SAMPLE_MAX_ROWS", "220")).strip()
     sample_min_raw = str(os.environ.get("SONA_SENTIMENT_FAST_SAMPLE_MIN_ROWS", "60")).strip()
@@ -663,14 +725,12 @@ def analysis_sentiment(
     sample_max_rows = max(40, min(sample_max_rows, 1200))
     sample_min_rows = max(20, min(sample_min_rows, 400))
 
-    use_llm_sample = bool(
-        fast_sample_enabled
-        and allow_llm_rejudge_with_existing
-        and sentiment_col
-        and use_existing_sentiment  # 原本会直接复用情感列；改为抽样重判以提高准确性
-    )
+    use_llm_sample = bool(fast_sample_enabled and sentiment_col and use_existing_sentiment)
+    sample_estimation_enabled = bool(use_llm_sample)
+    if use_llm_sample:
+        use_existing_sentiment = False
 
-    if use_existing_sentiment and sentiment_col and (not use_llm_sample):
+    if use_existing_sentiment and sentiment_col and (not sample_estimation_enabled):
         _build_scores_from_existing_sentiment()
     else:
         # LLM 重判路径（仅在用户明确要求重跑，或无可用情感列时执行）
@@ -707,7 +767,7 @@ def analysis_sentiment(
             to_score.append((i, cleaned))
 
         # 抽样重判：仅取部分样本做 LLM 打分，统计用样本估计（速度优先）
-        if use_llm_sample and to_score:
+        if sample_estimation_enabled and to_score:
             import random
 
             target = int(round(len(to_score) * sample_rate))
@@ -762,6 +822,7 @@ def analysis_sentiment(
             succ, started = 0, 0
         if sentiment_col and (started > 0 and succ <= 0):
             use_existing_sentiment = True
+            sample_estimation_enabled = False
             scores_by_row = {}
             _build_scores_from_existing_sentiment()
 
@@ -777,18 +838,15 @@ def analysis_sentiment(
         row_scores_brief.append({"row_index": i, "score": s, "label": label, "text_preview": preview})
 
     # 注意：若为抽样重判，则 scores_by_row 只覆盖部分行；统计应基于已打分样本估计比例
-    if use_llm_sample and not use_existing_sentiment:
+    if sample_estimation_enabled and not use_existing_sentiment:
         sampled_scores = {i: s for i, s in scores_by_row.items() if s is not None}
-        # 若极端情况下无有效样本，则退回中立
-        if not sampled_scores:
-            sampled_scores = {0: 5}
-        statistics = _build_statistics(len(sampled_scores), sampled_scores)
-        statistics["total"] = n
+        statistics = _project_sample_statistics(n, {i: int(s) for i, s in sampled_scores.items()})
         statistics["sampling"] = {
             "enabled": True,
             "sampled_rows": len(sampled_scores),
             "sample_rate": round(len(sampled_scores) / max(1, n), 4),
-            "note": "情感分布为抽样估计（为提升速度，未对全量逐条重判）",
+            "existing_distribution": existing_distribution,
+            "note": "情感分布为抽样估计（用于校准数据源自带情感列，未对全量逐条重判）",
         }
     else:
         statistics = _build_statistics(n, scores_by_row)
@@ -805,7 +863,7 @@ def analysis_sentiment(
         "mode": (
             "existing_sentiment_column"
             if use_existing_sentiment
-            else ("llm_sampling" if use_llm_sample else "llm_scoring")
+            else ("llm_sampling" if sample_estimation_enabled else "llm_scoring")
         ),
         "sentiment_column": sentiment_col or "",
     }
@@ -829,7 +887,8 @@ def analysis_sentiment(
         statistics["sentiment_source"] = "existing_column_fallback" if not prefer_existing_sentiment else "existing_column"
         statistics["fallback_used"] = (not prefer_existing_sentiment) or (bool(sentiment_col) and not _to_bool(preferExistingSentimentColumn, default=True))
     else:
-        statistics["sentiment_source"] = "llm_scoring"
+        statistics["sentiment_source"] = "llm_sampling_estimate_with_existing_column" if sample_estimation_enabled else "llm_scoring"
+        statistics["fallback_used"] = False
     llm_rows = len(to_score) if not use_existing_sentiment else 0
     statistics["llm_coverage"] = round(llm_rows / n, 4) if n else 0.0
     req_started = int(statistics.get("concurrency_metrics", {}).get("requests_started", 0) or 0)
@@ -915,6 +974,15 @@ def analysis_sentiment(
         "statistics": statistics,
         "positive_summary": parsed.get("positive_summary", []),
         "negative_summary": parsed.get("negative_summary", []),
+        "emotion_analysis": parsed.get("emotion_analysis", {}),
+        "negative_drivers": parsed.get("negative_drivers", ""),
+        "emotion_validation": {
+            "sample_size": len(positive_contents) + len(negative_contents),
+            "positive_sample_size": len(positive_contents),
+            "negative_sample_size": len(negative_contents),
+            "method": "基于正负样本摘要输入进行情绪结构复核；typical_expression 要求引用原文片段。",
+            "note": "当前为轻量抽样校验记录，用于报告说明情绪结构来源；详细逐条打分见 row_scores。",
+        },
         "content_columns": content_columns,
         "row_scores": row_scores_brief,
         "scoring_model": "existing_sentiment_column" if use_existing_sentiment else "qwen-plus",
@@ -952,6 +1020,9 @@ def analysis_sentiment(
         "content_columns": content_columns,
         "positive_summary": full_result.get("positive_summary", []),
         "negative_summary": full_result.get("negative_summary", []),
+        "emotion_analysis": full_result.get("emotion_analysis", {}),
+        "negative_drivers": full_result.get("negative_drivers", ""),
+        "emotion_validation": full_result.get("emotion_validation", {}),
         "scoring_model": full_result.get("scoring_model", ""),
         "scoring_profile": full_result.get("scoring_profile", ""),
         "result_file_path": result_file_path,

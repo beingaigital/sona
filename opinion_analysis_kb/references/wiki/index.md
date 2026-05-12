@@ -4,7 +4,9 @@
 - 页面数量：1272
 
 ## 页面目录
+- [cases/case_93520b60-bae_2026年5月8日_OPPO发布母亲节营销文案因_两个老公_等争_20260512_202251.md](cases/case_93520b60-bae_2026年5月8日_OPPO发布母亲节营销文案因_两个老公_等争_20260512_202251.md) - 2026年5月8日，OPPO发布母亲节营销文案因“两个老公”等争议表述迅速引发全网批评，相关话题登上热搜 | 扩散期
 
+- [output/OPPO母亲节广告文案争议舆情专报.md](output/OPPO母亲节广告文案争议舆情专报.md) - 品牌母亲节营销文案争议案例；重点沉淀饭圈文化表达误区、武汉大学文学院切割引发的次生舆情、生命周期阶段联动与报告质量反馈。
 - [sources/00_中国舆情大事件记录_持续更新.md](sources/00_中国舆情大事件记录_持续更新.md) - --- title: 2025 年中国舆情大事件记录（持续更新） source_file: /Users/biaowenhuang/Documents/sona...
 - [entities/00_后.md](entities/00_后.md) - --- title: 00 后 updated_at: 2026-04-15 19:26:22 wiki_section: entities source_ty...
 - [sources/01_粉底液将军事件再升级_网友怀疑反华势力入侵_张凌赫恐被当炮灰.md](sources/01_粉底液将军事件再升级_网友怀疑反华势力入侵_张凌赫恐被当炮灰.md) - --- title: 01_粉底液将军事件再升级！网友怀疑反华势力入侵，张凌赫恐被当炮灰 source_file: /Users/biaowenhuang/Do...

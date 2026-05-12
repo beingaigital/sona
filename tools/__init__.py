@@ -13,7 +13,7 @@ from tools.user_portrait import user_portrait
 from tools.dataset_summary import dataset_summary
 from tools.generate_interpretation import generate_interpretation
 from tools.report_html import report_html
-from tools.graph_rag_query import graph_rag_query
+from tools.graph_rag_query import check_neo4j_connection, graph_rag_query
 from tools.weibo_aisearch import weibo_aisearch
 from tools.hottopics import run as hottopics_run
 from tools.oprag import (
@@ -42,6 +42,7 @@ __all__ = [
     "dataset_summary",
     "generate_interpretation",
     "report_html",
+    "check_neo4j_connection",
     "graph_rag_query",
     "weibo_aisearch",
     "hottopics_run",

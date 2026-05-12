@@ -30,6 +30,11 @@ from tools.oprag import (
     LEGACY_YQZK_KNOWLEDGE_SNAPSHOT_FILENAME,
     OPRAG_KNOWLEDGE_SNAPSHOT_FILENAME,
 )
+from tools.weibo_aisearch import (
+    WEIBO_AISEARCH_SLOT_ORDER,
+    WEIBO_AISEARCH_SLOT_TITLES,
+    decompose_weibo_aisearch_results,
+)
 import webbrowser
 
 
@@ -366,7 +371,7 @@ def _build_wiki_qa_priority_block(content: Dict[str, Any]) -> str:
     lines: List[str] = [
         "## 【优先阅读】本地 Wiki 知识库（opinion_analysis_kb / wiki_cli 召回）",
         "",
-        "以下片段来自你编译的三层 wiki；正文与「路径」必须进入报告的理论/复盘引用（至少 2 条不同路径或标题）。",
+        "以下片段来自你编译的三层 wiki；理论/复盘至少吸收 2 条不同标题或概念，但最终报告正文不要暴露本地文件路径。",
         "",
     ]
     ans = str(content.get("answer") or "").strip()
@@ -402,10 +407,17 @@ def _build_wiki_qa_priority_block(content: Dict[str, Any]) -> str:
 
 def _build_weibo_priority_block(content: Dict[str, Any]) -> str:
     """weibo_aisearch_reference.json → 外部讨论线索（须与本地 CSV 交叉验证）。"""
+    results = content.get("results")
+    has_results = isinstance(results, list) and bool(results)
     lines: List[str] = [
         "## 【优先阅读】微博智搜（外部线索，非事实锚点）",
         "",
-        "以下仅作舆论场线索；`INTRO_BACKGROUND` 与「公众讨论焦点」须至少吸收 2 条摘要，并写明需与本地数据核对。",
+        (
+            "以下含「叙事分槽」时，可按槽位将线索汇入 HTML 模板占位符（如 INTRO_BACKGROUND、时间线、争议、回应、复盘）；"
+            "每条仍须与本地数据、图表与可核验报道交叉验证，不得单独作为事实锚点。"
+            if has_results
+            else "本次没有提取到可用智搜片段；报告不得写成“微博智搜线索指出/外部智搜验证”，只能说明外部智搜缺失并依赖本地采集数据。"
+        ),
         "",
     ]
     topic = str(content.get("topic") or content.get("query") or "").strip()
@@ -418,8 +430,14 @@ def _build_weibo_priority_block(content: Dict[str, Any]) -> str:
     if err:
         lines.append(f"- 抓取说明: {err[:240]}")
     lines.append("")
-    results = content.get("results")
-    if isinstance(results, list) and results:
+
+    structured = content.get("structured")
+    if not isinstance(structured, dict) or not isinstance(structured.get("slots"), dict):
+        structured = decompose_weibo_aisearch_results(results if isinstance(results, list) else [])
+    slots = structured.get("slots") if isinstance(structured.get("slots"), dict) else {}
+    has_slots = bool(slots) and any(isinstance(v, list) and v for v in slots.values())
+
+    if has_results:
         lines.append("### 智搜摘要片段")
         for i, r in enumerate(results[:14], 1):
             if not isinstance(r, dict):
@@ -427,9 +445,47 @@ def _build_weibo_priority_block(content: Dict[str, Any]) -> str:
             snip = str(r.get("snippet") or "").strip()
             if snip:
                 lines.append(f"- [{i}] {snip[:400]}" + ("..." if len(snip) > 400 else ""))
-    else:
+        lines.append("")
+
+    if has_slots:
+        disc = str(structured.get("disclaimer") or "").strip()
+        if disc:
+            lines.append(f"**{disc}**")
+            lines.append("")
+        lines.append("### 智搜叙事分槽（→ 报告章节与模板占位符）")
+
+        for slot_key in WEIBO_AISEARCH_SLOT_ORDER:
+            items = slots.get(slot_key)
+            if not isinstance(items, list) or not items:
+                continue
+            title = WEIBO_AISEARCH_SLOT_TITLES.get(slot_key, slot_key)
+            lines.append(f"#### {title}")
+            for it in items[:8]:
+                s = str(it).strip()
+                if s:
+                    lines.append(f"- {s[:420]}" + ("..." if len(s) > 420 else ""))
+            lines.append("")
+
+        bridge = structured.get("report_bridge")
+        if isinstance(bridge, list) and bridge:
+            lines.append("### 模板占位符吸收建议（report_bridge）")
+            for row in bridge[:8]:
+                if not isinstance(row, dict):
+                    continue
+                hooks = row.get("template_hooks")
+                from_slots = row.get("from_slots")
+                hint = str(row.get("writer_hint") or "").strip()
+                h_txt = "、".join(str(x) for x in hooks) if isinstance(hooks, list) else str(hooks or "")
+                s_txt = "、".join(str(x) for x in from_slots) if isinstance(from_slots, list) else ""
+                if h_txt:
+                    lines.append(f"- **{h_txt}** ← 槽位: {s_txt}")
+                    if hint:
+                        lines.append(f"  - {hint[:360]}" + ("..." if len(hint) > 360 else ""))
+            lines.append("")
+    elif not has_results:
         lines.append("（无 snippet 结果；可写「证据不足」并依赖本地数据。）")
-    lines.append("")
+        lines.append("")
+
     return "\n".join(lines).strip()
 
 
@@ -1940,6 +1996,7 @@ def report_html(
                 "\n\n【协同输入对齐要求】\n"
                 "若输入含 user_judgement_input.json 或 user_expert_notes.json，需在“研判结论/建议”中显式回应其关注点。\n"
                 "若输入含 weibo_aisearch_reference.json，请将其作为外部参考线索而非事实锚点，必须与本地数据交叉验证后再下结论。\n"
+                "若优先阅读区含「智搜叙事分槽」与「模板占位符吸收建议」，可将各槽线索映射到对应 HTML 占位符与章节，不得用智搜替代声量图与 CSV 证据链。\n"
                 "若存在“用户研判关键要点（需在报告中显式回应）”，请至少在以下两处逐条对齐：\n"
                 "1) SUMMARY_BULLETS；2) RESPONSE_ANALYSIS_BULLETS 或 RECAP_*。\n"
                 "不得只泛泛提及“已参考用户观点”，而应明确写出对应观点与本次数据是否支持。"

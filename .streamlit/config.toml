@@ -1,0 +1,20 @@
+# 本地 / CI 非交互启动：避免首次运行时在终端询问邮箱导致进程退出
+[server]
+headless = true
+
+[browser]
+gatherUsageStats = false
+
+# BettaFish「微舆」式高对比浅色主题（与 streamlit_ui_theme.py 一致）
+[theme]
+base = "light"
+primaryColor = "#111111"
+backgroundColor = "#fafafa"
+secondaryBackgroundColor = "#ffffff"
+textColor = "#111111"
+font = "sans serif"
+
+# 使用自定义侧栏导航（streamlit_ui_theme.render_nav_sidebar）
+[client]
+showSidebarNavigation = false
+toolbarMode = "auto"

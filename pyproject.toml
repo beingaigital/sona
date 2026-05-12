@@ -28,6 +28,9 @@ dependencies = [
     "prompt-toolkit>=3.0.43",
     "pytz>=2024.1",
     "requests>=2.31.0",
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.32.0",
+    "streamlit>=1.40.0",
 ]
 
 [project.scripts]
@@ -41,6 +44,7 @@ filterwarnings = [
 [tool.setuptools.packages.find]
 where = ["."]
 include = [
+    "api*",
     "cli*",
     "agent*",
     "workflow*",

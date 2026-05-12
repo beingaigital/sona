@@ -5,6 +5,7 @@ from __future__ import annotations
 import json as json_module
 import contextlib
 import io
+import re
 from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
@@ -28,7 +29,21 @@ CONTENT_COLUMN_KEYWORDS: Tuple[str, ...] = (
     "segment",
 )
 
-DEFAULT_ALLOWED_POS_PREFIXES: Tuple[str, ...] = ("n", "v", "a", "nr", "ns", "nt")
+DEFAULT_ALLOWED_POS_PREFIXES: Tuple[str, ...] = ("n", "v", "a", "nr", "ns", "nt", "eng")
+ENGLISH_TOKEN_BLOCKLIST: Set[str] = {
+    "amp",
+    "br",
+    "cn",
+    "com",
+    "gt",
+    "html",
+    "http",
+    "https",
+    "lt",
+    "nbsp",
+    "quot",
+    "www",
+}
 
 
 @dataclass(frozen=True)
@@ -93,6 +108,25 @@ def _flatten_text(rows: Sequence[Dict[str, Any]], columns: Sequence[str]) -> str
     return " ".join(parts)
 
 
+def _normalize_keyword_token(word: str, *, stopwords: Set[str], min_len: int) -> str:
+    w = (word or "").strip()
+    if not w:
+        return ""
+    low = w.lower()
+    if low in stopwords or low in ENGLISH_TOKEN_BLOCKLIST:
+        return ""
+    if re.fullmatch(r"[A-Za-z][A-Za-z0-9_-]*", w):
+        if len(w) < max(2, min_len):
+            return ""
+        # 品牌/机构名常以英文出现，统一大写可避免 OPPO/oppo 被拆成不同词。
+        return w.upper()
+    if len(w) < min_len:
+        return ""
+    if w in stopwords:
+        return ""
+    return w
+
+
 def _tokenize_with_jieba(
     text: str,
     *,
@@ -112,12 +146,8 @@ def _tokenize_with_jieba(
     # 进一步兜底：切词时也做同样的 stdout/stderr 重定向。
     with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
         for word, flag in pseg.cut(text):
-            w = (word or "").strip()
+            w = _normalize_keyword_token(str(word or ""), stopwords=stopwords, min_len=min_len)
             if not w:
-                continue
-            if len(w) < min_len:
-                continue
-            if w in stopwords:
                 continue
             if flag and any(str(flag).startswith(prefix) for prefix in allowed_pos_prefixes):
                 tokens.append(w)
@@ -132,12 +162,8 @@ def _tokenize_fallback(
 ) -> Iterable[str]:
     cleaned = clean_text_like_keyword_stats(text)
     for tok in cleaned.split():
-        t = tok.strip()
+        t = _normalize_keyword_token(tok, stopwords=stopwords, min_len=min_len)
         if not t:
-            continue
-        if len(t) < min_len:
-            continue
-        if t in stopwords:
             continue
         yield t
 
@@ -267,4 +293,3 @@ def keyword_stats(
     }
 
     return json_module.dumps(summary_payload, ensure_ascii=False)
-

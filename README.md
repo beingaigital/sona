@@ -26,6 +26,12 @@
 - **💾 会话管理**：支持会话保存、恢复和消息历史管理
 - **📈 Token 追踪**：实时追踪和统计 Token 使用情况
 - **🎨 美观的 CLI 界面**：基于 Rich 的现代化命令行界面，支持流式输出
+- **🧭 运行时 Harness**：记录关键阶段、评分卡与回归产物，便于新案例复盘和报告质量评估
+- **🧠 垂类知识库增强**：支持控烟、健康、交通、大熊猫等领域包，并通过 `workflow/domain_routing.json` 自动注入优先证据
+- **🕸️ Graph RAG 可选增强**：通过 Neo4j Aura/本地 Neo4j 召回相似案例、理论框架和处置经验；连接失败时自动降级
+- **📚 案例库与专题监测**：完整报告可自动沉淀到 `opinion_analysis_kb/references/wiki/cases/`，并提供 `/case` 相似案例检索与 `/monitor` 专题快照/日报周报演示
+- **🧩 HTTP API 与轻量 GUI**：`sona serve` 提供 FastAPI 接口，`streamlit_app.py` 提供多页 Streamlit 查看器
+- **📊 报告质量增强**：时间线证据/影响标签、情绪结构、四阶段行动清单、热点风险分级与案例候选输出
 
 ### 支持的模型提供商
 
@@ -91,7 +97,7 @@ HTML 报告输出
 
 ### 1. 环境要求
 
-- Python >= 3.10
+- Python >= 3.12
 - 虚拟环境（推荐使用 `venv`）
 
 ### 2. 安装依赖
@@ -224,6 +230,16 @@ NETINSIGHT_USER=your_username
 NETINSIGHT_PASS=your_password
 
 # =============================================================================
+# Graph RAG / Neo4j（可选；无服务时主流程自动降级）
+# =============================================================================
+
+SONA_NEO4J_URI=neo4j+s://your-aura-host.databases.neo4j.io
+SONA_NEO4J_USER=your_user
+SONA_NEO4J_PASSWORD=your_password
+SONA_NEO4J_DATABASE=your_database
+SONA_ENABLE_GRAPH_RAG=auto
+
+# =============================================================================
 # Playwright 浏览器配置（可选）
 # =============================================================================
 
@@ -249,7 +265,12 @@ NETINSIGHT_HEADLESS=true
    - 如果不使用数据采集功能，可以不配置
    - `NETINSIGHT_HEADLESS` 控制浏览器是否显示，调试时可设为 `false`
 
-4. **安全提示**：
+4. **Graph RAG / Neo4j**：
+   - `SONA_ENABLE_GRAPH_RAG=auto` 时，有可用连接则增强报告，无可用连接则跳过
+   - Aura 密码只写入本地 `.env`，不要写入 README、计划文档或提交记录
+   - 可用 `python scripts/check_neo4j_connection.py` 做连接健康检查
+
+5. **安全提示**：
    - 请妥善保管 API Key，不要泄露给他人
    - `.env` 文件已添加到 `.gitignore`，不会被提交到版本控制
    - 如果 API Key 泄露，请立即在对应平台重新生成
@@ -304,6 +325,9 @@ report_html_template: report_html_morandi_template.html
 
 # 模板模式叙事填充（模型仅输出 JSON 占位符）
 report_html_template_fill: report_html_template_fill.txt
+
+# 解释与研判 JSON 生成：供 interpretation 模型使用
+interpretation_prompt: interpretation.txt
 ```
 
 提示词模板文件位于 `prompt/` 目录下，可以根据需要进行修改。
@@ -317,8 +341,6 @@ report_html_template_fill: report_html_template_fill.txt
 ```bash
 cd /path/to/sona-master
 uv run sona              # 启动交互式 CLI（推荐）
-# 或
-uv run sona interactive
 
 # 查看帮助
 uv run sona --help
@@ -328,8 +350,8 @@ uv run sona --help
 
 ```bash
 sona
-sona interactive
 sona --help
+sona serve --host 127.0.0.1 --port 8765
 ```
 
 #### 可用命令
@@ -337,13 +359,41 @@ sona --help
 在交互式界面中，可以使用以下命令：
 
 - `/new` - 开启新的分析会话
+- `/event` - 强制进入固定事件分析流水线（可直接带 query）
 - `/memory` - 查看并恢复之前的会话
 - `/models` - 查看所有模型配置
 - `/tools` - 查看所有可用工具
 - `/hot` - 运行独立的热点抓取与态势感知流程（可选参数：配置路径）
+- `/case` - 检索本地案例库，输出相似案例列表与横向对照
+- `/monitor` - 运行专题监测命令，支持创建专题、查看状态、生成日报/周报；未配置外部库时可运行内存演示
 - `/wiki` - 基于本地知识库（`opinion_analysis_kb/references/wiki/`）的问答，输出摘要与引用来源
+- `/wiki-approve` - 审核并回流高价值候选
 - `/clear` - 清除 memory 和 sandbox
 - `/exit` - 退出程序
+
+### HTTP API 与轻量 GUI
+
+E 组接入后，Sona 可以作为本地服务被外部系统或 GUI 调用：
+
+```bash
+# 终端 1：启动 API
+sona serve --host 127.0.0.1 --port 8765
+
+# 探活
+curl http://127.0.0.1:8765/health
+
+# 终端 2：启动 Streamlit 多页 GUI（需安装 streamlit）
+streamlit run streamlit_app.py
+```
+
+主要 API：
+
+- `GET /health`：服务探活
+- `POST /v1/analyze-event`：同步执行一次事件分析，返回 `task_id` 与报告路径
+- `GET /v1/tasks`：查看当前 API 进程内存中的任务
+- `GET /v1/tasks/{task_id}/report`：返回 HTML 报告
+
+更多约定见 `docs/api_design.md` 和 `docs/gui_decision.md`。
 
 **`/hot` 热点流程说明**：
 - 从公网聚合接口拉取各平台热搜（需本机可访问外网），再在本地用 **OpenAI 兼容 API** 做归纳与报告。
@@ -537,7 +587,9 @@ for chunk in stream("分析最近一周小米汽车的舆情", task_id="task-001
 - 程序确定性抽取图表数据并注入模板（`__REPORT_JSON_DATA__`）
 - 模型仅填充叙事占位符 JSON（`prompt/report_html_template_fill.txt`）
 - 生命周期研判采用热度指数规则：2 小时切片、互动加权（发文+点赞+3*评论+5*转发）、峰值归一化、移动平均平滑
-- 生命周期阶段固定为：`潜伏期 / 成长期 / 成熟期 / 衰退期`，并由规则自动给出 `PHASE_STATUS`
+- 生命周期阶段固定为：`潜伏期 / 扩散期 / 爆发期 / 衰退期 / 结束期`，并由规则自动给出 `PHASE_STATUS`
+- 时间线节点可展示 `evidence` 与 `impact`；情感模块可展示 `emotion_analysis`、`negative_drivers` 与抽样校验记录
+- 响应建议支持 `RESPONSE_ACTION_PLAN` 四阶段行动清单：`24小时内 / 3天内 / 7天内 / 复盘期`
 - 报告文本默认约束为中文，包含英文时会触发兜底清洗
 - 模板不可用时自动回退旧逻辑（整页 HTML 生成）与 fallback 兜底
 - 使用 ECharts 进行数据可视化，响应式适配不同屏幕尺寸
@@ -550,7 +602,8 @@ for chunk in stream("分析最近一周小米汽车的舆情", task_id="task-001
 | 目录 | 职能 | 与谁配合 |
 |------|------|----------|
 | **`cli/`** | 终端入口、交互循环、意图路由（走 Agent 还是走舆情流水线）、`/wiki` 等命令的 UI 薄层 | 调用 `workflow/runner.py`、`agent/reactagent.py` |
-| **`workflow/`** | **固定舆情分析编排**：`event_analysis_pipeline.py`（主流程）、`runner.py`（对外调度入口 + 情感阶段预算逻辑）、`telemetry.py`、`budget.py`、`wiki_cli.py`、NetInsight 辅助、评测/契约相关模块等 | 调用 `tools/*`、`utils/path`、`utils/task_context`；情感阶段由 `runner.run_sentiment_stage` 统一封装 |
+| **`api/`** | FastAPI 服务层：健康检查、事件分析触发、任务查询、报告返回 | 通过 `cli/serve_cmd.py` 的 `sona serve` 启动，复用 `workflow/runner.py` |
+| **`workflow/`** | **固定舆情分析编排**：`event_analysis_pipeline.py`（主流程）、`runner.py`、`telemetry.py`、`budget.py`、`wiki_cli.py`、`case_library_generator.py`、`topic_monitoring_pipeline.py`、NetInsight 辅助、评测/契约相关模块等 | 调用 `tools/*`、`utils/path`、`utils/task_context`；报告后自动沉淀案例，专题监测默认可内存演示 |
 | **`agent/`** | ReAct Agent：在对话中**动态**选择并调用工具 | 使用 `tools/` 注册表、`model/factory.py` |
 | **`tools/`** | 原子能力（LangChain Tool）：抽词、采集、`data_num`、统计、时间线、情感、解读、Graph RAG、报告等 | 被 **Agent** 或 **`workflow/event_analysis_pipeline`** 调用；实现里再按 `config/model.yaml` 选用模型 |
 | **`model/`** | 多模型工厂（main / tools / report 等 profile） | `tools/*`、`agent/*` 间接依赖 |
@@ -562,7 +615,8 @@ for chunk in stream("分析最近一周小米汽车的舆情", task_id="task-001
 | **`tests/`** | `pytest` 契约与评测；`tests/evals` 为 Harness（case / fixture / scorer） | CI 与本地回归；详见 `docs/guides/harness_eval_playbook.md` |
 | **`docs/`** | 规格与实操文档（如 harness、验收标准） | 给人读；不参与运行时 |
 | **`scripts/`** | 单次工具试验、评测入口、看板等运维脚本 | 开发/CI 辅助 |
-| **`opinion_analysis_kb/references/wiki/`** | 本地 Wiki 知识库（概念/实体/来源），供 `/wiki` 与 `workflow/wiki_cli.py` 检索 | 只读资源；可独立扩充 |
+| **`opinion_analysis_kb/references/wiki/`** | 本地 Wiki 知识库（概念/实体/来源/案例），供 `/wiki`、`/case` 与 `workflow/wiki_cli.py` 检索 | `cases/` 可由报告流水线自动写入，正式知识页仍可人工审核扩充 |
+| **`opinion_analysis_kb/domains/`** | 垂类领域包（健康、交通、大熊猫等），供领域路由与报告优先证据注入 | 由 `workflow/domain_routing.json` 按关键词匹配 |
 | **`eval_results/`** | 评测运行产物目录（若存在；通常可 gitignore） | `scripts/eval_runner.py` 等写入 |
 
 **协作示意（固定流水线）**
@@ -576,6 +630,9 @@ for chunk in stream("分析最近一周小米汽车的舆情", task_id="task-001
                               │
                               ▼
                     最终 report_html 等产出 HTML / 路径回显
+                              │
+                              ▼
+                    case_library_generator 写入 wiki/cases
 ```
 
 **协作示意（Agent）**
@@ -608,6 +665,8 @@ sona-master/
 │   ├── event_analysis_pipeline.py  # 主流程（原 CLI 大段编排迁入）
 │   ├── runner.py                   # 对外入口 run_event_analysis_workflow；情感阶段 run_sentiment_stage
 │   ├── wiki_cli.py                 # /wiki 检索与回答拼装
+│   ├── case_library_generator.py   # 完整报告后生成 wiki/cases 标准案例页
+│   ├── topic_monitoring_pipeline.py # 专题监测、快照、告警与日报/周报
 │   ├── telemetry.py                # NDJSON 遥测
 │   ├── budget.py                   # 情感等阶段预算（近似 token / 时延 / 重试）
 │   ├── contracts.py                # WorkflowContext 等契约

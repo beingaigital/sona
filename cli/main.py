@@ -1,21 +1,35 @@
-"""CLI 主入口：交互式命令行界面。"""
+"""CLI 主入口：交互式命令行界面与子命令。"""
 
 from __future__ import annotations
 
+import os
 import sys
-from rich.prompt import Prompt
-from cli.display import print_icon, print_welcome, console
-from cli.interactive import run_session_loop
-from cli.session_ui import show_session_selector
-from cli.tools_ui import show_tools_list
-from cli.models_ui import show_models_list
-from cli.clear_utils import confirm_and_clear
-from cli.hot_ui import run_hot_command
-from cli.wiki_ui import run_wiki_command, run_wiki_approve_command
+from typing import List, Optional
+
+import typer
+from cli.serve_cmd import run_serve
+
+app = typer.Typer(
+    help="Sona：舆情分析 Agent。默认进入交互式 CLI；使用 serve 启动 HTTP API。",
+    add_completion=False,
+)
 
 
 def interactive() -> None:
     """进入交互式模式（默认命令）"""
+    from rich.prompt import Prompt
+
+    from cli.clear_utils import confirm_and_clear
+    from cli.case_ui import run_case_command
+    from cli.display import console, print_icon, print_welcome
+    from cli.hot_ui import run_hot_command
+    from cli.interactive import run_session_loop
+    from cli.monitor_ui import run_monitor_command
+    from cli.models_ui import show_models_list
+    from cli.session_ui import show_session_selector
+    from cli.tools_ui import show_tools_list
+    from cli.wiki_ui import run_wiki_approve_command, run_wiki_command
+
     # 显示图标和欢迎信息
     print_icon()
     print_welcome()
@@ -82,6 +96,20 @@ def interactive() -> None:
                     run_hot_command(custom_config_path)
                     continue
 
+                # 处理 /case 命令（案例库专用检索）
+                if user_input.strip().startswith("/case"):
+                    parts = user_input.strip().split(maxsplit=1)
+                    case_query = parts[1].strip() if len(parts) > 1 else None
+                    run_case_command(case_query)
+                    continue
+
+                # 处理 /monitor 命令（专题监测）
+                if user_input.strip().startswith("/monitor"):
+                    parts = user_input.strip().split(maxsplit=1)
+                    monitor_query = parts[1].strip() if len(parts) > 1 else None
+                    run_monitor_command(monitor_query)
+                    continue
+
                 # 处理 /wiki-approve 命令（候选回流）
                 if user_input.strip().startswith("/wiki-approve"):
                     parts = user_input.strip().split(maxsplit=1)
@@ -107,6 +135,10 @@ def interactive() -> None:
                 console.print("  [cyan]/tools[/cyan]   - 查看所有可用工具")
                 console.print("  [cyan]/hot[/cyan]     - 运行热点抓取与态势感知流程")
                 console.print("  [dim]                 示例: /hot 或 /hot config/config.yaml[/dim]")
+                console.print("  [cyan]/case[/cyan]    - 检索案例库并输出相似案例对照")
+                console.print("  [dim]                 示例: /case 找几个高铁服务争议案例[/dim]")
+                console.print("  [cyan]/monitor[/cyan] - 专题监测（创建专题/日报周报/演示）")
+                console.print("  [dim]                 示例: /monitor demo 或 /monitor create 高铁舆情|交通|高铁,服务[/dim]")
                 console.print("  [cyan]/wiki[/cyan]    - 知识库问答（answer + sources）")
                 console.print("  [dim]                 示例: /wiki 什么是舆情反转？[/dim]")
                 console.print("  [cyan]/wiki-approve[/cyan] - 审核并回流高价值候选到 output")
@@ -133,9 +165,54 @@ def interactive() -> None:
             traceback.print_exc()
 
 
+@app.callback(invoke_without_command=True)
+def _typer_root(ctx: typer.Context) -> None:
+    """无子命令时进入交互式 CLI。"""
+    if ctx.invoked_subcommand is None:
+        interactive()
+
+
+@app.command("serve")
+def serve_command(
+    host: str = typer.Option(
+        os.environ.get("SONA_API_HOST", "127.0.0.1"),
+        "--host",
+        help="监听地址（可用环境变量 SONA_API_HOST）。",
+    ),
+    port: int = typer.Option(
+        int(os.environ.get("SONA_API_PORT", "8765")),
+        "--port",
+        help="监听端口（可用环境变量 SONA_API_PORT）。",
+    ),
+    reload: bool = typer.Option(
+        False,
+        "--reload",
+        help="开发模式：代码变更自动重载。",
+    ),
+) -> None:
+    """启动 FastAPI HTTP API。"""
+    run_serve(host=host, port=port, reload=reload)
+
+
+@app.command("case")
+def case_command(query: Optional[List[str]] = typer.Argument(None, help="案例检索问题")) -> None:
+    """检索本地案例库。"""
+    from cli.case_ui import run_case_command
+
+    run_case_command(" ".join(query or []))
+
+
+@app.command("monitor")
+def monitor_command(args: Optional[List[str]] = typer.Argument(None, help="专题监测子命令")) -> None:
+    """运行专题监测命令。"""
+    from cli.monitor_ui import run_monitor_command
+
+    run_monitor_command(" ".join(args or []))
+
+
 def main() -> None:
-    """主函数：启动交互式模式。"""
-    interactive()
+    """入口：交给 Typer 解析子命令；无参数时进入交互式模式。"""
+    app()
 
 
 if __name__ == "__main__":

@@ -24,6 +24,8 @@ from hashlib import sha1
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
+import yaml
+
 from utils.path import get_opinion_analysis_kb_root
 from utils.harness_memory import (
     append_example_memory,
@@ -48,6 +50,32 @@ class WikiSource:
             "path": self.path,
             "snippet": snip,
             "score": round(float(self.score), 4),
+        }
+
+
+@dataclass(slots=True)
+class WikiCase:
+    title: str
+    domain: str
+    actors: List[str]
+    timeline: str
+    risk_patterns: List[str]
+    response_tactics: List[str]
+    evidence: str
+    report_path: str
+    content: str
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "title": self.title,
+            "domain": self.domain,
+            "actors": self.actors,
+            "timeline": self.timeline,
+            "risk_patterns": self.risk_patterns,
+            "response_tactics": self.response_tactics,
+            "evidence": self.evidence,
+            "report_path": self.report_path,
+            "content": self.content[:300],
         }
 
 
@@ -748,9 +776,13 @@ def _is_entity_stub_source(src: WikiSource) -> bool:
 
 
 def _wiki_path_is_report_like(path: str) -> bool:
-    """是否为 ``sources/`` 或 ``wiki/output/`` 下的正文型词条（非 entities/concepts 导航页）。"""
+    """是否为 ``sources/``、``wiki/output/`` 或 ``cases/`` 下的正文型词条。"""
     p = str(path or "").replace("\\", "/")
-    return "/references/wiki/sources/" in p or "/references/wiki/output/" in p
+    return (
+        "/references/wiki/sources/" in p
+        or "/references/wiki/output/" in p
+        or "/references/wiki/cases/" in p
+    )
 
 
 def _filter_entities_when_report_docs_present(ranked: List[WikiSource]) -> List[WikiSource]:
@@ -883,6 +915,318 @@ def _parse_index_candidates(
     return dedup
 
 
+def _wiki_cases_dir_line_for_scoring(file_path: Path) -> str:
+    """读取 ``cases/*.md`` 的标题与正文开头，用于无需手工维护 index 也能召回案例。"""
+    try:
+        raw = file_path.read_text(encoding="utf-8", errors="replace")[:12_000]
+    except Exception:
+        return file_path.stem
+    title = file_path.stem
+    meta, body = _split_yaml_frontmatter(raw)
+    if isinstance(meta, dict):
+        title = str(meta.get("title") or title).strip() or title
+    body = body[:400].replace("\n", " ")
+    return f"{title} {body}".strip()
+
+
+def _wiki_cases_dir_candidates(
+    wiki_root: Path,
+    *,
+    raw_query: str,
+    query_tokens: List[str],
+    normalized_query: str,
+    max_pages: int = 24,
+) -> List[Tuple[Path, float, str]]:
+    """将自动生成的案例页注入 Wiki 检索候选，避免依赖手工 index。"""
+    cdir = wiki_root / "cases"
+    if not cdir.is_dir():
+        return []
+    files = [p for p in cdir.glob("*.md") if p.is_file() and p.name.upper() != "README.MD"]
+    if not files:
+        return []
+    files.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+    ngrams = _cn_ngrams(normalized_query or raw_query)
+    ranked: List[Tuple[Path, float, str]] = []
+    for fp in files[: max(1, min(int(max_pages), 80))]:
+        line_for_score = _wiki_cases_dir_line_for_scoring(fp)
+        ls = _score_index_line(query_tokens, line_for_score, ngrams=ngrams)
+        if ls <= 0:
+            continue
+        rel = f"cases/{fp.name}"
+        preview = line_for_score.replace("\n", " ")[:200]
+        ranked.append((fp.resolve(), float(ls), f"- [{rel}]({rel}) - {preview}"))
+    ranked.sort(key=lambda x: x[1], reverse=True)
+    return ranked[:max_pages]
+
+
+def _split_yaml_frontmatter(text: str) -> Tuple[Dict[str, Any], str]:
+    raw = str(text or "")
+    if not raw.lstrip().startswith("---"):
+        return {}, raw
+    start = raw.find("---")
+    end = raw.find("\n---", start + 3)
+    if end < 0:
+        return {}, raw
+    try:
+        meta = yaml.safe_load(raw[start + 3 : end]) or {}
+    except Exception:
+        meta = {}
+    body = raw[end + 4 :].lstrip("\n")
+    return (meta if isinstance(meta, dict) else {}), body
+
+
+def _coerce_str_list(val: Any) -> List[str]:
+    if isinstance(val, list):
+        return [str(x).strip() for x in val if str(x).strip()]
+    if isinstance(val, str) and val.strip():
+        return [val.strip()]
+    return []
+
+
+def _coerce_timeline_text(val: Any) -> str:
+    if isinstance(val, list):
+        return " ".join(str(x).strip() for x in val if str(x).strip())
+    return str(val or "").strip()
+
+
+def _coerce_case_evidence(val: Any) -> str:
+    if isinstance(val, list):
+        return "\n".join(str(x).strip() for x in val if str(x).strip())
+    return str(val or "").strip()
+
+
+def _case_evidence_blob(case: WikiCase) -> str:
+    return (
+        f"{case.title}\n{case.domain}\n{' '.join(case.actors)}\n{case.timeline}\n"
+        f"{' '.join(case.risk_patterns)}\n{' '.join(case.response_tactics)}\n"
+        f"{case.evidence}\n{case.content}"
+    ).lower()
+
+
+def _infer_case_domain_hint(query: str) -> str:
+    q = str(query or "")
+    hints = (
+        ("交通", ("高铁", "铁路", "地铁", "公交", "乘客", "列车", "交通")),
+        ("健康", ("健康", "医疗", "医院", "医生", "烟草", "控烟", "电子烟")),
+        ("大熊猫", ("熊猫", "大熊猫", "动物园", "饲养")),
+        ("消费", ("品牌", "消费", "广告", "营销", "OPPO", "产品")),
+        ("教育", ("学校", "高校", "大学", "学生", "教师", "教育")),
+        ("文化传媒", ("综艺", "明星", "饭圈", "影视", "节目")),
+    )
+    for domain, keys in hints:
+        if any(k in q for k in keys):
+            return domain
+    return ""
+
+
+def _infer_case_risk_hint(query: str) -> str:
+    q = str(query or "")
+    for key in ("服务争议", "投诉", "次生舆情", "饭圈", "低俗营销", "算法", "回应过慢", "反转", "切割"):
+        if key in q:
+            return key
+    return ""
+
+
+def _infer_platform_hint(q: str) -> str:
+    s = str(q or "")
+    if "小红书" in s:
+        return "小红书"
+    if "微博" in s or "weibo" in s.lower():
+        return "微博"
+    if "微信" in s:
+        return "微信"
+    if "抖音" in s:
+        return "抖音"
+    if "哔哩" in s or "bilibili" in s.lower() or "B站" in s or "b站" in s:
+        return "B站"
+    if "知乎" in s:
+        return "知乎"
+    if "快手" in s:
+        return "快手"
+    return ""
+
+
+def _infer_time_token(q: str) -> str:
+    s = str(q or "")
+    m = re.search(r"(20\d{2})\s*年", s)
+    if m:
+        return m.group(1)
+    m2 = re.search(r"\b(20\d{2})\b", s)
+    if m2:
+        return m2.group(1)
+    return ""
+
+
+def _load_case_library(project_root: Path) -> List[Tuple[Path, WikiCase]]:
+    cases_dir = get_opinion_analysis_kb_root(project_root) / "references" / "wiki" / "cases"
+    if not cases_dir.is_dir():
+        return []
+
+    results: List[Tuple[Path, WikiCase]] = []
+    for fp in sorted(cases_dir.glob("*.md"), key=lambda p: p.stat().st_mtime, reverse=True):
+        if fp.name.upper() == "README.MD":
+            continue
+        try:
+            raw = fp.read_text(encoding="utf-8", errors="replace")
+            meta, body = _split_yaml_frontmatter(raw)
+            case = WikiCase(
+                title=str(meta.get("title") or fp.stem),
+                domain=str(meta.get("domain") or ""),
+                actors=_coerce_str_list(meta.get("actors")),
+                timeline=_coerce_timeline_text(meta.get("timeline")),
+                risk_patterns=_coerce_str_list(meta.get("risk_patterns")),
+                response_tactics=_coerce_str_list(meta.get("response_tactics")),
+                evidence=_coerce_case_evidence(meta.get("evidence")),
+                report_path=str(meta.get("report_path") or ""),
+                content=body,
+            )
+            results.append((fp, case))
+        except Exception:
+            continue
+    return results
+
+
+def search_cases(
+    query: str = "",
+    *,
+    domain: str = "",
+    actors: str = "",
+    risk_patterns: str = "",
+    platform: str = "",
+    time_contains: str = "",
+    project_root: Path | None = None,
+) -> List[Dict[str, Any]]:
+    """从 ``cases/*.md`` 检索案例；支持领域、主体、风险、平台、时间筛选。"""
+    root = (project_root or Path(__file__).resolve().parents[1]).resolve()
+    q_raw = str(query or "")
+    q = q_raw.lower()
+    domain_f = (domain or _infer_case_domain_hint(q_raw)).strip()
+    risk_f = (risk_patterns or _infer_case_risk_hint(q_raw)).strip()
+    actor_f = str(actors or "").strip()
+    platform_f = (platform or _infer_platform_hint(q_raw)).strip()
+    time_f = (time_contains or _infer_time_token(q_raw)).strip()
+    query_tokens = [t for t in _tokenize(q) if len(t) >= 2]
+
+    results: List[Dict[str, Any]] = []
+    for fp, case in _load_case_library(root):
+        blob = _case_evidence_blob(case)
+        timeline = str(case.timeline or "").lower()
+
+        if platform_f:
+            pf = platform_f.lower()
+            platform_hit = pf in blob or pf in timeline
+            if platform_f in ("B站", "b站"):
+                platform_hit = platform_hit or any(x in blob for x in ("bilibili", "哔哩", "b站"))
+            if not platform_hit:
+                continue
+        if time_f and time_f not in blob and time_f not in timeline:
+            continue
+
+        score = 0.0
+        reasons: List[str] = []
+        if domain_f and domain_f in str(case.domain):
+            score += 3.0
+            reasons.append(f"领域匹配「{domain_f}」")
+        if actor_f and any(actor_f in str(a) for a in case.actors):
+            score += 2.0
+            reasons.append(f"主体命中「{actor_f}」")
+        if risk_f and any(risk_f in str(r) for r in case.risk_patterns):
+            score += 3.0
+            reasons.append(f"风险类型命中「{risk_f}」")
+        tok_hits = sum(1 for tok in set(query_tokens) if tok in blob)
+        if tok_hits:
+            score += min(5.0, tok_hits * 0.8)
+            reasons.append(f"query 词命中×{tok_hits}")
+        if platform_f:
+            score += 1.2
+            reasons.append(f"平台痕迹「{platform_f}」")
+        if time_f:
+            score += 1.0
+            reasons.append(f"时间相关「{time_f}」")
+
+        if score <= 0:
+            continue
+        try:
+            rel_path = fp.resolve().relative_to(root).as_posix()
+        except ValueError:
+            rel_path = str(fp)
+        ev_raw = str(case.evidence or "")
+        results.append(
+            {
+                "title": case.title,
+                "domain": case.domain,
+                "actors": case.actors,
+                "risk_patterns": case.risk_patterns,
+                "timeline": case.timeline,
+                "response_tactics_preview": case.response_tactics[:3],
+                "evidence_excerpt": ev_raw.replace("\n", " ").strip()[:220],
+                "similarity_reason": "；".join(reasons) if reasons else "与查询相关",
+                "score": round(score, 3),
+                "report_path": case.report_path,
+                "wiki_path": rel_path,
+            }
+        )
+
+    results.sort(key=lambda x: float(x.get("score") or 0.0), reverse=True)
+    return results[:10]
+
+
+def _format_risk_cell(risks: Any) -> str:
+    if isinstance(risks, list):
+        return "、".join(str(x) for x in risks if str(x).strip())
+    return str(risks or "")
+
+
+def _compare_cases_summary(matches: List[Dict[str, Any]], *, top_n: int = 3) -> str:
+    if len(matches) < 2:
+        return ""
+    head = matches[: min(top_n, len(matches))]
+    merged_risks: List[str] = []
+    for m in head:
+        for r in m.get("risk_patterns") or []:
+            s = str(r).strip()
+            if s and s not in merged_risks:
+                merged_risks.append(s)
+    parts: List[str] = ["### 相似案例横向对照（摘要）", ""]
+    if merged_risks:
+        parts.append(f"- 涉及风险维度：{'；'.join(merged_risks[:8])}")
+    tactic_lines: List[str] = []
+    for idx, m in enumerate(head, 1):
+        prev = m.get("response_tactics_preview") or []
+        if isinstance(prev, list) and prev:
+            tactic_lines.append(f"- 案例{idx}「{str(m.get('title', ''))[:40]}」侧重：{'；'.join(str(x) for x in prev[:2])}")
+    if tactic_lines:
+        parts.append("- 处置/回应侧重点：")
+        parts.extend(tactic_lines)
+    parts.append("")
+    return "\n".join(parts)
+
+
+def answer_case_query(
+    query: str,
+    *,
+    project_root: Path | None = None,
+) -> Dict[str, Any]:
+    matches = search_cases(query=query, project_root=project_root)
+    if not matches:
+        return {"answer": "未找到匹配案例", "cases": [], "comparison": ""}
+
+    lines: List[str] = []
+    for idx, item in enumerate(matches[:5], 1):
+        lines.append(
+            f"{idx}. {item['title']}\n"
+            f"领域：{item['domain']}\n"
+            f"风险：{_format_risk_cell(item.get('risk_patterns'))}\n"
+            f"相似度说明：{item['similarity_reason']}\n"
+            f"案例文件：{item.get('wiki_path', '')}"
+        )
+    comparison = _compare_cases_summary(matches)
+    body = "\n\n".join(lines)
+    if comparison:
+        body = body + "\n\n" + comparison
+    return {"answer": body, "cases": matches, "comparison": comparison}
+
+
 def _sources_from_markdown_file(
     file_path: Path,
     *,
@@ -978,6 +1322,24 @@ def retrieve_wiki_sources(query: str, *, topk: int = 6, project_root: Path | Non
             normalized_query=normalized_query,
             max_pages=28,
         )
+        case_cands = _wiki_cases_dir_candidates(
+            wiki_root,
+            raw_query=str(query or ""),
+            query_tokens=query_tokens,
+            normalized_query=normalized_query,
+            max_pages=24,
+        )
+        seen_cand_paths: set[str] = set()
+        merged_candidates: List[Tuple[Path, float, str]] = []
+        for p, s, ln in case_cands + candidates:
+            key = str(p)
+            if key in seen_cand_paths:
+                continue
+            seen_cand_paths.add(key)
+            merged_candidates.append((p, s, ln))
+            if len(merged_candidates) >= 44:
+                break
+        candidates = merged_candidates
         index_used = True
         index_hits = len(candidates)
         for page_path, line_score, _line in candidates:
@@ -1410,4 +1772,3 @@ def answer_wiki_query(
         "sources": source_dicts,
         "_wiki_meta": meta,
     }
-

@@ -110,3 +110,7 @@ Desktop.ini
 *.bak
 *.swp
 *~
+
+# 本地课程作业与知识库压缩包（不纳入版本库）
+期末报告-智能体修改-作业/
+opinion_analysis_kb.zip

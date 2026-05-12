@@ -139,6 +139,45 @@ def validate_weibo_aisearch_output(payload: Any) -> Dict[str, Any]:
         raise SchemaError("weibo_aisearch.authenticated: expected boolean")
     if not _is_str(obj["fetched_at"]):
         raise SchemaError("weibo_aisearch.fetched_at: expected string")
+
+    st = obj.get("structured", None)
+    if st is not None:
+        st_obj = _require_mapping(st, where="weibo_aisearch.structured")
+        ver = st_obj.get("version", 1)
+        if ver is not None and not _is_int(ver):
+            raise SchemaError("weibo_aisearch.structured.version: expected int")
+        slots = st_obj.get("slots")
+        if slots is not None:
+            slots_m = _require_mapping(slots, where="weibo_aisearch.structured.slots")
+            for sk, sv in slots_m.items():
+                if not _is_str(sk):
+                    raise SchemaError("weibo_aisearch.structured.slots: keys must be strings")
+                if not isinstance(sv, list) or any(not _is_str(x) for x in sv):
+                    raise SchemaError("weibo_aisearch.structured.slots: values must be list[str]")
+        rb = st_obj.get("report_bridge")
+        if rb is not None:
+            if not isinstance(rb, list):
+                raise SchemaError("weibo_aisearch.structured.report_bridge: expected list")
+            for i, it in enumerate(rb[:40]):
+                if not isinstance(it, dict):
+                    raise SchemaError(f"weibo_aisearch.structured.report_bridge[{i}]: expected object")
+                th = it.get("template_hooks")
+                fs = it.get("from_slots")
+                wh = it.get("writer_hint", "")
+                if th is not None and not isinstance(th, list):
+                    raise SchemaError(f"weibo_aisearch.structured.report_bridge[{i}].template_hooks: expected list")
+                if th is not None and any(not _is_str(x) for x in th):
+                    raise SchemaError(f"weibo_aisearch.structured.report_bridge[{i}].template_hooks: list[str]")
+                if fs is not None and not isinstance(fs, list):
+                    raise SchemaError(f"weibo_aisearch.structured.report_bridge[{i}].from_slots: expected list")
+                if fs is not None and any(not _is_str(x) for x in fs):
+                    raise SchemaError(f"weibo_aisearch.structured.report_bridge[{i}].from_slots: list[str]")
+                if wh is not None and not _is_str(wh):
+                    raise SchemaError(f"weibo_aisearch.structured.report_bridge[{i}].writer_hint: expected string")
+        disc = st_obj.get("disclaimer", "")
+        if disc is not None and not _is_str(disc):
+            raise SchemaError("weibo_aisearch.structured.disclaimer: expected string")
+
     return dict(obj)
 
 

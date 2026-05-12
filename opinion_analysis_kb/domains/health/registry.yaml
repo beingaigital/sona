@@ -1,0 +1,194 @@
+# 健康舆情领域包 — 材料登记
+# 路径相对于仓库根目录
+domain: health
+version: "2026-05-07"
+# 验收：领域文档篇数与路径汇总见 MANIFEST.md（Wiki/智库 15 条不计篇，见〇节）
+items:
+  # --- A. Wiki / 大事件索引（与既有智库对齐，15 条）---
+  # 按老师口径：本节不计「领域文档篇数」，仅保留供健康域 Wiki/路由召回。
+  - id: H_SRC_00_RAW
+    path: opinion_analysis_kb/references/raw/00_中国舆情大事件记录（持续更新）.md
+    role: corpus
+    tags: [公共卫生叙事, 医疗纠纷, 食品安全, 表格索引]
+  - id: H_SRC_00_WIKI
+    path: opinion_analysis_kb/references/wiki/sources/00_中国舆情大事件记录_持续更新.md
+    role: corpus
+    tags: [同上, wiki编译]
+  - id: H_CONCEPT_MED_DISPUTE
+    path: opinion_analysis_kb/references/wiki/concepts/医疗纠纷.md
+    role: concept
+    tags: [医患, 风险模式]
+  - id: H_ENTITY_MED_DISPUTE
+    path: opinion_analysis_kb/references/wiki/entities/医疗纠纷.md
+    role: entity
+    tags: [医患, 图谱节点]
+  - id: H_CONCEPT_NB_HOSP
+    path: opinion_analysis_kb/references/wiki/concepts/宁波妇儿医院.md
+    role: concept
+    tags: [医院管理, 小洛熙事件]
+  - id: H_ENTITY_NB_HOSP
+    path: opinion_analysis_kb/references/wiki/entities/宁波妇儿医院.md
+    role: entity
+    tags: [医院管理, 图谱节点]
+  - id: H_CONCEPT_NB_UNI_WCH
+    path: opinion_analysis_kb/references/wiki/concepts/宁波大学附属妇女儿童医院.md
+    role: concept
+    tags: [机构全称, 医疗纠纷]
+  - id: H_ENTITY_NB_UNI_WCH
+    path: opinion_analysis_kb/references/wiki/entities/宁波大学附属妇女儿童医院.md
+    role: entity
+    tags: [机构全称, 图谱节点]
+  - id: H_CONCEPT_PUMC
+    path: opinion_analysis_kb/references/wiki/concepts/北京协和医学院.md
+    role: concept
+    tags: [医学教育公平, 4+4]
+  - id: H_ENTITY_PUMC
+    path: opinion_analysis_kb/references/wiki/entities/北京协和医学院.md
+    role: entity
+    tags: [图谱节点]
+  - id: H_ENTITY_XIEHE
+    path: opinion_analysis_kb/references/wiki/entities/协和医学院.md
+    role: entity
+    tags: [简称别名, 教育公平]
+  - id: H_SRC_HEALTH_AESTHETICS
+    path: opinion_analysis_kb/references/wiki/sources/49__lt_逐玉_粉底液将军_被官方点名_电视剧健康审美座谈会_到底在批评谁.md
+    role: source
+    tags: [广电, 健康话语, 影视舆情]
+  - id: H_ENTITY_TEA_BRAND
+    path: opinion_analysis_kb/references/wiki/entities/霸王茶姬.md
+    role: entity
+    tags: [健康身份证, 成分透明, 品牌信任]
+  - id: H_CONCEPT_FOOD_SAFETY
+    path: opinion_analysis_kb/references/wiki/concepts/食品安全.md
+    role: concept
+    tags: [315, 公共卫生]
+  - id: H_ENTITY_FOOD_SAFETY
+    path: opinion_analysis_kb/references/wiki/entities/食品安全.md
+    role: entity
+    tags: [图谱节点, 消费维权]
+
+  # --- B. 你方提供的「健康舆情.zip」已归入 materials/ ---
+  # 上半年报告已拆章（无整篇重复）；目录页作索引入口，正文见同目录 1110_01～06
+  - id: H_MAT_TOBACCO_2024_H1
+    path: opinion_analysis_kb/domains/health/materials/控烟相关舆情专题/2024年上半年控烟舆情报告1110_目录.md
+    role: domain_report
+    tags: [控烟, 专题监测, 公共卫生]
+  # 上半年报告拆章单独登记 6 条（与目录页同属一份报告；便于检索按章节召回）
+  - id: H_MAT_TOBACCO_2024_H1_CH01
+    path: opinion_analysis_kb/domains/health/materials/控烟相关舆情专题/2024年上半年控烟舆情报告1110_01_一、主要发现与结论.md
+    role: domain_report
+    tags: [控烟, 专题监测, 拆章]
+  - id: H_MAT_TOBACCO_2024_H1_CH02
+    path: opinion_analysis_kb/domains/health/materials/控烟相关舆情专题/2024年上半年控烟舆情报告1110_02_二、2024年上半年控烟与烟草相关舆情监测概述.md
+    role: domain_report
+    tags: [控烟, 专题监测, 拆章]
+  - id: H_MAT_TOBACCO_2024_H1_CH03
+    path: opinion_analysis_kb/domains/health/materials/控烟相关舆情专题/2024年上半年控烟舆情报告1110_03_三、各媒体平台控烟宣传效果分析.md
+    role: domain_report
+    tags: [控烟, 专题监测, 拆章]
+  - id: H_MAT_TOBACCO_2024_H1_CH04
+    path: opinion_analysis_kb/domains/health/materials/控烟相关舆情专题/2024年上半年控烟舆情报告1110_04_四、主流媒体控烟报道的内容分析.md
+    role: domain_report
+    tags: [控烟, 专题监测, 拆章]
+  - id: H_MAT_TOBACCO_2024_H1_CH05
+    path: opinion_analysis_kb/domains/health/materials/控烟相关舆情专题/2024年上半年控烟舆情报告1110_05_五、_烟卡_舆情专题分析.md
+    role: domain_report
+    tags: [控烟, 专题监测, 烟卡, 拆章]
+  - id: H_MAT_TOBACCO_2024_H1_CH06
+    path: opinion_analysis_kb/domains/health/materials/控烟相关舆情专题/2024年上半年控烟舆情报告1110_06_附录：重点控烟报道列表.md
+    role: domain_report
+    tags: [控烟, 专题监测, 附录, 拆章]
+  - id: H_MAT_TOBACCO_2024_Q4
+    path: opinion_analysis_kb/domains/health/materials/控烟相关舆情专题/2024年第四季度控烟舆情报告.md
+    role: domain_report
+    tags: [控烟, 专题监测]
+  - id: H_MAT_TOBACCO_2025_ANNUAL
+    path: opinion_analysis_kb/domains/health/materials/控烟相关舆情专题/2025年控烟舆情分析年度报告0318.md
+    role: domain_report
+    tags: [控烟, 年度总结]
+  - id: H_MAT_TOBACCO_YANKA
+    path: opinion_analysis_kb/domains/health/materials/控烟相关舆情专题/2024年“烟卡”舆情专题分析报告.md
+    role: domain_report
+    tags: [控烟, 未成年人, 校园]
+  - id: H_MAT_TOBACCO_2024_ANNUAL
+    path: opinion_analysis_kb/domains/health/materials/控烟相关舆情专题/2024年控烟舆情监测年度报告0320.md
+    role: domain_report
+    tags: [控烟, 监测]
+  - id: H_MAT_TOBACCO_2024_Q3
+    path: opinion_analysis_kb/domains/health/materials/控烟相关舆情专题/2024第三季度控烟舆情监测报告（20250102）.md
+    role: domain_report
+    tags: [控烟, 季度报告]
+  - id: H_MAT_PH_MD_H1N1
+    path: opinion_analysis_kb/domains/health/materials/公卫参考文献/突发公共卫生事件的社会传播和应急管理0724.md
+    role: reference
+    tags: [公卫, 应急管理, markdown, wiki编译]
+  - id: H_MAT_PH_MD_WEIBO
+    path: opinion_analysis_kb/domains/health/materials/公卫参考文献/突发公共卫生事件的微博主题演化模_省略_er和Weibo的埃博拉微博为例_安璐.md
+    role: reference
+    tags: [公卫, 微博传播, markdown, wiki编译]
+  - id: H_MAT_PH_MD_RMRB
+    path: opinion_analysis_kb/domains/health/materials/公卫参考文献/突发公共卫生事件在不同时期报道的比较研究——以《人民日报》2003年非典报道与2020年新冠肺炎报道为例.md
+    role: reference
+    tags: [公卫, 媒体框架, markdown, wiki编译]
+
+  # --- C. 自选公共卫生事件舆情稿 15 篇（`domains/health/materials/公卫舆情报告补充/`，版式同 `10_`：`## 内容` 全文）---
+  - id: PH_SUPP_01
+    path: opinion_analysis_kb/domains/health/materials/公卫舆情报告补充/天水幼儿园铅中毒事件舆情动态汇总.md
+    role: reference_index
+    tags: [公共卫生事件, 食品安全, 幼儿园, 舆情动态汇总]
+  - id: PH_SUPP_02
+    path: opinion_analysis_kb/domains/health/materials/公卫舆情报告补充/2025年上半年国内食品安全热点舆情分析.md
+    role: reference_index
+    tags: [公共卫生事件, 食品安全, 舆情分析报告]
+  - id: PH_SUPP_03
+    path: opinion_analysis_kb/domains/health/materials/公卫舆情报告补充/人民舆情2019上半年突发公共事件舆情应对.md
+    role: reference_index
+    tags: [突发公共事件, 公共卫生, 舆情应对, 人民网舆情]
+  - id: PH_SUPP_04
+    path: opinion_analysis_kb/domains/health/materials/公卫舆情报告补充/人民舆情热点事件是如何引爆舆情的.md
+    role: reference_index
+    tags: [医疗舆情, 舆情传播, 人民网舆情]
+  - id: PH_SUPP_05
+    path: opinion_analysis_kb/domains/health/materials/公卫舆情报告补充/蚁坊新冠肺炎疫情舆情汇总分析2020-2022.md
+    role: reference_index
+    tags: [新冠肺炎疫情, 舆情分析报告, 蚁坊软件]
+  - id: PH_SUPP_06
+    path: opinion_analysis_kb/domains/health/materials/公卫舆情报告补充/蚁坊二阳相关话题网络舆情热度分析.md
+    role: reference_index
+    tags: [新冠肺炎疫情, 呼吸道传染病, 舆情热度, 蚁坊软件]
+  - id: PH_SUPP_07
+    path: opinion_analysis_kb/domains/health/materials/公卫舆情报告补充/蚁坊2025年10月医疗类网络舆情风险预警分析.md
+    role: reference_index
+    tags: [医疗舆情, 舆情风险预警, 呼吸道传染病, 蚁坊软件]
+  - id: PH_SUPP_08
+    path: opinion_analysis_kb/domains/health/materials/公卫舆情报告补充/蚁坊退烧药相关网络热度分析.md
+    role: reference_index
+    tags: [新冠肺炎疫情, 药品供应, 舆情热度, 蚁坊软件]
+  - id: PH_SUPP_09
+    path: opinion_analysis_kb/domains/health/materials/公卫舆情报告补充/蚁坊近期疫情相关热点事件舆情报告.md
+    role: reference_index
+    tags: [新冠肺炎疫情, 舆情热点, 蚁坊软件]
+  - id: PH_SUPP_10
+    path: opinion_analysis_kb/domains/health/materials/公卫舆情报告补充/人民网三评网售处方药乱象.md
+    role: reference_index
+    tags: [用药安全, 互联网医疗, 舆情评论, 人民网]
+  - id: PH_SUPP_11
+    path: opinion_analysis_kb/domains/health/materials/公卫舆情报告补充/核酸检测结果延迟出报告舆情报道.md
+    role: reference_index
+    tags: [新冠肺炎疫情, 核酸检测, 舆情报道]
+  - id: PH_SUPP_12
+    path: opinion_analysis_kb/domains/health/materials/公卫舆情报告补充/反思肖某舆情事件刀刃向内重塑信任.md
+    role: reference_index
+    tags: [医疗舆情, 医患信任, 人民网评论]
+  - id: PH_SUPP_13
+    path: opinion_analysis_kb/domains/health/materials/公卫舆情报告补充/蜜雪冰城食品安全投诉与加盟模式舆情观察.md
+    role: reference_index
+    tags: [食品安全, 连锁餐饮, 舆情观察]
+  - id: PH_SUPP_14
+    path: opinion_analysis_kb/domains/health/materials/公卫舆情报告补充/艾媒罗永浩西贝预制菜争议消费者认知调研.md
+    role: reference_index
+    tags: [预制菜, 食品安全认知, 舆情数据, 艾媒咨询]
+  - id: PH_SUPP_15
+    path: opinion_analysis_kb/domains/health/materials/公卫舆情报告补充/医疗保障基金监管新规解读人民日报.md
+    role: reference_index
+    tags: [医保基金, 公共卫生治理, 政策解读]

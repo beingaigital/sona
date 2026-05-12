@@ -129,6 +129,26 @@ class RuntimeHarness:
             return {"name": "topic_relevance_quality", "status": "warning", "reason": "topic_overlap_too_sparse"}
         return {"name": "topic_relevance_quality", "status": "pass", "reason": "topic_alignment_ok"}
 
+    def _score_weibo_aisearch_health(self) -> Dict[str, Any]:
+        events = [e for e in self.events if e.get("event_type") == "weibo_aisearch_health"]
+        if not events:
+            return {"name": "weibo_aisearch_health", "status": "warning", "reason": "missing_weibo_aisearch_event"}
+        d = events[-1].get("details", {})
+        enabled = bool(d.get("enabled", False))
+        if not enabled:
+            return {"name": "weibo_aisearch_health", "status": "pass", "reason": "weibo_aisearch_disabled"}
+        count = int(d.get("count", 0) or 0)
+        error = str(d.get("error", "") or "").strip()
+        fallback_used = bool(d.get("fallback_used", False))
+        if count <= 0:
+            reason = "weibo_aisearch_no_usable_snippets"
+            if error:
+                reason = f"{reason}: {error[:80]}"
+            return {"name": "weibo_aisearch_health", "status": "warning", "reason": reason}
+        if fallback_used:
+            return {"name": "weibo_aisearch_health", "status": "warning", "reason": "weibo_aisearch_fallback_used"}
+        return {"name": "weibo_aisearch_health", "status": "pass", "reason": "weibo_aisearch_has_snippets"}
+
     def finalize(self) -> Dict[str, Any]:
         """Write trace + scorecard and return scorecard payload."""
         checks = [
@@ -136,6 +156,7 @@ class RuntimeHarness:
             self._score_sentiment_health(),
             self._score_reference_recall(),
             self._score_topic_relevance(),
+            self._score_weibo_aisearch_health(),
         ]
         failed = [c for c in checks if c.get("status") == "fail"]
         warned = [c for c in checks if c.get("status") == "warning"]
@@ -152,6 +173,7 @@ class RuntimeHarness:
                 "若情感结果单边失真，优先启用/检查 CSV 情感列 fallback 与样本覆盖率。",
                 "若参考检索跑题，收紧 query 构造并提高词项重合过滤阈值。",
                 "若主题偏航，请提高 topic_relevance_guard 阈值并收紧 searchWords/queryTemplates（或开启事件核心词优先模式）。",
+                "若微博智搜无可用片段，报告中只能将其作为失败/缺失线索，不能写成已成功外部验证。",
             ],
         }
         trace_path = self.process_dir / "runtime_harness_trace.json"

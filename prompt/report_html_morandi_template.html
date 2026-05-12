@@ -90,11 +90,31 @@
         .timeline-item { padding: 18px 0; border-bottom: 1px dashed var(--border-color); position: relative; padding-left: 25px; }
         .timeline-item::before { content: "•"; color: var(--accent); position: absolute; left: 0; font-size: 1.8rem; top: 12px; }
         .timeline-time { font-weight: 700; color: var(--primary-strong); margin-bottom: 5px; }
+        .timeline-impact-positive { background: #d4edda; color: #155724; }
+        .timeline-impact-negative { background: #f8d7da; color: #721c24; }
+        .timeline-impact-turn { background: #fff3cd; color: #856404; }
+        .timeline-impact-ferment { background: #d1ecf1; color: #0c5464; }
+        .timeline-evidence { font-size: 12px; color: #6c757d; margin-top: 5px; padding-left: 8px; border-left: 2px solid #4ea5ff; }
+        .emotion-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; margin-top: 12px; }
+        .emotion-card { background: #f8fafc; border: 1px solid var(--border-color); border-radius: 8px; padding: 10px; font-size: 13px; }
+        .emotion-card strong { color: var(--primary-strong); }
+        .action-plan-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 14px; }
+        .action-plan-card { background: #f8fafc; border: 1px solid var(--border-color); border-left: 4px solid var(--accent); border-radius: 8px; padding: 14px; }
+        .action-plan-card h4 { color: var(--primary-strong); margin-bottom: 8px; }
+        .action-plan-card ul { padding-left: 18px; font-size: 13px; }
+        .action-plan-card li { margin-bottom: 6px; }
 
         /* --- Footer --- */
         footer { text-align: center; padding: 50px; color: var(--text-muted); border-top: 1px solid var(--border-color); font-size: 0.9rem; }
 
         @media (max-width: 1000px) { .grid-2 { grid-template-columns: 1fr; } }
+        @media (max-width: 640px) {
+            .container { padding: 0 14px; }
+            .event-title { font-size: 1.9rem; }
+            .section-title { font-size: 1.35rem; }
+            .card { padding: 18px; }
+            .chart-box, .wordcloud-box { height: 340px; }
+        }
     </style>
 </head>
 <body>
@@ -115,7 +135,7 @@
         <div class="kpi-card"><div class="kpi-label">总样本量</div><div class="kpi-value">{{KPI_TOTAL}}</div></div>
         <div class="kpi-card"><div class="kpi-label">影响指数</div><div class="kpi-value">{{KPI_EFFECTIVE}}</div></div>
         <div class="kpi-card"><div class="kpi-label">整体态度</div><div class="kpi-value">{{KPI_POS_RATIO}}</div></div>
-        <div class="kpi-card"><div class="kpi-label">目前阶段</div><div class="kpi-value">{{KPI_NEG_RATIO}}</div></div>
+        <div class="kpi-card"><div class="kpi-label">目前阶段</div><div class="kpi-value">{{PHASE_STATUS}}</div></div>
     </div>
 
     <section>
@@ -137,6 +157,7 @@
             <div class="card">
                 <h3>情感倾向分析结果</h3>
                 <div id="sentimentChart" class="chart-box"></div>
+                <div id="emotionMechanism" class="analysis-summary" style="display:none;"></div>
                 <div class="analysis-summary">
                     <h3>简要分析结论</h3>
                     <ul>{{CHART_SENTIMENT_ANALYSIS}}</ul>
@@ -236,6 +257,7 @@
             <div class="analysis-summary">
                 <ul>{{RESPONSE_ANALYSIS_BULLETS}}</ul>
             </div>
+            <div style="margin-top:18px;">{{RESPONSE_ACTION_PLAN}}</div>
         </div>
 
         <div class="card">
@@ -268,6 +290,13 @@
         subText: '#6b7280',
         split: 'rgba(107,114,128,0.16)',
     };
+    const escapeHtml = (value) => String(value ?? '').replace(/[&<>"']/g, (ch) => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;'
+    }[ch]));
 
     function baseToolbox() {
         return {
@@ -303,6 +332,30 @@
                 data: REPORT_DATA.charts.sentiment
             }]
         });
+
+        const emotionBox = document.getElementById('emotionMechanism');
+        const sentimentDetail = REPORT_DATA.sentimentDetail || {};
+        const emotionAnalysis = sentimentDetail.emotionAnalysis || {};
+        const emotionKeys = Object.keys(emotionAnalysis);
+        if (emotionBox && (emotionKeys.length || sentimentDetail.negativeDrivers)) {
+            let emotionHtml = '<h3>情绪结构与负面/质疑驱动</h3>';
+            if (sentimentDetail.negativeDrivers) {
+                emotionHtml += `<p style="margin-bottom:10px;"><strong>上升原因：</strong>${escapeHtml(sentimentDetail.negativeDrivers)}</p>`;
+            }
+            if (emotionKeys.length) {
+                emotionHtml += '<div class="emotion-grid">';
+                emotionKeys.forEach(k => {
+                    const item = emotionAnalysis[k] || {};
+                    emotionHtml += `<div class="emotion-card"><strong>${escapeHtml(k)}</strong><br>计数：${escapeHtml(item.count || 0)}<br><span>${escapeHtml(item.typical_expression || '无')}</span></div>`;
+                });
+                emotionHtml += '</div>';
+            }
+            if (sentimentDetail.emotionValidation && sentimentDetail.emotionValidation.sample_size) {
+                emotionHtml += `<p style="margin-top:10px; font-size:12px; color:#6b7280;">抽样校验：样本 ${escapeHtml(sentimentDetail.emotionValidation.sample_size)} 条；${escapeHtml(sentimentDetail.emotionValidation.note || '')}</p>`;
+            }
+            emotionBox.innerHTML = emotionHtml;
+            emotionBox.style.display = 'block';
+        }
 
         // 2. 渠道占比饼图（若数据缺失则隐藏）
         const channelEl = document.getElementById('channelChart');
@@ -518,6 +571,8 @@
             legend: { top: '2%', left: 'center', data: ['五维评估'], textStyle: { color: ECHARTS_THEME.subText } },
             toolbox: baseToolbox(),
             radar: {
+                center: ['50%', '58%'],
+                radius: '64%',
                 indicator: [
                     { name: '量', max: 10 }, { name: '质', max: 10 },
                     { name: '人', max: 10 }, { name: '场', max: 10 }, { name: '效', max: 10 }
@@ -543,6 +598,16 @@
         const lifecycleDates = REPORT_DATA.charts.lifecycle.dates || [];
         const lifecycleValues = REPORT_DATA.charts.lifecycle.values || [];
         const lifecycleBoundaries = REPORT_DATA.charts.lifecycle.boundaries || [];
+        const timelineMarkPoints = (REPORT_DATA.timeline || []).map(item => {
+            const idx = lifecycleDates.findIndex(d => String(d).slice(0, 10) === String(item.time || '').slice(0, 10));
+            if (idx < 0) return null;
+            return {
+                name: item.event || '关键节点',
+                coord: [lifecycleDates[idx], lifecycleValues[idx] || 0],
+                value: item.event || '关键节点',
+                itemStyle: { color: item.impact === '负面' ? '#EE6666' : (item.impact === '转折' ? '#FAC858' : '#5470C6') },
+            };
+        }).filter(Boolean).slice(0, 8);
         chartInstances.lifecycle.setOption({
             color: ECHARTS_THEME.colors,
             animationDuration: 1000,
@@ -568,13 +633,30 @@
                     lineStyle: { type: 'dashed', color: 'rgba(107,114,128,0.6)', width: 1.2 },
                     data: lifecycleBoundaries.map(b => ({ xAxis: b.xAxis, name: b.name })),
                 },
+                markPoint: {
+                    symbolSize: 42,
+                    label: { formatter: ({ data }) => data && data.name ? data.name : '', fontSize: 10 },
+                    data: timelineMarkPoints,
+                },
             }]
         });
 
         // 渲染时间线
         const tlList = document.getElementById('timelineList');
         REPORT_DATA.timeline.forEach(item => {
-            tlList.innerHTML += `<li class="timeline-item"><div class="timeline-time">${item.time}</div><div>${item.event}</div></li>`;
+            let evidenceHtml = item.evidence ? `<div class="timeline-evidence">证据：${escapeHtml(item.evidence)}</div>` : '';
+            let impactClass = '';
+            let impactText = '';
+            if (item.impact === '正面') { impactClass = 'timeline-impact-positive'; impactText = '正面'; }
+            else if (item.impact === '负面') { impactClass = 'timeline-impact-negative'; impactText = '负面'; }
+            else if (item.impact === '转折') { impactClass = 'timeline-impact-turn'; impactText = '转折'; }
+            else if (item.impact === '发酵') { impactClass = 'timeline-impact-ferment'; impactText = '发酵'; }
+            let impactHtml = impactText ? `<span class="timeline-impact ${impactClass}" style="font-size:11px; margin-left:8px; padding:2px 8px; border-radius:12px;">${impactText}</span>` : '';
+            tlList.innerHTML += `<li class="timeline-item">
+                <div class="timeline-time">${escapeHtml(item.time)} ${impactHtml}</div>
+                <div class="timeline-event" style="font-weight:500;">${escapeHtml(item.event)}</div>
+                ${evidenceHtml}
+            </li>`;
         });
     }
 

@@ -8,6 +8,7 @@ import os
 import re
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 from urllib.parse import quote
 
 import requests
@@ -73,6 +74,237 @@ def _load_cookies_from_path(path_like: str) -> dict[str, str]:
             if name and value:
                 cookies[name] = value
     return cookies
+
+
+# 与微博智搜常见叙事结构对齐，供报告模板（INTRO / 时间线 / 争议 / 回应 / 复盘等）吸收线索。
+_STRUCTURE_VERSION = 1
+WEIBO_AISEARCH_SLOT_ORDER: tuple[str, ...] = (
+    "event_facts",
+    "timeline",
+    "controversy",
+    "brand_pr",
+    "institutional",
+    "accountability",
+    "industry_reflection",
+    "synthesis",
+    "discussion_misc",
+)
+WEIBO_AISEARCH_SLOT_TITLES: dict[str, str] = {
+    "event_facts": "事件事实与争议材料（→ 事件概述、核心事实）",
+    "timeline": "时间线与节点（→ 传播时间线、阶段划分）",
+    "controversy": "争议焦点与舆论质疑（→ 公众讨论焦点、争议核心）",
+    "brand_pr": "品牌/主体回应与公关动作（→ 回应与处置观察）",
+    "institutional": "机构、媒体与第三方表态（→ 官方与舆论场介入）",
+    "accountability": "问责、处罚与组织处理（→ 升级与问责链）",
+    "industry_reflection": "机制、行业与长期反思（→ 风险与建议依据）",
+    "synthesis": "总结式判断与复盘口吻（→ 总结复盘、启示）",
+    "discussion_misc": "其它讨论片段（→ 仅作氛围参考，慎引为事实）",
+}
+# 叙事模型占位符与 HTML 章节习惯命名对齐（见 tools/report_html_template.py）
+_REPORT_BRIDGE: tuple[dict[str, Any], ...] = (
+    {
+        "template_hooks": ["INTRO_BACKGROUND", "事件概述"],
+        "from_slots": ["event_facts", "timeline", "synthesis"],
+        "writer_hint": "概述段优先吸收「事件事实」与含日期的「时间线」各 0–1 条；若与本地 CSV 时间窗不一致，以本地为准。",
+    },
+    {
+        "template_hooks": ["时间线", "传播阶段", "timeline（JSON）"],
+        "from_slots": ["timeline", "brand_pr", "accountability", "institutional"],
+        "writer_hint": "时间线节点应对齐本地声量峰；机构表态、二次致歉与处罚宜按时间先后串联，避免合并为一句模糊因果。",
+    },
+    {
+        "template_hooks": ["INTRO_TRIGGERS", "公众讨论焦点", "争议核心"],
+        "from_slots": ["controversy", "discussion_misc", "brand_pr"],
+        "writer_hint": "争议轴与「首次回应/道歉话术」对照写；单条情绪梗不得替代整体分布结论。",
+    },
+    {
+        "template_hooks": ["RESPONSE_ANALYSIS_BULLETS", "处置建议", "启示/复盘"],
+        "from_slots": ["institutional", "industry_reflection", "accountability", "synthesis"],
+        "writer_hint": "机构与行业反思可作外脑线索；建议须落到主体可控动作，并与本地证据链交叉。",
+    },
+    {
+        "template_hooks": ["SUMMARY_BULLETS", "RECAP_*", "总结复盘"],
+        "from_slots": ["synthesis", "controversy", "accountability"],
+        "writer_hint": "总结段只复述智搜中已出现的判断句式不够，须回扣本次数据与图表结论；禁止夸大「全网」「90%」等无本地支撑的占比。",
+    },
+)
+
+_DATE_FULL = re.compile(r"\d{4}年\d{1,2}月\d{1,2}日")
+_DATE_MD = re.compile(r"(?<!\d)\d{1,2}月\d{1,2}日(?!\d)")
+
+
+def _each_slot_limit() -> int:
+    raw = os.environ.get("SONA_WEIBO_AISEARCH_SLOT_EACH", "8").strip()
+    try:
+        n = int(raw)
+    except Exception:
+        n = 8
+    return max(2, min(n, 20))
+
+
+def _snippet_cap() -> int:
+    raw = os.environ.get("SONA_WEIBO_AISEARCH_SNIPPET_IN_STRUCTURE", "240").strip()
+    try:
+        n = int(raw)
+    except Exception:
+        n = 240
+    return max(80, min(n, 500))
+
+
+def _has_timeline_signal(text: str) -> bool:
+    if _DATE_FULL.search(text) or _DATE_MD.search(text):
+        return True
+    if "同日" in text or "次日" in text or "当晚" in text:
+        return True
+    return False
+
+
+def _matching_slots(snippet: str) -> set[str]:
+    """基于关键词/日期信号将单条智搜片段归入一个或多个叙事槽（启发式，非平台官方标签）。"""
+    s = snippet
+    m: set[str] = set()
+    if _has_timeline_signal(s):
+        m.add("timeline")
+    if any(k in s for k in ("总结", "复盘", "启示", "教训", "归根结底", "核心在于", "典型案例", "始于", "终于")):
+        m.add("synthesis")
+    if any(
+        k in s
+        for k in (
+            "争议",
+            "质疑",
+            "价值观",
+            "公序良俗",
+            "伦理",
+            "冒犯",
+            "低俗",
+            "饭圈",
+            "亚文化",
+            "出轨",
+            "矮化",
+            "贬低",
+            "玩梗",
+            "扭曲",
+            "幽默",
+            "精神出轨",
+            "刻板印象",
+        )
+    ):
+        m.add("controversy")
+    if any(
+        k in s
+        for k in (
+            "道歉",
+            "致歉",
+            "声明",
+            "回应",
+            "下架",
+            "整改",
+            "承诺",
+            "初衷",
+            "打破刻板",
+            "精选",
+            "敷衍",
+            "认错",
+        )
+    ):
+        m.add("brand_pr")
+    if any(
+        k in s
+        for k in (
+            "问责",
+            "处罚",
+            "降级",
+            "职级",
+            "罚薪",
+            "冻结",
+            "高管",
+            "内部通告",
+            "内部发布",
+            "定级",
+            "重大品牌事故",
+            "直降",
+        )
+    ):
+        m.add("accountability")
+    if any(
+        k in s
+        for k in (
+            "中国妇女报",
+            "浙江宣传",
+            "广告协会",
+            "新京报",
+            "澎湃新闻",
+            "红星新闻",
+            "界面新闻",
+            "快评",
+            "校方",
+            "大学",
+            "协会",
+            "官媒",
+            "下场",
+        )
+    ):
+        m.add("institutional")
+    if any(k in s for k in ("审核", "流量", "营销", "失灵", "长期主义", "本分", "段永平", "行业警示", "底线", "机制")):
+        m.add("industry_reflection")
+    if any(k in s for k in ("文案", "海报", "原文", "宣发", "物料", "配图", "母亲节", "表述为", "内容为", "称：", "称，")):
+        m.add("event_facts")
+    if not m:
+        m.add("discussion_misc")
+    return m
+
+
+def decompose_weibo_aisearch_results(results: Any) -> dict[str, Any]:
+    """
+    将智搜 ``results`` 启发式分槽，便于与报告模板占位符对齐。
+
+    Returns:
+        含 ``version``、``slots``、``report_bridge``、``disclaimer`` 的字典；与工具 JSON 中
+        ``structured`` 字段形态一致。旧版仅含 ``results`` 的 JSON 可在消费端调用本函数补算。
+    """
+    slots: dict[str, list[str]] = {k: [] for k in WEIBO_AISEARCH_SLOT_ORDER}
+    seen: dict[str, set[str]] = {k: set() for k in WEIBO_AISEARCH_SLOT_ORDER}
+    cap = _snippet_cap()
+    each_lim = _each_slot_limit()
+
+    if not isinstance(results, list):
+        results = []
+
+    for row in results:
+        if not isinstance(row, dict):
+            continue
+        raw = str(row.get("snippet") or "").strip()
+        if len(raw) < 12:
+            continue
+        flat = re.sub(r"\s+", " ", raw)
+        display = flat[:cap] + ("..." if len(flat) > cap else "")
+        key = flat[:96]
+        for slot in _matching_slots(flat):
+            if slot not in slots:
+                continue
+            if len(slots[slot]) >= each_lim:
+                continue
+            if key in seen[slot]:
+                continue
+            seen[slot].add(key)
+            slots[slot].append(display)
+
+    slots = {k: v for k, v in slots.items() if v}
+
+    return {
+        "version": _STRUCTURE_VERSION,
+        "slots": slots,
+        "report_bridge": [dict(x) for x in _REPORT_BRIDGE],
+        "disclaimer": (
+            "以下为基于可见片段的关键词分槽，非微博官方结构；须与本地采集数据、"
+            "图表与可核验报道交叉验证后再写入正文。"
+        ),
+    }
+
+
+def _structure_enabled() -> bool:
+    v = str(os.environ.get("SONA_WEIBO_AISEARCH_STRUCTURE", "true") or "true").strip().lower()
+    return v in ("1", "true", "yes", "y", "on")
 
 
 def _extract_snippets_from_html(text: str, limit: int) -> list[dict[str, str]]:
@@ -151,7 +383,8 @@ def weibo_aisearch(query: str, limit: int = 12) -> str:
     输入：
       - query: 事件关键词或主题
       - limit: 返回片段数量上限（1~30，默认12）
-    输出：JSON字符串，含 topic/url/count/results/error/fetched_at。
+    输出：JSON字符串，含 topic/url/count/results/error/fetched_at；默认另含
+    ``structured``（分槽线索与 ``report_bridge``，便于与报告模板占位符对齐）。
     """
     # 确保 .env 已加载到进程环境变量（与项目其他工具行为一致）
     get_env_config()
@@ -236,19 +469,24 @@ def weibo_aisearch(query: str, limit: int = 12) -> str:
         else:
             error_text = "未提取到可用微博智搜片段"
 
-    return json.dumps(
-        {
-            "topic": topic,
-            "url": url,
-            "count": len(results),
-            "results": results,
-            "error": error_text,
-            "fallback_used": fallback_used,
-            "source": "playwright" if fallback_used and results else "requests",
-            "authenticated": bool(cookies),
-            "cookie_path_used": bool(cookie_path and Path(cookie_path).expanduser().exists()),
-            "fetched_at": datetime.now().isoformat(sep=" "),
-        },
-        ensure_ascii=False,
-    )
+    structured: dict[str, Any] | None = None
+    if _structure_enabled():
+        structured = decompose_weibo_aisearch_results(results)
+
+    payload: dict[str, Any] = {
+        "topic": topic,
+        "url": url,
+        "count": len(results),
+        "results": results,
+        "error": error_text,
+        "fallback_used": fallback_used,
+        "source": "playwright" if fallback_used and results else "requests",
+        "authenticated": bool(cookies),
+        "cookie_path_used": bool(cookie_path and Path(cookie_path).expanduser().exists()),
+        "fetched_at": datetime.now().isoformat(sep=" "),
+    }
+    if structured is not None:
+        payload["structured"] = structured
+
+    return json.dumps(payload, ensure_ascii=False)
 

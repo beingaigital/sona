@@ -5,14 +5,84 @@ from __future__ import annotations
 import json
 import os
 import re
+from functools import lru_cache
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
+import yaml
 from langchain_core.tools import tool
 
-# Neo4j 连接配置（允许通过环境变量覆盖）
-NEO4J_URI = os.environ.get("SONA_NEO4J_URI", "neo4j://127.0.0.1:7687")
-NEO4J_USER = os.environ.get("SONA_NEO4J_USER", "neo4j")
-NEO4J_PASSWORD = os.environ.get("SONA_NEO4J_PASSWORD", "bjtu1234")
+from utils.path import get_config_path
+
+
+@lru_cache(maxsize=1)
+def _load_graph_rag_config() -> Dict[str, Any]:
+    """读取 config/config.yaml 中的 graph_rag 配置；失败时返回空配置。"""
+    config_path = get_config_path("config.yaml")
+    if not config_path.exists():
+        return {}
+    try:
+        with config_path.open("r", encoding="utf-8") as f:
+            config = yaml.safe_load(f) or {}
+    except Exception:
+        return {}
+    graph_rag = config.get("graph_rag")
+    return graph_rag if isinstance(graph_rag, dict) else {}
+
+
+def graph_rag_enabled_in_config() -> bool:
+    """
+    读取 config.yaml 的 graph_rag.enabled。
+    未配置时视为开启，仍交由连接健康检查和自动降级保护主流程。
+    """
+    cfg = _load_graph_rag_config()
+    if not cfg:
+        return True
+    enabled = cfg.get("enabled", True)
+    if isinstance(enabled, bool):
+        return enabled
+    s = str(enabled).strip().lower()
+    return s not in ("0", "false", "no", "n", "off", "")
+
+
+def _get_neo4j_settings() -> Tuple[str, str, str, str]:
+    """Neo4j 连接配置：环境变量优先，其次 config.yaml，最后本地默认值。"""
+    try:
+        from utils.env_loader import get_env_config
+
+        get_env_config()
+    except Exception:
+        pass
+
+    config = _load_graph_rag_config()
+    auth = config.get("auth") if isinstance(config.get("auth"), (list, tuple)) else []
+    config_uri = str(config.get("uri", "") or "").strip()
+    config_user = str(auth[0] if len(auth) > 0 else config.get("user", "") or "").strip()
+    config_password = str(auth[1] if len(auth) > 1 else config.get("password", "") or "").strip()
+    config_database = str(config.get("database", "") or "").strip()
+
+    uri = os.environ.get("SONA_NEO4J_URI") or config_uri or "bolt://127.0.0.1:7687"
+    user = os.environ.get("SONA_NEO4J_USER") or config_user or "neo4j"
+    password = os.environ.get("SONA_NEO4J_PASSWORD") or config_password or "bjtu1234"
+    database = os.environ.get("SONA_NEO4J_DATABASE") or config_database or ""
+    return uri, user, password, database
+
+
+def get_neo4j_connection_info(*, include_password: bool = False) -> Dict[str, str]:
+    """返回当前 Neo4j 连接信息；默认不暴露密码，便于日志和健康检查。"""
+    uri, user, password, database = _get_neo4j_settings()
+    info = {"uri": uri, "user": user, "database": database}
+    if include_password:
+        info["password"] = password
+    return info
+
+
+def _neo4j_session_kwargs() -> Dict[str, str]:
+    database = _get_neo4j_settings()[3]
+    return {"database": database} if database else {}
+
+
+# 供脚本复用的连接参数快照；运行时查询仍会动态读取环境变量/config。
+NEO4J_URI, NEO4J_USER, NEO4J_PASSWORD, NEO4J_DATABASE = _get_neo4j_settings()
 
 CASE_LABEL_CANDIDATES = [
     "Case",
@@ -262,14 +332,46 @@ def _merge_candidate_rows(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return list(merged.values())
 
 
-def _get_neo4j_driver():
+def _get_neo4j_driver(*, connection_timeout: Optional[float] = None):
     """获取 Neo4j 驱动。"""
     try:
         from neo4j import GraphDatabase
 
-        return GraphDatabase.driver(NEO4J_URI, auth=(NEO4J_USER, NEO4J_PASSWORD))
+        uri, user, password, _database = _get_neo4j_settings()
+        kwargs: Dict[str, Any] = {}
+        if connection_timeout is not None:
+            kwargs["connection_timeout"] = connection_timeout
+        return GraphDatabase.driver(uri, auth=(user, password), **kwargs)
     except ImportError:
         return None
+
+
+def check_neo4j_connection(timeout_sec: float = 5.0) -> Dict[str, Any]:
+    """
+    Neo4j 连接健康检查。
+
+    返回结构化结果且不抛出异常，供 CLI、脚本和主流程降级判断使用。
+    """
+    info = get_neo4j_connection_info()
+    if not graph_rag_enabled_in_config():
+        return {"ok": False, "status": "disabled_by_config", **info}
+
+    driver = _get_neo4j_driver(connection_timeout=max(1.0, float(timeout_sec or 5.0)))
+    if driver is None:
+        return {"ok": False, "status": "driver_missing", "error": "Neo4j Python driver is not installed", **info}
+
+    try:
+        driver.verify_connectivity()
+        with driver.session(**_neo4j_session_kwargs()) as session:
+            value = session.run("RETURN 1 AS ok").single()
+        return {"ok": bool(value and value.get("ok") == 1), "status": "connected", **info}
+    except Exception as exc:
+        return {"ok": False, "status": "connection_failed", "error": str(exc), **info}
+    finally:
+        try:
+            driver.close()
+        except Exception:
+            pass
 
 
 def _query_fulltext_candidates(session: Any, query_terms: List[str], limit: int) -> List[Dict[str, Any]]:
@@ -346,7 +448,7 @@ def _query_similar_cases(
             all_terms.append(t)
 
     try:
-        with driver.session() as session:
+        with driver.session(**_neo4j_session_kwargs()) as session:
             rows: List[Dict[str, Any]] = []
             rows.extend(_query_fulltext_candidates(session, all_terms, fulltext_limit))
             rows.extend(_query_nodes_by_labels(session, CASE_LABEL_CANDIDATES, scan_limit))
@@ -423,7 +525,7 @@ def _query_theory(theory_name: Optional[str] = None, limit: int = 10) -> List[Di
     terms = _tokenize_for_match(theory_name or "", max_tokens=30)
 
     try:
-        with driver.session() as session:
+        with driver.session(**_neo4j_session_kwargs()) as session:
             rows: List[Dict[str, Any]] = []
             rows.extend(_query_fulltext_candidates(session, terms, max(limit * 4, 20)))
             rows.extend(_query_nodes_by_labels(session, THEORY_LABEL_CANDIDATES, scan_limit))
@@ -487,7 +589,7 @@ def _query_indicators(dimension: Optional[str] = None, limit: int = 20) -> List[
     dim_terms = _compose_dimension_terms(dimension or "")
 
     try:
-        with driver.session() as session:
+        with driver.session(**_neo4j_session_kwargs()) as session:
             rows: List[Dict[str, Any]] = []
             rows.extend(_query_fulltext_candidates(session, dim_terms, max(limit * 6, 30)))
             rows.extend(_query_nodes_by_labels(session, INDICATOR_LABEL_CANDIDATES, scan_limit))
@@ -543,7 +645,7 @@ def _query_case_by_id(case_id: str) -> Dict[str, Any]:
         return {"error": "Neo4j 驱动未安装"}
 
     try:
-        with driver.session() as session:
+        with driver.session(**_neo4j_session_kwargs()) as session:
             query = (
                 "MATCH (c) "
                 "WHERE c.case_id = $case_id OR c.id = $case_id OR c.uuid = $case_id OR toString(elementId(c)) = $case_id "

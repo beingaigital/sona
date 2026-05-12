@@ -15,6 +15,21 @@
   "source": "playwright",
   "authenticated": true,
   "cookie_path_used": false,
-  "fetched_at": "2026-04-18 18:48:44.570845"
+  "fetched_at": "2026-04-18 18:48:44.570845",
+  "structured": {
+    "version": 1,
+    "slots": {
+      "controversy": ["#大学生高铁怒吼熊孩子算反应过度吗# 讨论边界与监护责任。"],
+      "discussion_misc": ["#高铁上孩童吵闹大学生怒吼瞬间安静# 现场传播片段。"]
+    },
+    "report_bridge": [
+      {
+        "template_hooks": ["INTRO_BACKGROUND", "事件概述"],
+        "from_slots": ["event_facts", "timeline"],
+        "writer_hint": "测试用占位说明。"
+      }
+    ],
+    "disclaimer": "契约测试用结构化字段；生产环境须与本地数据交叉验证。"
+  }
 }
 

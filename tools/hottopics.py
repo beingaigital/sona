@@ -1,6 +1,7 @@
 # coding=utf-8
 import json
 import os
+import re
 import time
 import webbrowser
 import sys
@@ -951,6 +952,139 @@ class InsightNode:
             self.llm = None
 
     @staticmethod
+    def _calculate_risk_level(heat_score: float, sentiment: str, category: str) -> Tuple[str, float, str, List[str]]:
+        """根据热度、情感和类别计算热点风险等级。"""
+        risk_score = 0.0
+        risk_factors: List[str] = []
+
+        if heat_score >= 80:
+            risk_score += 40
+            risk_factors.append("高热度传播")
+        elif heat_score >= 60:
+            risk_score += 30
+            risk_factors.append("中高热度传播")
+        elif heat_score >= 40:
+            risk_score += 20
+            risk_factors.append("中等热度传播")
+        elif heat_score >= 20:
+            risk_score += 10
+            risk_factors.append("低热度传播")
+
+        if sentiment == "负面":
+            risk_score += 35
+            risk_factors.append("负面情绪主导")
+        elif sentiment == "中性":
+            risk_score += 15
+            risk_factors.append("情绪尚未明确分化")
+        elif sentiment == "正面":
+            risk_factors.append("正面情绪占优")
+
+        sensitive_categories = {"突发事件舆论", "法治类舆论", "治理类舆论"}
+        if category in sensitive_categories:
+            risk_score += 25
+            risk_factors.append("敏感舆情类别")
+        elif category in {"经济类舆论", "民生类舆论"}:
+            risk_score += 15
+            risk_factors.append("重点民生经济议题")
+
+        if risk_score >= 80:
+            return "重大风险", risk_score, "需立即启动应急预案", risk_factors
+        if risk_score >= 60:
+            return "高风险", risk_score, "需重点监控，准备回应方案", risk_factors
+        if risk_score >= 35:
+            return "中风险", risk_score, "需持续跟踪，适时回应", risk_factors
+        return "低风险", risk_score, "常规监控即可", risk_factors
+
+    @staticmethod
+    def _topic_signature(title: str) -> str:
+        normalized = re.sub(r"\s+", "", str(title or ""))[:40]
+        if not normalized:
+            return "unknown"
+        import hashlib
+
+        return hashlib.md5(normalized.encode("utf-8")).hexdigest()[:8]
+
+    @classmethod
+    def _enrich_hot_topics(cls, top_topics: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        enriched: List[Dict[str, Any]] = []
+        for topic in top_topics or []:
+            if not isinstance(topic, dict):
+                continue
+            title = str(topic.get("topic") or topic.get("title") or "").strip()
+            if not title:
+                continue
+            sentiment = str(topic.get("sentiment") or "中性").strip()
+            category = str(topic.get("category") or "其他").strip()
+            try:
+                heat_score = float(topic.get("heat_score") or 0)
+            except (TypeError, ValueError):
+                heat_score = 0.0
+
+            risk_level, risk_score, risk_note, risk_factors = cls._calculate_risk_level(
+                heat_score, sentiment, category
+            )
+            item = dict(topic)
+            item.update(
+                {
+                    "topic": title,
+                    "sentiment": sentiment,
+                    "category": category,
+                    "heat_score": round(heat_score, 1),
+                    "risk_level": risk_level,
+                    "risk_score": round(risk_score, 1),
+                    "risk_note": risk_note,
+                    "risk_factors": risk_factors,
+                    "cluster_id": f"{category}_{cls._topic_signature(title)}",
+                    "deep_dive_url": f"/event?query={quote(title)}",
+                    "deep_dive_command": f"/event {title}",
+                    "case_candidate": risk_score >= 60,
+                }
+            )
+            enriched.append(item)
+        return enriched
+
+    @classmethod
+    def _build_situation_summary(cls, top_topics: List[Dict[str, Any]]) -> Dict[str, Any]:
+        levels = [str(t.get("risk_level") or "低风险") for t in top_topics if isinstance(t, dict)]
+        major_count = levels.count("重大风险")
+        high_count = levels.count("高风险")
+        medium_count = levels.count("中风险")
+        low_count = levels.count("低风险")
+        case_candidate_count = sum(
+            1 for t in top_topics if isinstance(t, dict) and t.get("case_candidate")
+        )
+        highest_topic = None
+        if top_topics:
+            highest_topic = max(top_topics, key=lambda t: float(t.get("risk_score") or 0))
+        highest_risk_topic = (
+            str(highest_topic.get("topic") or "") if isinstance(highest_topic, dict) else ""
+        )
+        highest_risk_level = (
+            str(highest_topic.get("risk_level") or "低风险")
+            if isinstance(highest_topic, dict)
+            else "低风险"
+        )
+        overview = (
+            f"共识别 {len(top_topics)} 个热点，其中重大风险 {major_count} 个、高风险 {high_count} 个、"
+            f"中风险 {medium_count} 个、低风险 {low_count} 个；"
+            f"建议沉淀为案例候选 {case_candidate_count} 个。"
+        )
+        if highest_risk_topic:
+            overview += f" 当前最高风险热点为“{highest_risk_topic}”，等级为{highest_risk_level}。"
+        return {
+            "overview": overview,
+            "risk_counts": {
+                "重大风险": major_count,
+                "高风险": high_count,
+                "中风险": medium_count,
+                "低风险": low_count,
+            },
+            "case_candidate_count": case_candidate_count,
+            "highest_risk_topic": highest_risk_topic,
+            "highest_risk_level": highest_risk_level,
+        }
+
+    @staticmethod
     def _fallback_insight(news_list: List[Dict[str, Any]]) -> Dict[str, Any]:
         """
         无模型可用时的规则兜底：按排名/热度提取热点标题。
@@ -975,19 +1109,23 @@ class InsightNode:
             rank = int(item.get("rank") or 50)
             hot = float(item.get("hot_value") or 0)
             heat_score = max(20.0, min(100.0, 100.0 - rank * 2 + (hot / 1000000.0)))
+            sentiment = "中性"
+            category = "其他"
             top_topics.append(
                 {
                     "topic": title,
-                    "sentiment": "中性",
+                    "sentiment": sentiment,
                     "comment": f"来自{item.get('source_name') or item.get('source') or '多平台'}热榜，建议持续跟踪事件演化。",
                     "heat_score": round(heat_score, 1),
-                    "category": "其他",
+                    "category": category,
                 }
             )
             if len(top_topics) >= 8:
                 break
+        enriched_topics = InsightNode._enrich_hot_topics(top_topics)
         return {
-            "top_topics": top_topics,
+            "top_topics": enriched_topics,
+            "situation_summary": InsightNode._build_situation_summary(enriched_topics),
             "summary": "当前报告由规则引擎生成（未启用大模型深度归因），建议在模型可用时重新生成以获得更细粒度洞察。",
         }
 
@@ -1158,6 +1296,16 @@ class InsightNode:
                             summary_text = summary_match.group(1) + " (部分数据)"
 
                     analysis_result = {"top_topics": [], "summary": summary_text}
+
+            if isinstance(analysis_result, dict):
+                analysis_result["top_topics"] = self._enrich_hot_topics(analysis_result.get("top_topics") or [])
+                analysis_result["situation_summary"] = self._build_situation_summary(analysis_result["top_topics"])
+            else:
+                analysis_result = {
+                    "top_topics": [],
+                    "summary": "模型返回结果格式异常",
+                    "situation_summary": self._build_situation_summary([]),
+                }
 
             return {"analysis_result": analysis_result}
         except Exception as e:
@@ -1332,6 +1480,10 @@ def render_langgraph_html_report(
     total_news = len(news_list)
     top_topics = analysis_result.get("top_topics") or []
     summary = analysis_result.get("summary") or "暂无总结"
+    situation_summary = analysis_result.get("situation_summary") if isinstance(analysis_result, dict) else {}
+    situation_overview = ""
+    if isinstance(situation_summary, dict):
+        situation_overview = str(situation_summary.get("overview") or "")
 
     # 使用 ClassifyNode 生成的分类统计结果，如果没有则回退到原有逻辑
     if classification_stats:
@@ -1434,6 +1586,14 @@ def render_langgraph_html_report(
         .event-tag-down { background: #6b7280; }
         .event-tag-stable { background: #9ca3af; }
         .category-tag { display: inline-block; background: #f0f9ff; color: #0369a1; padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: 500; margin-right: 8px; border: 1px solid #bae6fd; }
+        .risk-tag { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 700; margin-right: 6px; }
+        .risk-major { background: #7f1d1d; color: #fff; }
+        .risk-high { background: #fee2e2; color: #991b1b; border: 1px solid #fecaca; }
+        .risk-medium { background: #fef3c7; color: #92400e; border: 1px solid #fde68a; }
+        .risk-low { background: #dcfce7; color: #166534; border: 1px solid #bbf7d0; }
+        .risk-factors { margin-top: 6px; font-size: 12px; color: #7c2d12; }
+        .deep-dive-command { margin-top: 6px; font-size: 12px; color: #2563eb; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 6px; padding: 6px 8px; word-break: break-all; }
+        .situation-box { background: #f8fafc; border: 1px solid #e2e8f0; border-left: 4px solid #4f46e5; border-radius: 8px; padding: 12px; margin-top: 12px; font-size: 13px; color: #334155; }
         .topic-meta { font-size: 12px; color: #64748b; margin-bottom: 6px; }
         .topic-comment { font-size: 13px; color: #475569; }
         .source-group { margin-bottom: 24px; }
@@ -1495,6 +1655,8 @@ def render_langgraph_html_report(
                 <div class="section-title">今日热点概览</div>
                 <div class="section-body">"""
     html += html_escape(summary)
+    if situation_overview:
+        html += '<div class="situation-box"><strong>态势摘要：</strong>' + html_escape(situation_overview) + '</div>'
     html += """</div>
             </div>
             <div class="section">
@@ -1628,6 +1790,14 @@ def render_langgraph_html_report(
         comment = t.get("comment") or ""
         heat_score = t.get("heat_score")
         event_idx = t.get("_event_index", 0)
+        risk_level = str(t.get("risk_level") or "低风险")
+        risk_score = t.get("risk_score")
+        risk_note = str(t.get("risk_note") or "")
+        risk_factors = t.get("risk_factors") if isinstance(t.get("risk_factors"), list) else []
+        deep_dive_command = str(t.get("deep_dive_command") or "")
+        case_candidate = bool(t.get("case_candidate"))
+        risk_class_map = {"重大风险": "risk-major", "高风险": "risk-high", "中风险": "risk-medium", "低风险": "risk-low"}
+        risk_class = risk_class_map.get(risk_level, "risk-low")
         
         # 获取事件的趋势、天数和类别信息
         event_info = event_info_map.get(event_idx, {})
@@ -1657,8 +1827,19 @@ def render_langgraph_html_report(
         # 趋势标签
         trend_label = TREND_LABELS.get(event_trend, "保持平稳")
         html += f' · <span class="event-tag event-tag-{event_trend}">{trend_label}</span>'
+        risk_score_text = f"{risk_score}" if risk_score is not None else "—"
+        html += f' · <span class="risk-tag {risk_class}">{html_escape(risk_level)} {html_escape(risk_score_text)}分</span>'
+        if case_candidate:
+            html += ' · <span class="category-tag">案例候选</span>'
         html += "</div>"
-        html += f'<div class="topic-comment">{html_escape(comment)}</div></div>'
+        html += f'<div class="topic-comment">{html_escape(comment)}</div>'
+        if risk_factors:
+            html += '<div class="risk-factors"><strong>风险因子：</strong>' + html_escape("、".join(str(x) for x in risk_factors)) + '</div>'
+        if risk_note:
+            html += '<div class="risk-factors"><strong>处置提示：</strong>' + html_escape(risk_note) + '</div>'
+        if deep_dive_command:
+            html += '<div class="deep-dive-command"><strong>深挖入口：</strong>' + html_escape(deep_dive_command) + '</div>'
+        html += '</div>'
     
     # 更新原始信息列表中的热点事件关联
     # 为每个原始信息匹配热点事件序号
@@ -2123,6 +2304,19 @@ def run(config_path: Optional[str] = None) -> str:
     if final_state.get("html_report"):
         output_dir = Path("output_langgraph")
         ensure_directory_exists(str(output_dir))
+        latest_analysis_path = output_dir / "latest_hot_analysis.json"
+        latest_payload = {
+            "generated_at": get_beijing_time().isoformat(),
+            "analysis_result": final_state.get("analysis_result", {}),
+            "classification_stats": final_state.get("classification_stats", {}),
+        }
+        with open(latest_analysis_path, "w", encoding="utf-8") as f:
+            json.dump(latest_payload, f, ensure_ascii=False, indent=2)
+        candidate_path = output_dir / "case_candidates.json"
+        top_topics = latest_payload.get("analysis_result", {}).get("top_topics", [])
+        case_candidates = [t for t in top_topics if isinstance(t, dict) and t.get("case_candidate")]
+        with open(candidate_path, "w", encoding="utf-8") as f:
+            json.dump({"generated_at": latest_payload["generated_at"], "case_candidates": case_candidates}, f, ensure_ascii=False, indent=2)
         filename = f"bjtupubclaw_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html"
         output_path = output_dir / filename
 
