@@ -22,7 +22,7 @@
 ## 目录结构（合并后）
 
 ```
-streamlit_app.py              # 首页：导航 + API 探活
+streamlit_app.py              # 仪表盘：API 探活、最近任务、工作流速查
 streamlit_legacy_chat.py      # 原单文件会话逻辑（供子页引用）
 pages/
   01_任务状态.py

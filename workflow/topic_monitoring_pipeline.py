@@ -1,11 +1,20 @@
 """话题监控流水线与周期报告生成。
 
 支持基于 Supabase/Postgres 的专题监控、快照分析、风险告警和日报/周报输出。
+
+编排增强（与事件分析的关系）：
+
+- **共用工具**：关键词精炼可复用 ``extract_search_terms``（见 ``workflow/topic_monitoring_workflow``）；
+  网察侧词表构建与事件分析一致时可复用 ``workflow/netinsight_keywords.build_data_num_search_words``。
+- **专题差异**：滚动增量、多峰值时间线、单帖爆发预警（``viral_post``）与聚合告警并存；
+  日报/周报中增加「周期内增量帖子」统计（按 ``collected_at`` 窗口）。
+- **定时**：仓库提供 ``scripts/run_topic_monitor_tick.py`` 供 cron 调用；拉数需注入 ``search_func``。
 """
 
 from __future__ import annotations
 
 import re
+import os
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
@@ -28,8 +37,12 @@ class MonitorConfig:
     scan_interval_minutes: int = 60
     min_posts_for_trend: int = 10
     viral_threshold: int = 1000
+    """周期快照维度：总互动量告警阈值（聚合）。"""
+    single_post_viral_threshold: int = 5000
+    """单帖维度：likes+comments+shares 超过即触发 ``viral_post`` 告警。"""
     alert_cooldown_hours: int = 24
     snapshot_interval_hours: int = 6
+    netinsight_row_cap_hint: int = 10_000
 
 
 @dataclass
@@ -244,6 +257,21 @@ class InMemoryTopicStore:
             and float(r.get("relevance_score") or 0.0) >= float(min_score)
         ]
 
+    def update_monitor_topic(self, topic_id: str, updates: Dict[str, Any]) -> Dict[str, Any]:
+        """合并更新专题行（与 SupabaseDB.update_monitor_topic 语义对齐）。"""
+        row = self.topics.get(str(topic_id))
+        if not row:
+            return {}
+        for k, v in updates.items():
+            if k == "config" and isinstance(v, dict):
+                base = dict(row.get("config") or {})
+                base.update(v)
+                row["config"] = base
+            else:
+                row[k] = v
+        row["updated_at"] = self._now()
+        return dict(row)
+
 
 _DEFAULT_MEMORY_STORE = InMemoryTopicStore()
 
@@ -265,6 +293,24 @@ class TopicMonitoringPipeline:
         else:
             self.db = _DEFAULT_MEMORY_STORE
         self.config = config or MonitorConfig()
+        raw_v = os.environ.get("SONA_MONITOR_VIRAL_AGG_THRESHOLD")
+        if raw_v:
+            try:
+                self.config.viral_threshold = max(10, int(raw_v))
+            except ValueError:
+                pass
+        raw_sp = os.environ.get("SONA_MONITOR_VIRAL_POST_THRESHOLD")
+        if raw_sp:
+            try:
+                self.config.single_post_viral_threshold = max(50, int(raw_sp))
+            except ValueError:
+                pass
+        raw_cap = os.environ.get("SONA_MONITOR_NETINSIGHT_ROW_CAP")
+        if raw_cap:
+            try:
+                self.config.netinsight_row_cap_hint = max(500, int(raw_cap))
+            except ValueError:
+                pass
 
     def create_topic(
         self,
@@ -301,11 +347,23 @@ class TopicMonitoringPipeline:
         })
         return topic
 
+    def patch_topic_config(self, topic_id: str, patch: Dict[str, Any]) -> Dict[str, Any]:
+        """合并写入 ``monitor_topics.config``（内存库 / Postgres 均支持 update_monitor_topic）。"""
+        topic = self.db.get_topic_by_id(topic_id)
+        if not topic:
+            return {}
+        base = dict(topic.get("config") or {})
+        base.update(patch)
+        if hasattr(self.db, "update_monitor_topic"):
+            return self.db.update_monitor_topic(topic_id, {"config": base})
+        return {}
+
     def scan_topic(
         self,
         topic_id: str,
         search_results: List[Dict[str, Any]],
     ) -> Dict[str, Any]:
+        viral_post_alerts: List[Dict[str, Any]] = []
         if search_results:
             posts = []
             for item in search_results:
@@ -324,10 +382,11 @@ class TopicMonitoringPipeline:
                     "metadata": item.get("metadata") if isinstance(item.get("metadata"), dict) else {},
                 })
             self.db.bulk_collect_posts(topic_id, posts)
+            viral_post_alerts = self._check_single_post_viral_alerts(topic_id, search_results)
 
         snapshot = self._generate_snapshot(topic_id)
-        alerts = self._check_alerts(topic_id, snapshot)
-        return {"snapshot": snapshot, "alerts": alerts}
+        agg_alerts = self._check_alerts(topic_id, snapshot)
+        return {"snapshot": snapshot, "alerts": viral_post_alerts + agg_alerts}
 
     def _generate_snapshot(
         self,
@@ -400,6 +459,54 @@ class TopicMonitoringPipeline:
             freq[word] = freq.get(word, 0) + 1
         sorted_words = sorted(freq.items(), key=lambda item: (-item[1], item[0]))
         return [word for word, _ in sorted_words[:top_n]]
+
+    def _check_single_post_viral_alerts(
+        self,
+        topic_id: str,
+        batch: List[Dict[str, Any]],
+    ) -> List[Dict[str, Any]]:
+        """本批新抓数据中：单帖互动爆发预警（与聚合 snapshot 告警互补）。"""
+        out: List[Dict[str, Any]] = []
+        if not batch:
+            return out
+        thr = int(self.config.single_post_viral_threshold or 0)
+        if thr <= 0:
+            return out
+        existing = self.db.list_alerts(topic_id=topic_id, is_resolved=False, limit=80)
+        seen_post_ids: set[str] = set()
+        for a in existing:
+            if str(a.get("alert_type") or "") != "viral_post":
+                continue
+            meta = a.get("metadata") if isinstance(a.get("metadata"), dict) else {}
+            pid = str(meta.get("post_id") or "").strip()
+            if pid:
+                seen_post_ids.add(pid)
+        for item in batch:
+            eng = int(item.get("likes") or 0) + int(item.get("comments") or 0) + int(item.get("shares") or 0)
+            if eng < thr:
+                continue
+            pid = str(item.get("id", "") or "").strip()
+            if pid and pid in seen_post_ids:
+                continue
+            title = str(item.get("title", "") or "")[:120]
+            out.append(
+                self.db.create_alert(
+                    topic_id=topic_id,
+                    alert_type="viral_post",
+                    title="单帖互动量异常偏高",
+                    message=f"单帖总互动 {eng}（阈值 {thr}）。标题摘要：{title}",
+                    severity="warning",
+                    metadata={
+                        "post_id": pid,
+                        "url": str(item.get("url", "") or ""),
+                        "platform": str(item.get("platform", "") or ""),
+                        "engagement": eng,
+                    },
+                )
+            )
+            if pid:
+                seen_post_ids.add(pid)
+        return out
 
     def _check_alerts(self, topic_id: str, snapshot: Dict[str, Any]) -> List[Dict[str, Any]]:
         alerts: List[Dict[str, Any]] = []
@@ -506,7 +613,31 @@ class TopicMonitoringPipeline:
         now = _utcnow()
         report_path = output_dir / f"{self._safe_filename(topic.get('name','topic'))}_{period_label}_{now.strftime('%Y%m%d_%H%M%S')}.md"
 
-        content = self._build_report_markdown(topic, snapshots, alerts, cases, period_label)
+        p = str(period or "").lower()
+        if p in ("daily", "day"):
+            since = now - timedelta(days=1)
+            window_note = "最近 24 小时"
+        elif p in ("weekly", "week"):
+            since = now - timedelta(days=7)
+            window_note = "最近 7 天"
+        else:
+            since = now - timedelta(days=1)
+            window_note = "最近 24 小时（默认）"
+
+        tid = str(topic.get("id") or "")
+        period_posts: List[Dict[str, Any]] = []
+        if tid and hasattr(self.db, "get_collected_posts"):
+            period_posts = self.db.get_collected_posts(tid, limit=8000, since=since)
+
+        content = self._build_report_markdown(
+            topic,
+            snapshots,
+            alerts,
+            cases,
+            period_label,
+            period_posts=period_posts,
+            period_window_note=window_note,
+        )
         report_path.write_text(content, encoding="utf-8")
         return {
             "topic_id": topic_id,
@@ -527,12 +658,40 @@ class TopicMonitoringPipeline:
         alerts: List[Dict[str, Any]],
         cases: List[Dict[str, Any]],
         period_label: str,
+        *,
+        period_posts: Optional[List[Dict[str, Any]]] = None,
+        period_window_note: str = "",
     ) -> str:
         title = topic.get("name", "专题")
         lines: List[str] = [f"# {title} {period_label}报告", "", f"生成时间：{_utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')}", ""]
         lines.append(f"- 专题领域：{topic.get('domain', '')}")
         lines.append(f"- 话题描述：{topic.get('description', '')}")
         lines.append(f"- 关键词：{', '.join(str(k.get('keyword') or '') for k in self.db.get_topic_keywords(topic.get('id')) if str(k.get('keyword') or '').strip())}")
+        lines.append(
+            "- 分析维度：与事件分析对齐（声量结构、情感、平台分布、关键节点等）；"
+            "专题下可出现**多个时间峰值/多条子事件线**，需结合快照序列阅读。"
+        )
+        cfg = topic.get("config") if isinstance(topic.get("config"), dict) else {}
+        if cfg:
+            lines.append(
+                f"- 监测配置：间隔≈{cfg.get('collect_interval_hours', '—')}h；"
+                f"NetInsight 条数提示上限≈{cfg.get('netinsight_max_rows_hint', '—')}。"
+            )
+        lines.append("")
+
+        posts = period_posts or []
+        note = period_window_note or "本周期"
+        lines.extend([f"## {period_label}数据增量（{note}）", ""])
+        if posts:
+            eng = sum(
+                int(p.get("likes") or 0) + int(p.get("comments") or 0) + int(p.get("shares") or 0)
+                for p in posts
+            )
+            lines.append(f"- 窗口内抓取帖数：**{len(posts)}**")
+            lines.append(f"- 窗口内总互动（粗）：**{eng}**")
+            lines.append("- 说明：增量口径按 ``collected_at`` 落在窗口内统计；跨周期去重需在入库层按 post_id/url 归并。")
+        else:
+            lines.append("- 本窗口内暂无增量帖子（或未注入外部采集 / 本轮未拉到新数据）。")
         lines.append("")
 
         if snapshots:

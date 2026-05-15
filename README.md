@@ -30,7 +30,7 @@
 - **🧠 垂类知识库增强**：支持控烟、健康、交通、大熊猫等领域包，并通过 `workflow/domain_routing.json` 自动注入优先证据
 - **🕸️ Graph RAG 可选增强**：通过 Neo4j Aura/本地 Neo4j 召回相似案例、理论框架和处置经验；连接失败时自动降级
 - **📚 案例库与专题监测**：完整报告可自动沉淀到 `opinion_analysis_kb/references/wiki/cases/`，并提供 `/case` 相似案例检索与 `/monitor` 专题快照/日报周报演示
-- **🧩 HTTP API 与轻量 GUI**：`sona serve` 提供 FastAPI 接口，`streamlit_app.py` 提供多页 Streamlit 查看器
+- **🧩 HTTP API 与轻量 GUI**：`sona serve` 提供 FastAPI；`streamlit_app.py` 提供 **分析员控制台**（仪表盘 + 多页任务/报告/经典会话）
 - **📊 报告质量增强**：时间线证据/影响标签、情绪结构、四阶段行动清单、热点风险分级与案例候选输出
 
 ### 支持的模型提供商
@@ -366,7 +366,7 @@ sona serve --host 127.0.0.1 --port 8765
 - `/hot` - 运行独立的热点抓取与态势感知流程（可选参数：配置路径）
 - `/case` - 检索本地案例库，输出相似案例列表与横向对照
 - `/monitor` - 运行专题监测命令，支持创建专题、查看状态、生成日报/周报；未配置外部库时可运行内存演示
-- `/wiki` - 基于本地知识库（`opinion_analysis_kb/references/wiki/`）的问答，输出摘要与引用来源
+- `/wiki` - 基于本地知识库（`opinion_analysis_kb/references/wiki/`）的问答，输出摘要与引用来源；可通过环境变量 `SONA_WIKI_AUTO_COMPILE`、`SONA_WIKI_AUTO_COMPILE_ON_QUERY` 控制是否在写入专家研判或每次检索前自动把 `expert_notes/**/*.md` 增量编译进 `wiki/sources`（默认开启；`tests/conftest.py` 对 CI 关闭「检索前编译」）
 - `/wiki-approve` - 审核并回流高价值候选
 - `/clear` - 清除 memory 和 sandbox
 - `/exit` - 退出程序
@@ -386,6 +386,29 @@ curl http://127.0.0.1:8765/health
 streamlit run streamlit_app.py
 ```
 
+#### 分析员控制台（Streamlit）是什么
+
+多页 Streamlit **不是**「第二个舆情监测大屏」，而是给分析员用的 **控制台**：
+
+| 区域 | 作用 |
+|------|------|
+| **仪表盘**（`streamlit_app.py`） | 探活 `sona serve`、展示本 API 进程内最近任务、工作流速查与环境变量说明 |
+| **新建 / 报告 / 任务** | 走 `POST /v1/analyze-event` 与任务轮询（重操作，可能长时间同步） |
+| **案例 / 专题** | 演示案例检索、编辑 `config/topics.yaml` |
+| **经典会话** | 与 CLI 一致的对话界面，支持 `/hot`、`/wiki`、事件路由等 |
+
+UI 采用与 BettaFish「微舆」类似的 **高对比、硬边框** 风格；空状态与 API 离线有统一提示块。
+
+**仅跑控制台时的环境变量（常用）**
+
+| 变量 | 说明 |
+|------|------|
+| `API_BASE` | Streamlit 访问的 API 根地址，默认 `http://127.0.0.1:8765` |
+| `SONA_API_CORS_ORIGINS` | API 的 CORS 白名单（见 `docs/api_design.md`） |
+| `.env` 内模型与采集 Key | 与 CLI 相同；缺省则事件分析或采集会失败 |
+
+知识库目录 `opinion_analysis_kb/` 若被 `.gitignore` 排除，克隆仓库后需按团队约定自行放入或从网盘恢复。
+
 主要 API：
 
 - `GET /health`：服务探活
@@ -394,6 +417,11 @@ streamlit run streamlit_app.py
 - `GET /v1/tasks/{task_id}/report`：返回 HTML 报告
 
 更多约定见 `docs/api_design.md` 和 `docs/gui_decision.md`。
+
+**控制台 / 新建任务常见问题**
+
+- **`WORKFLOW_ERROR` / `data_collect` / 微博 / `BrowserType.launch: Executable doesn't exist`**：未安装 Playwright 浏览器。在项目根执行 **`playwright install chromium`**（或 `playwright install`），见上文「数据采集」一节。另需配置 **NetInsight** 账号（`NETINSIGHT_USER` / `NETINSIGHT_PASS`），否则会出现「登录失败」。
+- **`ModuleNotFoundError: utils.hot_time_parser`**：请拉取包含 `utils/hot_time_parser.py` 的版本；经典会话页已增加项目根 `sys.path` 兜底。
 
 **`/hot` 热点流程说明**：
 - 从公网聚合接口拉取各平台热搜（需本机可访问外网），再在本地用 **OpenAI 兼容 API** 做归纳与报告。

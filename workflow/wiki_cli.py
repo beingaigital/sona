@@ -1561,6 +1561,13 @@ def answer_wiki_query(
         get_env_config()
     except Exception:
         pass
+    try:
+        from tools.oprag import _maybe_incremental_wiki_compile, _wiki_auto_compile_on_query_enabled
+
+        if _wiki_auto_compile_on_query_enabled():
+            _maybe_incremental_wiki_compile(limit=200)
+    except Exception:
+        pass
     root = (project_root or Path(__file__).resolve().parents[1]).resolve()
     normalized_query = _normalize_query(query)
     # Dynamic topk: event overview / entity-heavy queries benefit from a wider recall set.

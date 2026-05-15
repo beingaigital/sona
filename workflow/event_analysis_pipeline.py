@@ -2122,6 +2122,55 @@ def _topic_relevance_metrics(
         "公共场所",
         "场所",
     }
+    generic_keywords = {
+        "中国",
+        "国家",
+        "发展",
+        "工作",
+        "生活",
+        "社会",
+        "全球",
+        "世界",
+        "时间",
+        "市场",
+        "企业",
+        "公司",
+        "服务",
+        "项目",
+        "技术",
+        "人员",
+        "数据",
+        "国际",
+        "提供",
+        "家庭",
+        "相关",
+        "经济",
+        "能力",
+        "信息",
+        "平台",
+        "专业",
+        "建设",
+        "岗位",
+        "管理",
+        "行业",
+        "方式",
+        "快乐",
+        "电话",
+        "妈妈",
+        "政策",
+        "科技",
+        "教育",
+        "持续",
+        "领域",
+        "支持",
+        "产业",
+        "幸福",
+        "地区",
+        "历史",
+        "增长",
+        "万事兴",
+        "家和万事兴",
+    }
 
     def _anchorize(text: str) -> set[str]:
         cleaned = re.sub(r"[^\w\u4e00-\u9fff]+", " ", str(text or "").lower())
@@ -2217,6 +2266,9 @@ def _topic_relevance_metrics(
     phrase_denom = max(1, min(len(query_phrases), 8))
     coverage_phrase = float(len(set(phrase_hits))) / float(phrase_denom)
     composite = round(0.55 * coverage + 0.45 * coverage_phrase, 4)
+    top20 = [str(k or "").strip() for k in top_keywords[:20] if str(k or "").strip()]
+    generic_top_terms = [k for k in top20 if re.sub(r"\s+", "", k) in generic_keywords]
+    generic_top_ratio = round(len(generic_top_terms) / float(max(1, len(top20))), 4)
 
     return {
         "anchor_count": len(anchor_tokens),
@@ -2226,6 +2278,9 @@ def _topic_relevance_metrics(
         "coverage": round(coverage, 4),
         "coverage_phrase": round(coverage_phrase, 4),
         "phrase_hits": list(dict.fromkeys(phrase_hits))[:12],
+        "generic_top_ratio": generic_top_ratio,
+        "generic_top_terms": generic_top_terms[:12],
+        "generic_pollution_suspected": generic_top_ratio >= 0.35,
         "composite": composite,
     }
 
@@ -3578,6 +3633,9 @@ def run_event_analysis_pipeline(
                 "min_coverage": min_topic_coverage,
                 "overlap_terms": relevance.get("overlap_terms", []),
                 "phrase_hits": relevance.get("phrase_hits", []),
+                "generic_top_ratio": relevance.get("generic_top_ratio", 0.0),
+                "generic_top_terms": relevance.get("generic_top_terms", []),
+                "generic_pollution_suspected": relevance.get("generic_pollution_suspected", False),
             },
         )
         guard_score = float(relevance.get("composite", relevance.get("coverage", 0.0)) or 0.0)

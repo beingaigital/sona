@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 from datetime import datetime
 from pathlib import Path
@@ -159,6 +160,80 @@ def _iter_theory_expert_note_files() -> List[Path]:
     return sorted([p for p in THEORY_EXPERT_NOTES_DIR.glob("*.md") if p.is_file()])
 
 
+def _iter_expert_note_markdown_files() -> List[Path]:
+    """
+    列出 ``expert_notes`` 下全部 Markdown（含子目录），供 wiki 增量编译。
+
+    与 :func:`_iter_theory_expert_note_files` 不同：后者仅用于 OPRAG 理论槽位召回，
+    本函数覆盖根目录笔记（例如培训整理稿），避免新增文件落根目录时漏编译。
+    """
+    if not EXPERT_NOTES_DIR.exists() or not EXPERT_NOTES_DIR.is_dir():
+        return []
+    out: List[Path] = []
+    seen: set[str] = set()
+    for p in sorted(EXPERT_NOTES_DIR.rglob("*.md")):
+        if not p.is_file():
+            continue
+        try:
+            key = str(p.resolve())
+        except Exception:
+            key = str(p)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(p)
+    return out
+
+
+def _sort_wiki_sources_pending_first(paths: List[Path], *, force: bool) -> List[Path]:
+    """尚未生成 ``wiki/sources`` 产物的源文件排在前面，避免 ``limit`` 截断时永远轮不到新稿。"""
+    if force:
+        return list(paths)
+    pending: List[Path] = []
+    rest: List[Path] = []
+    for fp in paths:
+        try:
+            out_path = _wiki_sources_output_path_for_compile(fp)
+        except Exception:
+            rest.append(fp)
+            continue
+        if out_path.exists():
+            rest.append(fp)
+        else:
+            pending.append(fp)
+    return pending + rest
+
+
+def _wiki_auto_compile_enabled() -> bool:
+    return os.environ.get("SONA_WIKI_AUTO_COMPILE", "1").strip().lower() not in {
+        "0",
+        "false",
+        "no",
+        "off",
+    }
+
+
+def _wiki_auto_compile_on_query_enabled() -> bool:
+    if not _wiki_auto_compile_enabled():
+        return False
+    return os.environ.get("SONA_WIKI_AUTO_COMPILE_ON_QUERY", "1").strip().lower() not in {
+        "0",
+        "false",
+        "no",
+        "off",
+    }
+
+
+def _maybe_incremental_wiki_compile(*, limit: int = 200) -> None:
+    """专家笔记写入或 /wiki 查询前触发的轻量增量编译（默认跳过已有产物）。"""
+    if not _wiki_auto_compile_enabled():
+        return
+    try:
+        build_reference_wiki.invoke({"limit": int(limit), "force": False})
+    except Exception:
+        return
+
+
 def _iter_reference_files(max_files: int = 200) -> List[Path]:
     files: List[Path] = []
     seen: set[str] = set()
@@ -212,11 +287,10 @@ def _wiki_sources_output_path_for_compile(fp: Path) -> Path:
         except ValueError:
             rel = None
         else:
-            if rel.parts and rel.parts[0] == THEORY_EXPERT_NOTES_DIR.name:
-                rel_posix = rel.as_posix()
-                digest = hashlib.sha1(rel_posix.encode("utf-8", errors="replace")).hexdigest()[:10]
-                slug = _slugify_cn_filename(f"expert_{digest}_{title}", max_len=48)
-                return WIKI_SOURCES_DIR / f"{slug}.md"
+            rel_posix = rel.as_posix()
+            digest = hashlib.sha1(rel_posix.encode("utf-8", errors="replace")).hexdigest()[:10]
+            slug = _slugify_cn_filename(f"expert_{digest}_{title}", max_len=48)
+            return WIKI_SOURCES_DIR / f"{slug}.md"
     is_output_note = WIKI_OUTPUT_DIR.resolve() in fp_res.parents
     slug = _slugify_cn_filename(f"output_{title}" if is_output_note else title)
     return WIKI_SOURCES_DIR / f"{slug}.md"
@@ -960,15 +1034,23 @@ def build_reference_wiki(limit: int = 30, force: bool = False) -> str:
     """
     将本地参考资料增量编译为 wiki/sources 页面，并维护 index/log。
 
-    编译源（按顺序优先处理）：
+    编译源（未编译条目优先，其次按下列顺序）：
 
-    - ``expert_notes/舆情分析的相关理论``：理论释义，适合报告「理论研判」引用
-    - ``references/raw``
+    - ``expert_notes/**/*.md``：含根目录与子目录（含 ``舆情分析的相关理论``），新增笔记落根目录也会被编译
+    - ``references/raw``（跳过以 ``readme`` 开头的文件名及以 ``.`` 开头的隐藏文件）
     - ``references/wiki/output``（不含 ``_candidates``）
 
     Args:
-        limit: 本次最多处理多少个源文件
+        limit: 本次最多扫描多少个源文件（含已编译条目的快速跳过）
         force: 是否强制重编译（默认仅编译尚未生成对应 wiki/sources 产物的文件）
+
+    环境变量（自动增量编译）：
+
+    - ``SONA_WIKI_AUTO_COMPILE``：默认 ``1``；设为 ``0``/``false``/``off`` 时，
+      :func:`append_expert_judgement` 与 :func:`workflow.wiki_cli.answer_wiki_query`
+      内置的增量编译钩子不再调用本工具。
+    - ``SONA_WIKI_AUTO_COMPILE_ON_QUERY``：默认 ``1``；在总开关为开时，控制是否在每次
+      wiki 问答检索前尝试增量编译；关闭后仅在专家研判写入等路径触发（若总开关已关则无效）。
 
     Returns:
         JSON 字符串，包含处理统计与输出目录。
@@ -983,8 +1065,18 @@ def build_reference_wiki(limit: int = 30, force: bool = False) -> str:
     max_n = max(1, min(int(limit or 30), 500))
     schema_meta = _get_wiki_schema_meta()
 
-    theory_note_files = _iter_theory_expert_note_files()
-    raw_files = [p for p in sorted(RAW_REFERENCES_DIR.rglob("*")) if p.is_file() and p.suffix.lower() in TEXT_SUFFIX]
+    expert_note_files = _iter_expert_note_markdown_files()
+    raw_files: List[Path] = []
+    for p in sorted(RAW_REFERENCES_DIR.rglob("*")):
+        if not p.is_file():
+            continue
+        if p.suffix.lower() not in TEXT_SUFFIX:
+            continue
+        if p.name.startswith("."):
+            continue
+        if p.name.lower().startswith("readme"):
+            continue
+        raw_files.append(p)
     output_files: List[Path] = []
     if WIKI_OUTPUT_DIR.exists() and WIKI_OUTPUT_DIR.is_dir():
         for p in sorted(WIKI_OUTPUT_DIR.rglob("*")):
@@ -996,17 +1088,23 @@ def build_reference_wiki(limit: int = 30, force: bool = False) -> str:
                 continue
             output_files.append(p)
 
-    if not theory_note_files and not raw_files and not output_files:
+    if not expert_note_files and not raw_files and not output_files:
         return json.dumps(
             {
                 "ok": False,
-                "error": f"无可用编译源: raw 空且无 wiki/output 笔记；理论目录: {THEORY_EXPERT_NOTES_DIR}",
+                "error": (
+                    f"无可用编译源: expert_notes 无 md、raw 空且无 wiki/output 笔记；"
+                    f"expert_notes 目录: {EXPERT_NOTES_DIR}"
+                ),
             },
             ensure_ascii=False,
             indent=2,
         )
 
-    all_source_files = theory_note_files + raw_files + output_files
+    all_source_files = _sort_wiki_sources_pending_first(
+        expert_note_files + raw_files + output_files,
+        force=force,
+    )
     processed = []
     skipped = []
     errors = []
@@ -1037,8 +1135,10 @@ def build_reference_wiki(limit: int = 30, force: bool = False) -> str:
         except Exception as e:
             errors.append({"source": str(fp), "error": str(e)})
 
-    page_paths = _iter_wiki_files(max_files=5000)
-    _upsert_wiki_index(page_paths)
+    index_dirty = bool(processed or errors or concept_updated_files or entity_updated_files)
+    if index_dirty or (not WIKI_INDEX.exists()):
+        page_paths = _iter_wiki_files(max_files=5000)
+        _upsert_wiki_index(page_paths)
 
     return json.dumps(
         {
@@ -1056,7 +1156,8 @@ def build_reference_wiki(limit: int = 30, force: bool = False) -> str:
             "processed_count": len(processed),
             "skipped_count": len(skipped),
             "error_count": len(errors),
-            "theory_note_source_count": len(theory_note_files),
+            "expert_note_source_count": len(expert_note_files),
+            "theory_note_source_count": len(_iter_theory_expert_note_files()),
             "raw_source_count": len(raw_files),
             "output_source_count": len(output_files),
             "concept_updates_count": len(set(concept_updated_files)),
@@ -1110,6 +1211,7 @@ def append_expert_judgement(topic: str, judgement: str, tags: str = "", source: 
     try:
         with open(file_path, "a", encoding="utf-8", errors="replace") as f:
             f.write("\n".join(block))
+        _maybe_incremental_wiki_compile(limit=200)
         return json.dumps(
             {
                 "ok": True,

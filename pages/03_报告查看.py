@@ -7,7 +7,14 @@ import os
 import requests
 import streamlit as st
 
-from streamlit_ui_theme import inject_ui_theme, page_header, render_nav_sidebar
+from streamlit_ui_theme import (
+    callout_error,
+    callout_neutral,
+    inject_ui_theme,
+    is_api_reachable,
+    page_header,
+    render_nav_sidebar,
+)
 
 st.set_page_config(page_title="报告查看", page_icon="◼", layout="wide")
 
@@ -23,9 +30,19 @@ if not task_id:
     task_id = str(st.text_input("任务 ID", placeholder="粘贴 UUID") or "").strip()
 
 if not task_id:
-    st.info("请从「任务状态」点「查看报告」，或在「新建任务」完成后自动跳转。")
+    callout_neutral(
+        "未选择任务",
+        "请从「任务状态」点「查看报告」，或在「新建任务」完成后自动跳转；也可在下方粘贴 task_id。",
+    )
     if st.button("前往任务列表"):
         st.switch_page("pages/01_任务状态.py")
+    st.stop()
+
+if not is_api_reachable(API_BASE):
+    callout_error(
+        "API 未连通",
+        "请先启动 `sona serve`，或检查 `API_BASE` 是否与 API 实际地址一致。",
+    )
     st.stop()
 
 task_info = None
@@ -38,7 +55,7 @@ with st.spinner("加载任务…"):
         st.error(str(exc))
 
 if not task_info:
-    st.error("无法获取任务详情（API 离线或 task_id 无效）")
+    callout_error("无法获取任务详情", "API 返回异常或 task_id 无效；请核对 ID 或到「任务状态」重新选择。")
     st.stop()
 
 status = str(task_info.get("status", ""))

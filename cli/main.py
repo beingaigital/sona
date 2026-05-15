@@ -150,7 +150,8 @@ def interactive() -> None:
             # 默认行为：只提示，不创建会话
             console.print(
                 "[yellow]提示: 使用 '/new' 开启新会话，'/memory' 恢复会话，"
-                "'/event' 事件分析，'/wiki' 知识问答，'/hot' 热点态势。[/yellow]"
+                "'/event' 事件分析，'/hot' 热点态势，'/case' 案例库，"
+                "'/monitor' 专题监测，'/wiki' 知识问答。[/yellow]"
             )
             
         except KeyboardInterrupt:

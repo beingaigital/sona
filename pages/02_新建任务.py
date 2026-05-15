@@ -7,7 +7,13 @@ import os
 import requests
 import streamlit as st
 
-from streamlit_ui_theme import inject_ui_theme, page_header, render_nav_sidebar
+from streamlit_ui_theme import (
+    callout_error,
+    inject_ui_theme,
+    is_api_reachable,
+    page_header,
+    render_nav_sidebar,
+)
 
 st.set_page_config(page_title="新建任务", page_icon="◼", layout="wide")
 
@@ -17,7 +23,16 @@ render_nav_sidebar("new")
 API_BASE = os.environ.get("API_BASE", "http://127.0.0.1:8765")
 
 page_header("新建分析任务", "调用任务 19：`POST /v1/analyze-event`（同步执行，可能耗时很长）")
-st.info("请确认已启动 `sona serve`。")
+
+if not is_api_reachable(API_BASE):
+    callout_error(
+        "API 未连通，无法提交分析",
+        "请先启动：`sona serve --host 127.0.0.1 --port 8765`\n\n"
+        f"当前探测：`{API_BASE}/health`",
+    )
+    st.stop()
+
+st.caption("API 已连通；提交后页面可能长时间无响应，属同步执行正常现象。")
 
 with st.form("new_task_form"):
     event_name = st.text_input("任务名称（可选，会写入分析 query 前缀）", placeholder="例如：315 舆情分析")

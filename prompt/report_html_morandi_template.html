@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{REPORT_TITLE}} | 舆情智库深度研判</title>
     <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
     <style>
         :root {
             --primary: #5d8aa8;         /* 莫兰迪蓝 */
@@ -32,6 +34,7 @@
 
         /* --- Header Section --- */
         header {
+            position: relative;
             background: linear-gradient(135deg, var(--primary), var(--primary-strong));
             color: white;
             padding: 45px 0 60px;
@@ -39,6 +42,45 @@
             border-radius: 0 0 20px 20px;
             box-shadow: 0 10px 30px rgba(74, 111, 165, 0.2);
         }
+        .report-export-toolbar {
+            position: absolute;
+            top: 16px;
+            right: 20px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            z-index: 5;
+        }
+        .report-export-button {
+            width: 36px;
+            height: 36px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border: 1px solid rgba(255, 255, 255, 0.35);
+            border-radius: 10px;
+            background: rgba(255, 255, 255, 0.18);
+            color: #fff;
+            cursor: pointer;
+            font-size: 17px;
+            line-height: 1;
+            backdrop-filter: blur(10px);
+            box-shadow: 0 8px 20px rgba(31, 41, 55, 0.12);
+            transition: transform .18s ease, background .18s ease, border-color .18s ease;
+        }
+        .report-export-button:hover { background: rgba(255, 255, 255, 0.28); border-color: rgba(255, 255, 255, 0.58); transform: translateY(-1px); }
+        .report-export-button:disabled { opacity: .68; cursor: wait; transform: none; }
+        .report-export-status {
+            max-width: 160px;
+            color: rgba(255, 255, 255, .92);
+            font-size: 12px;
+            white-space: nowrap;
+            opacity: 0;
+            transform: translateY(-2px);
+            transition: opacity .18s ease, transform .18s ease;
+        }
+        .report-export-status.show { opacity: 1; transform: translateY(0); }
+        body.report-exporting .report-export-toolbar { visibility: hidden; }
         .header-content { text-align: center; }
         .event-title { font-size: 2.6rem; font-weight: 800; margin-bottom: 10px; }
         .event-subtitle { font-size: 1.25rem; opacity: 0.9; max-width: 1000px; margin: 0 auto; }
@@ -110,10 +152,32 @@
         @media (max-width: 1000px) { .grid-2 { grid-template-columns: 1fr; } }
         @media (max-width: 640px) {
             .container { padding: 0 14px; }
+            .report-export-toolbar { top: 10px; right: 12px; }
+            .report-export-button { width: 34px; height: 34px; }
+            .report-export-status { display: none; }
             .event-title { font-size: 1.9rem; }
             .section-title { font-size: 1.35rem; }
             .card { padding: 18px; }
             .chart-box, .wordcloud-box { height: 340px; }
+        }
+        @page { size: A4 landscape; margin: 8mm; }
+        @media print {
+            html, body {
+                background: #fff !important;
+                padding: 0 !important;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+            body { padding-bottom: 0 !important; }
+            .report-export-toolbar { display: none !important; }
+            .container { width: 100% !important; max-width: none !important; padding: 0 !important; }
+            header { border-radius: 0 0 16px 16px; box-shadow: none; }
+            .grid-2 { grid-template-columns: 1fr 1fr !important; }
+            section, .card, .kpi-card, .analysis-summary, .chart-box, .wordcloud-box {
+                break-inside: avoid;
+                page-break-inside: avoid;
+            }
+            footer { break-inside: avoid; page-break-inside: avoid; }
         }
     </style>
 </head>
@@ -121,6 +185,11 @@
 
 <div class="container">
     <header>
+        <div class="report-export-toolbar" aria-label="报告导出工具">
+            <button class="report-export-button" type="button" onclick="exportReportPDF(event)" title="导出高清 PDF" aria-label="导出高清 PDF">🗒️</button>
+            <button class="report-export-button" type="button" onclick="exportReportImage(event)" title="导出高清长图" aria-label="导出高清长图">📷</button>
+            <span id="reportExportStatus" class="report-export-status" aria-live="polite"></span>
+        </div>
         <div class="header-content">
             <h1 class="event-title">{{REPORT_TITLE}}</h1>
             <p class="event-subtitle">{{REPORT_SUBTITLE}}</p>
@@ -297,6 +366,173 @@
         '"': '&quot;',
         "'": '&#39;'
     }[ch]));
+
+    function reportExportFilename(ext) {
+        const rawTitle = (document.querySelector('.event-title')?.textContent || document.title || '舆情分析报告').trim();
+        const safeTitle = rawTitle.replace(/[\\/:*?"<>|]+/g, '').replace(/\s+/g, '_').slice(0, 64) || '舆情分析报告';
+        const now = new Date();
+        const stamp = [
+            now.getFullYear(),
+            String(now.getMonth() + 1).padStart(2, '0'),
+            String(now.getDate()).padStart(2, '0'),
+            '_',
+            String(now.getHours()).padStart(2, '0'),
+            String(now.getMinutes()).padStart(2, '0')
+        ].join('');
+        return `${safeTitle}_${stamp}.${ext}`;
+    }
+
+    function setReportExportStatus(text) {
+        const el = document.getElementById('reportExportStatus');
+        if (!el) return;
+        el.textContent = text || '';
+        el.classList.toggle('show', !!text);
+        if (text) {
+            window.clearTimeout(setReportExportStatus._timer);
+            setReportExportStatus._timer = window.setTimeout(() => {
+                el.classList.remove('show');
+            }, 2600);
+        }
+    }
+
+    function setChartToolboxVisible(visible) {
+        Object.values(chartInstances).forEach(chart => {
+            try { chart.setOption({ toolbox: { show: !!visible } }, false); } catch (e) {}
+        });
+    }
+
+    function resizeReportCharts() {
+        Object.values(chartInstances).forEach(chart => {
+            try { chart.resize(); } catch (e) {}
+        });
+    }
+
+    function setExportButtonState(button, loading, label) {
+        if (!button) return;
+        if (!button.dataset.originalHtml) button.dataset.originalHtml = button.innerHTML;
+        button.disabled = !!loading;
+        button.innerHTML = loading ? (label || '…') : button.dataset.originalHtml;
+    }
+
+    function reportExportScale(container) {
+        const dpr = Math.max(1, window.devicePixelRatio || 1);
+        let scale = Math.min(3, Math.max(2, dpr));
+        const w = Math.max(1, container.scrollWidth || container.offsetWidth || 1);
+        const h = Math.max(1, container.scrollHeight || container.offsetHeight || 1);
+        const maxSide = 30000;
+        const maxPixels = 120000000;
+        if (Math.max(w, h) * scale > maxSide) {
+            scale = maxSide / Math.max(w, h);
+        }
+        if (w * h * scale * scale > maxPixels) {
+            scale = Math.sqrt(maxPixels / (w * h));
+        }
+        return Math.max(1.4, Math.min(3, scale));
+    }
+
+    async function prepareReportExport() {
+        window.scrollTo(0, 0);
+        document.body.classList.add('report-exporting');
+        setChartToolboxVisible(false);
+        resizeReportCharts();
+        await new Promise(resolve => setTimeout(resolve, 380));
+        return document.querySelector('.container');
+    }
+
+    function finishReportExport() {
+        document.body.classList.remove('report-exporting');
+        setChartToolboxVisible(true);
+        resizeReportCharts();
+    }
+
+    async function captureReportCanvas(container) {
+        if (!window.html2canvas) {
+            throw new Error('html2canvas_not_loaded');
+        }
+        const scale = reportExportScale(container);
+        return await html2canvas(container, {
+            backgroundColor: '#ffffff',
+            scale,
+            useCORS: true,
+            allowTaint: false,
+            imageTimeout: 15000,
+            logging: false,
+            scrollX: 0,
+            scrollY: -window.scrollY,
+            windowWidth: Math.max(document.documentElement.scrollWidth, container.scrollWidth),
+            windowHeight: Math.max(document.documentElement.scrollHeight, container.scrollHeight)
+        });
+    }
+
+    async function exportReportPDF(evt) {
+        const button = evt?.currentTarget || evt?.target;
+        setExportButtonState(button, true, '…');
+        setReportExportStatus('正在生成 PDF');
+        let prepared = false;
+        try {
+            if (!window.html2canvas || !window.jspdf || !window.jspdf.jsPDF) {
+                setReportExportStatus('打开打印窗口');
+                window.print();
+                return;
+            }
+            const container = await prepareReportExport();
+            prepared = true;
+            const canvas = await captureReportCanvas(container);
+            const pdf = new window.jspdf.jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4', compress: true });
+            const pageWidth = pdf.internal.pageSize.getWidth();
+            const pageHeight = pdf.internal.pageSize.getHeight();
+            const imgWidth = pageWidth;
+            const imgHeight = canvas.height * imgWidth / canvas.width;
+            const imgData = canvas.toDataURL('image/png', 1.0);
+            let position = 0;
+            let heightLeft = imgHeight;
+            pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight, undefined, 'FAST');
+            heightLeft -= pageHeight;
+            while (heightLeft > 0) {
+                position -= pageHeight;
+                pdf.addPage();
+                pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight, undefined, 'FAST');
+                heightLeft -= pageHeight;
+            }
+            pdf.save(reportExportFilename('pdf'));
+            setReportExportStatus('PDF 已生成');
+        } catch (e) {
+            console.error(e);
+            setReportExportStatus('改用浏览器打印');
+            window.print();
+        } finally {
+            if (prepared) finishReportExport();
+            setExportButtonState(button, false);
+        }
+    }
+
+    async function exportReportImage(evt) {
+        const button = evt?.currentTarget || evt?.target;
+        setExportButtonState(button, true, '…');
+        setReportExportStatus('正在生成长图');
+        let prepared = false;
+        try {
+            const container = await prepareReportExport();
+            prepared = true;
+            const canvas = await captureReportCanvas(container);
+            const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png', 1.0));
+            if (!blob) throw new Error('image_blob_failed');
+            const link = document.createElement('a');
+            link.download = reportExportFilename('png');
+            link.href = URL.createObjectURL(blob);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            window.setTimeout(() => URL.revokeObjectURL(link.href), 800);
+            setReportExportStatus('长图已生成');
+        } catch (e) {
+            console.error(e);
+            setReportExportStatus('长图生成失败');
+        } finally {
+            if (prepared) finishReportExport();
+            setExportButtonState(button, false);
+        }
+    }
 
     function baseToolbox() {
         return {
@@ -661,7 +897,13 @@
     }
 
     document.addEventListener('DOMContentLoaded', initAll);
-    window.onresize = () => Object.values(chartInstances).forEach(c => c.resize());
+    window.addEventListener('beforeprint', () => {
+        document.body.classList.add('report-exporting');
+        setChartToolboxVisible(false);
+        resizeReportCharts();
+    });
+    window.addEventListener('afterprint', finishReportExport);
+    window.onresize = resizeReportCharts;
 </script>
 
 </body>

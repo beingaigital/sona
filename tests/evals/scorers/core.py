@@ -295,6 +295,7 @@ def compute_metrics(
     consistency = _consistency_signals(output=output, project_root=project_root)
     metrics["lifecycle_consistency"] = 1.0 if consistency.get("lifecycle_consistency_ok", True) else 0.0
     metrics["placeholder_leakage"] = float(consistency.get("placeholder_hits", 0) or 0)
+    metrics["process_leakage"] = float(consistency.get("process_leakage_hits", 0) or 0)
     metrics["metric_source_consistency"] = 1.0 if consistency.get("metric_source_consistency_ok", True) else 0.0
     metrics["claim_consistency"] = 1.0 if consistency.get("claim_consistency_ok", True) else 0.0
     metrics["_consistency_reasons"] = consistency.get("reasons", [])
@@ -538,6 +539,7 @@ def evaluate_case(
             w
             for w in warns
             if str(w).startswith("placeholder_leakage")
+            or str(w).startswith("process_leakage")
             or str(w).startswith("lifecycle_consistency")
             or str(w).startswith("metric_source_consistency")
             or str(w).startswith("claim_consistency")
@@ -597,6 +599,8 @@ def _quality_grade(*, metrics: Dict[str, Any], output: Dict[str, Any], project_r
         score -= 4.0
     placeholder_hits = int(consistency.get("placeholder_hits", 0) or 0)
     score -= min(4.0, float(placeholder_hits))
+    process_leakage_hits = int(consistency.get("process_leakage_hits", 0) or 0)
+    score -= min(6.0, float(process_leakage_hits) * 2.0)
 
     score_100 = int(round(max(0.0, min(100.0, score))))
     if score_100 >= 85:
@@ -672,6 +676,9 @@ def _consistency_signals(*, output: Dict[str, Any], project_root: Optional[Path]
     placeholder_terms = [
         "证据不足",
         "请补充分析 json",
+        "请结合图表",
+        "请结合传播链路",
+        "已生成结构化报告",
         "todo",
         "待补充",
         "placeholder",
@@ -679,6 +686,22 @@ def _consistency_signals(*, output: Dict[str, Any], project_root: Optional[Path]
     placeholder_hits = sum(lower.count(t.lower()) for t in placeholder_terms)
     if placeholder_hits > 0:
         reasons.append(f"placeholder_leakage: hit {placeholder_hits} placeholder markers")
+    process_terms = [
+        "补充专家研判",
+        "根据用户补充",
+        "用户补充意见",
+        "用户研判指出",
+        "专家研判指出",
+        "专家人工研判",
+        "协同输入",
+        "填写的研判表单",
+        "过程文件 json",
+        "过程文件json",
+        "过程文件显示",
+    ]
+    process_leakage_hits = sum(lower.count(t.lower()) for t in process_terms)
+    if process_leakage_hits > 0:
+        reasons.append(f"process_leakage: hit {process_leakage_hits} internal process markers")
 
     # 2) lifecycle consistency (KPI vs body stages)
     kpi_stage = None
@@ -767,6 +790,6 @@ def _consistency_signals(*, output: Dict[str, Any], project_root: Optional[Path]
         "metric_source_consistency_ok": metric_ok,
         "claim_consistency_ok": claim_ok,
         "placeholder_hits": placeholder_hits,
+        "process_leakage_hits": process_leakage_hits,
         "reasons": reasons,
     }
-

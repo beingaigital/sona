@@ -40,6 +40,80 @@ def test_topic_relevance_composite_has_phrase_signal() -> None:
     assert any("12306" in x for x in relevance.get("phrase_hits", []))
 
 
+def test_topic_relevance_flags_generic_keyword_pollution() -> None:
+    from workflow import event_analysis_pipeline as p
+
+    relevance = p._topic_relevance_metrics(
+        user_query="广州长隆大熊猫家和婷仔健康状况",
+        search_words=["广州长隆", "大熊猫家和", "大熊猫婷仔", "健康状况"],
+        top_keywords=[
+            "中国",
+            "国家",
+            "发展",
+            "工作",
+            "生活",
+            "社会",
+            "全球",
+            "世界",
+            "家和万事兴",
+            "市场",
+            "大熊猫",
+            "长隆",
+        ],
+    )
+    assert relevance["generic_pollution_suspected"] is True
+    assert relevance["generic_top_ratio"] >= 0.5
+    assert "家和万事兴" in relevance["generic_top_terms"]
+
+
+def test_report_template_strips_collaboration_meta_language() -> None:
+    from tools import report_html_template as r
+
+    text = "根据用户补充研判：需要尽快发布完整通报。过程文件显示，微博超话讨论仍在升温。"
+    polished = r._polish_report_prose(text)
+
+    assert "用户补充" not in polished
+    assert "过程文件" not in polished
+    assert "需要尽快发布完整通报" in polished
+    assert "监测数据" in polished
+
+
+def test_morandi_report_template_has_pdf_and_image_export_controls() -> None:
+    template = (
+        Path(__file__).resolve().parents[2]
+        / "prompt"
+        / "report_html_morandi_template.html"
+    ).read_text(encoding="utf-8")
+
+    assert "html2canvas.min.js" in template
+    assert "jspdf.umd.min.js" in template
+    assert "exportReportPDF(event)" in template
+    assert "exportReportImage(event)" in template
+    assert "report-export-toolbar" in template
+    assert "@media print" in template
+    assert "setChartToolboxVisible(false)" in template
+
+
+def test_runtime_harness_scores_generic_keyword_pollution(tmp_path: Path) -> None:
+    from workflow.runtime_harness import RuntimeHarness
+
+    harness = RuntimeHarness(task_id="case", process_dir=tmp_path, user_query="广州长隆大熊猫家和婷仔健康状况")
+    harness.record(
+        "topic_relevance_quality",
+        {
+            "coverage": 0.3,
+            "composite": 0.3,
+            "min_coverage": 0.08,
+            "overlap_count": 2,
+            "generic_top_ratio": 0.55,
+            "generic_pollution_suspected": True,
+        },
+    )
+    check = harness._score_topic_relevance()
+    assert check["status"] == "warning"
+    assert check["reason"] == "topic_keywords_generic_pollution"
+
+
 def test_count_channels_from_csv_platform_column(tmp_path: Path) -> None:
     from workflow import event_analysis_pipeline as p
 
@@ -118,4 +192,3 @@ def test_golden_case_disney_channel_mapping_and_volume_series() -> None:
     assert len(dates) == len(post_counts) == len(heat_norm)
     assert max(post_counts) >= 1000  # 2026-04-25 单日破千
     assert 0 <= max(heat_norm) <= 100  # 热度已标准化
-

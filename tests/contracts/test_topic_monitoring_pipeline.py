@@ -71,6 +71,9 @@ class DummyDB:
     def get_linked_cases(self, topic_id: str, min_score: float = 0.5) -> List[Dict[str, Any]]:
         return [c for c in self.cases if c["topic_id"] == topic_id and c["relevance_score"] >= min_score]
 
+    def get_collected_posts(self, topic_id: str, limit: int = 100, since=None) -> List[Dict[str, Any]]:
+        return []
+
 
 def test_generate_periodic_report_writes_markdown(tmp_path: Path) -> None:
     pipeline = TopicMonitoringPipeline(db=DummyDB())
@@ -93,6 +96,33 @@ def test_monitor_demo_runs_without_external_database(tmp_path: Path, monkeypatch
     result = run_high_speed_rail_demo(cycles=1, output_dir=tmp_path)
     assert result["topic"]["name"] == "高铁舆情"
     assert Path(result["report"]["report_path"]).exists()
+
+
+def test_scan_topic_emits_viral_post_alert_for_hot_single_item() -> None:
+    from workflow.topic_monitoring_pipeline import InMemoryTopicStore, MonitorConfig, TopicMonitoringPipeline
+
+    db = InMemoryTopicStore()
+    cfg = MonitorConfig(single_post_viral_threshold=100, viral_threshold=50_000)
+    pipeline = TopicMonitoringPipeline(db=db, config=cfg)
+    topic = pipeline.create_topic(name="测", domain="综合舆情", keywords=["事故"], description="")
+    tid = str(topic["id"])
+    batch = [
+        {
+            "id": "p-viral-1",
+            "url": "https://example.com/1",
+            "platform": "微博",
+            "author": "a",
+            "title": "突发",
+            "content": "内容",
+            "likes": 80,
+            "comments": 30,
+            "shares": 10,
+            "sentiment": "negative",
+        }
+    ]
+    out = pipeline.scan_topic(tid, batch)
+    assert out["alerts"]
+    assert any(str(a.get("alert_type")) == "viral_post" for a in out["alerts"])
 
 
 def test_supabase_config_requires_env(monkeypatch: pytest.MonkeyPatch) -> None:

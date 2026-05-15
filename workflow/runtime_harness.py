@@ -119,8 +119,14 @@ class RuntimeHarness:
         composite = float(d.get("composite", 0.0) or 0.0)
         min_coverage = float(d.get("min_coverage", 0.12) or 0.12)
         overlap_count = int(d.get("overlap_count", 0) or 0)
+        generic_top_ratio = float(d.get("generic_top_ratio", 0.0) or 0.0)
+        generic_pollution = bool(d.get("generic_pollution_suspected", False))
         overrides = [e for e in self.events if e.get("event_type") == "topic_relevance_override"]
         score = composite if composite > 0 else coverage
+        if generic_top_ratio >= 0.65:
+            return {"name": "topic_relevance_quality", "status": "fail", "reason": "topic_keywords_generic_pollution"}
+        if generic_pollution and overlap_count <= 2:
+            return {"name": "topic_relevance_quality", "status": "warning", "reason": "topic_keywords_generic_pollution"}
         if score < min_coverage:
             if overrides and bool(overrides[-1].get("details", {}).get("continued", False)):
                 return {"name": "topic_relevance_quality", "status": "warning", "reason": "topic_drift_user_overrode"}
@@ -173,6 +179,7 @@ class RuntimeHarness:
                 "若情感结果单边失真，优先启用/检查 CSV 情感列 fallback 与样本覆盖率。",
                 "若参考检索跑题，收紧 query 构造并提高词项重合过滤阈值。",
                 "若主题偏航，请提高 topic_relevance_guard 阈值并收紧 searchWords/queryTemplates（或开启事件核心词优先模式）。",
+                "若高频词被中国、国家、发展、生活等泛词占据，应检查同名词污染并改用“主体+场景/地点/诉求”的组合关键词。",
                 "若微博智搜无可用片段，报告中只能将其作为失败/缺失线索，不能写成已成功外部验证。",
             ],
         }

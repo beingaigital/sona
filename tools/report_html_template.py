@@ -29,6 +29,56 @@ _SENTIMENT_COLORS = {
     "负面": "#ef4444",
 }
 
+_REPORT_GENERIC_KEYWORDS = {
+    "中国",
+    "国家",
+    "发展",
+    "工作",
+    "生活",
+    "社会",
+    "全球",
+    "世界",
+    "时间",
+    "市场",
+    "企业",
+    "公司",
+    "服务",
+    "项目",
+    "技术",
+    "人员",
+    "数据",
+    "国际",
+    "提供",
+    "家庭",
+    "相关",
+    "经济",
+    "能力",
+    "信息",
+    "平台",
+    "专业",
+    "建设",
+    "岗位",
+    "管理",
+    "行业",
+    "方式",
+    "快乐",
+    "电话",
+    "妈妈",
+    "政策",
+    "科技",
+    "教育",
+    "持续",
+    "领域",
+    "支持",
+    "产业",
+    "幸福",
+    "地区",
+    "历史",
+    "增长",
+    "万事兴",
+    "家和万事兴",
+}
+
 _PLACEHOLDER_KEYS = frozenset(
     {
         # 旧模板键
@@ -405,11 +455,15 @@ def build_report_config_from_json_files(json_files: List[Dict[str, Any]]) -> Dic
                     }
                 )
 
+    keyword_diagnostics = _keyword_quality_diagnostics(keywords_out)
+    keyword_display = _curate_report_keywords(keywords_out, keyword_diagnostics)
+
     return {
         "sentiment": sentiment or [{"value": 1, "name": "中立", "itemStyle": {"color": "#22c55e"}}],
         "trend": {"dates": trend_dates or ["—"], "values": trend_values or [0]},
         "regions": {"names": region_names or ["—"], "counts": region_counts or [0]},
-        "keywords": keywords_out or [{"word": "暂无关键词", "count": 0, "rel": "—"}],
+        "keywords": keyword_display or keywords_out or [{"word": "暂无关键词", "count": 0, "rel": "—"}],
+        "keywordDiagnostics": keyword_diagnostics,
         "timeline": timeline_out or [{"time": "—", "event": "暂无时间线数据"}],
     }
 
@@ -433,6 +487,42 @@ def _safe_int_from_text(v: Any, default: int = 0) -> int:
         return int(m.group(0))
     except Exception:
         return default
+
+
+def _is_report_generic_keyword(word: str) -> bool:
+    s = re.sub(r"\s+", "", str(word or "").strip())
+    if not s:
+        return True
+    if s in _REPORT_GENERIC_KEYWORDS:
+        return True
+    if len(s) <= 1:
+        return True
+    if re.fullmatch(r"\d+(?:\.\d+)?", s):
+        return True
+    return False
+
+
+def _keyword_quality_diagnostics(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
+    top = [str(x.get("word", "") or "").strip() for x in rows[:20] if isinstance(x, dict)]
+    generic_terms = [w for w in top if _is_report_generic_keyword(w)]
+    ratio = round(len(generic_terms) / float(max(1, len(top))), 4)
+    return {
+        "top_count": len(top),
+        "generic_top_ratio": ratio,
+        "generic_terms": generic_terms[:12],
+        "pollution_suspected": ratio >= 0.35,
+    }
+
+
+def _curate_report_keywords(rows: List[Dict[str, Any]], diagnostics: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """When generic terms dominate top keywords, keep the cloud anchored to topic-bearing terms."""
+    if not rows:
+        return []
+    suspected = bool(diagnostics.get("pollution_suspected", False))
+    if not suspected:
+        return rows
+    curated = [x for x in rows if isinstance(x, dict) and not _is_report_generic_keyword(str(x.get("word", "") or ""))]
+    return curated if len(curated) >= 5 else rows
 
 
 def _infer_pos_label(word: str) -> str:
@@ -675,7 +765,7 @@ def _phase_status_from_report_data(report_data: Dict[str, Any], json_files: List
         hit = _normalize_phase_status_text(lifecycle_obj.get("current_phase"))
         if hit:
             return hit
-    return "待评估（证据不足）"
+    return "待评估（缺少声量时间序列）"
 
 
 def _compute_impact_index(
@@ -785,6 +875,9 @@ def build_report_data_from_json_files(json_files: List[Dict[str, Any]]) -> Dict[
             "lifecycle": lifecycle,
         },
         "timeline": list(cfg.get("timeline", []) or [{"time": "—", "event": "暂无时间线数据"}]),
+        "diagnostics": {
+            "keyword": cfg.get("keywordDiagnostics", {}),
+        },
         "sentimentDetail": {
             "emotionAnalysis": emotion_analysis,
             "negativeDrivers": negative_drivers,
@@ -870,7 +963,7 @@ def _merge_kb_priority_and_analysis_budget(kb_priority_text: str, analysis_resul
         kb
         + "\n\n"
         + body[:room]
-        + "\n\n...[后续过程文件 JSON 已截断；完整内容仍在任务「过程文件」目录]..."
+        + "\n\n...[后续监测材料已截断；完整内容仍保留在任务材料目录]..."
     )
 
 
@@ -979,7 +1072,7 @@ def call_llm_for_template_narrative(
 
 def _default_narrative(event_introduction: str) -> Dict[str, str]:
     intro = (event_introduction or "").strip()[:500]
-    stub = "待补充：请结合图表与统计结果完善表述。"
+    stub = "围绕事件事实、传播表现与公众关切展开结构化研判。"
     title = intro[:40] if intro else "舆情分析报告"
     return {
         # 旧模板键
@@ -988,11 +1081,11 @@ def _default_narrative(event_introduction: str) -> Dict[str, str]:
         "NATURE": "待评估",
         "RISK_LEVEL": "待评估",
         "EVENT_BACKGROUND": intro or stub,
-        "5W_WHO": "待补充",
-        "5W_WHAT": "待补充",
-        "5W_WHERE": "待补充",
-        "5W_WHEN": "待补充",
-        "5W_WHY": "待补充",
+        "5W_WHO": "涉事主体、公众与相关管理部门",
+        "5W_WHAT": "围绕事件事实、责任边界与处置进展形成讨论",
+        "5W_WHERE": "相关线上平台及事件发生地",
+        "5W_WHEN": "事件发酵期",
+        "5W_WHY": "信息供给不足、公众期待与处置节奏之间存在落差",
         "SENTIMENT_ANALYSIS": stub,
         "TREND_ANALYSIS": stub,
         "THEORY_AGENDA": stub,
@@ -1003,9 +1096,9 @@ def _default_narrative(event_introduction: str) -> Dict[str, str]:
         "STRATEGY_GUIDE": stub,
         "STRATEGY_LONG": stub,
         "AUTHOR": "舆情智库",
-        "DEPARTMENT": "自动生成",
+        "DEPARTMENT": "专题分析",
         # 新模板键
-        "REPORT_SUBTITLE": "基于过程文件自动生成的结构化研判报告",
+        "REPORT_SUBTITLE": "基于公开数据和事件事实的结构化研判",
         "EVENT_TYPE": "网络舆情",
         "PHASE_STATUS": "待评估",
         "KPI_TOTAL": "—",
@@ -1013,18 +1106,18 @@ def _default_narrative(event_introduction: str) -> Dict[str, str]:
         "KPI_POS_RATIO": "—",
         "KPI_NEG_RATIO": "—",
         "INTRO_BACKGROUND": intro or stub,
-        "INTRO_TRIGGERS": "待补充",
-        "SUMMARY_BULLETS": "已生成结构化报告|请结合图表查看核心结论|如需更细结论请补充专题约束",
-        "CHART_SENTIMENT_ANALYSIS": "待补充",
-        "CHART_TIMELINE_ANALYSIS": "待补充",
-        "CHART_VOLUME_ANALYSIS": "待补充",
-        "CHART_REGION_ANALYSIS": "待补充",
-        "CHART_AUTHOR_ANALYSIS": "待补充",
-        "CHART_KEYWORD_ANALYSIS": "待补充",
-        "CHART_RADAR_ANALYSIS": "待补充",
-        "CHART_LIFECYCLE_ANALYSIS": "待补充",
+        "INTRO_TRIGGERS": "事件触发点通常来自事实不清、回应滞后与高互动账号持续追问的叠加。",
+        "SUMMARY_BULLETS": "事件仍需以事实核验和权威回应收敛争议|情绪变化、渠道扩散和高互动样本应交叉研判|处置建议应优先回应公众最集中的疑问",
+        "CHART_SENTIMENT_ANALYSIS": "情感结构需要结合高互动样本和关键事实同步判断。",
+        "CHART_TIMELINE_ANALYSIS": "时间线用于识别触发、扩散、回应和二次发酵节点。",
+        "CHART_VOLUME_ANALYSIS": "声量变化需要同时观察峰值、长尾和潜在回弹信号。",
+        "CHART_REGION_ANALYSIS": "地域分布反映讨论活跃区域和传播承接路径。",
+        "CHART_AUTHOR_ANALYSIS": "头部发布者对议题扩散和叙事框架具有放大作用。",
+        "CHART_KEYWORD_ANALYSIS": "关键词结构用于判断讨论是否仍聚焦事件事实，或已外溢到情绪和责任追问。",
+        "CHART_RADAR_ANALYSIS": "雷达图用于综合观察声量、质量、参与广度和风险强度。",
+        "CHART_LIFECYCLE_ANALYSIS": "生命周期判断需要同时结合声量走势、疑点是否解答和关键账号是否再发声。",
         "THEORY_BUTTERFLY": stub,
-        "RESPONSE_ANALYSIS_BULLETS": "待补充|请结合传播链路与响应时间评估处置效果",
+        "RESPONSE_ANALYSIS_BULLETS": "回应节奏应与公众疑问强度匹配|事实说明越模糊，二次猜测越容易扩散|处置闭环需要包含时间表、责任主体和可核验依据",
         "RESPONSE_ACTION_PLAN": {
             "24小时内": [
                 {
@@ -1065,8 +1158,8 @@ def _default_narrative(event_introduction: str) -> Dict[str, str]:
         },
         "RECAP_DISCOURSE": stub,
         "RECAP_TRENDS": stub,
-        "RECAP_DRIVERS_BULLETS": "待补充|建议补充作者与传播路径数据",
-        "DATA_SOURCE": "过程文件 JSON",
+        "RECAP_DRIVERS_BULLETS": "事实缺口推动公众持续追问|平台高互动样本会放大质疑框架|权威回应质量决定议题能否转入平稳收束",
+        "DATA_SOURCE": "平台公开数据与结构化监测",
     }
 
 
@@ -1090,8 +1183,8 @@ def _to_action_plan_html(value: Any) -> str:
         if not isinstance(items, list) or not items:
             items = [
                 {
-                    "主体": "证据不足",
-                    "动作": "补充事实核验与处置依据",
+                    "主体": "责任主体",
+                    "动作": "核验事实并同步处置依据",
                     "话术": "我们将补充核验依据，并在确认后同步更新。",
                     "风险": "信息不足导致误判",
                     "验证指标": "关键事实补齐率",
@@ -1103,8 +1196,15 @@ def _to_action_plan_html(value: Any) -> str:
                 parts.append(f"<p>{html.escape(str(item), quote=True)}</p>")
                 continue
             rows = []
+            fallbacks = {
+                "主体": "责任主体",
+                "动作": "核验事实并同步处置依据",
+                "话术": "我们将以可核验事实持续更新处置进展。",
+                "风险": "信息不足导致二次猜测",
+                "验证指标": "核心质疑点回应覆盖率",
+            }
             for key in ("主体", "动作", "话术", "风险", "验证指标"):
-                text = str(item.get(key, "证据不足") or "证据不足")
+                text = str(item.get(key, fallbacks[key]) or fallbacks[key])
                 rows.append(f"<li><strong>{html.escape(key, quote=True)}：</strong>{html.escape(text, quote=True)}</li>")
             parts.append("<ul>" + "".join(rows) + "</ul>")
         parts.append("</div>")
@@ -1229,7 +1329,7 @@ def _contains_english_phrase(value: str) -> bool:
 
 
 def _polish_report_prose(value: str) -> str:
-    """Lightly remove source-path prefixes and over-confident crisis wording."""
+    """Lightly remove source-path prefixes, process leakage and over-confident crisis wording."""
     s = str(value or "")
     if not s:
         return s
@@ -1258,8 +1358,32 @@ def _polish_report_prose(value: str) -> str:
     }
     for old, new in replacements.items():
         s = s.replace(old, new)
-    s = re.sub(r"^(用户研判指出|专家研判指出|用户反馈指出|协同输入指出|研判输入指出)[：:]\s*", "", s)
-    s = re.sub(r"(用户研判指出|专家研判指出)[：:]\s*", "", s)
+    source_prefix = (
+        r"(?:根据|结合|基于)?(?:用户补充(?:意见|材料|线索)?|用户反馈|用户研判|专家研判|专家人工研判|"
+        r"补充专家研判|协同输入|研判输入|用户协同输入|填写的研判表单|外部参考)"
+        r"(?:指出|认为|显示|补充|提供|提到|研判)?"
+    )
+    s = re.sub(rf"^\s*{source_prefix}[：:，,\s]*", "", s)
+    s = re.sub(rf"[（(]\s*{source_prefix}\s*[）)]", "", s)
+    s = re.sub(rf"{source_prefix}[：:]\s*", "", s)
+    process_replacements = {
+        "本次过程文件": "本次监测数据",
+        "过程文件 JSON": "平台公开数据与结构化监测",
+        "过程文件json": "平台公开数据与结构化监测",
+        "过程文件显示": "监测数据显示",
+        "过程文件": "监测数据",
+        "用户补充意见": "公开补充线索",
+        "用户补充": "公开补充线索",
+        "补充专家研判": "专业研判",
+        "专家人工研判": "专业研判",
+        "协同输入": "综合信息",
+        "填写的研判表单": "研判材料",
+        "大模型生成": "系统研判",
+        "机器生成": "系统研判",
+    }
+    for old, new in process_replacements.items():
+        s = s.replace(old, new)
+    s = re.sub(r"\s+", " ", s).strip() if re.search(r"[A-Za-z]{2,}", s) else s.strip()
     return s
 
 
@@ -1269,7 +1393,7 @@ def _sanitize_narrative_language(text_map: Dict[str, Any], defaults: Dict[str, s
     for key, value in list(sanitized.items()):
         if key not in _PLACEHOLDER_KEYS:
             continue
-        if key in {"DATA_SOURCE", "AUTHOR", "DEPARTMENT"}:
+        if key in {"AUTHOR", "DEPARTMENT"}:
             continue
         if key in _LIST_PLACEHOLDER_KEYS:
             if isinstance(value, list):
@@ -1300,7 +1424,24 @@ def _has_placeholder_text(value: Any) -> bool:
     s = str(value or "").strip()
     if not s:
         return True
-    marks = ("证据不足", "待补充", "placeholder", "todo", "请补充分析", "—", "-", "－")
+    marks = (
+        "证据不足",
+        "待补充",
+        "placeholder",
+        "todo",
+        "请补充分析",
+        "请结合图表",
+        "请结合传播链路",
+        "请补充",
+        "已生成结构化报告",
+        "更细结论",
+        "专题约束",
+        "过程文件 json",
+        "过程文件json",
+        "—",
+        "-",
+        "－",
+    )
     return any(m in s.lower() for m in [x.lower() for x in marks])
 
 
@@ -1335,7 +1476,7 @@ def _fill_missing_narrative_sections(text_map: Dict[str, Any], report_data: Dict
         out["SUMMARY_BULLETS"] = [
             f"已汇总情感分布：正面{pos}条、中立{neu}条、负面{neg}条。",
             f"已提取时间线节点{timeline_count}个，最高声量约为{peak}。",
-            "报告结论优先基于过程文件中的统计结果与图表数据生成。",
+            "后续判断应以最新权威回应、高互动样本和平台扩散变化交叉验证。",
         ]
 
     if _has_placeholder_text(out.get("CHART_SENTIMENT_ANALYSIS")):
@@ -1388,8 +1529,18 @@ def _fill_missing_narrative_sections(text_map: Dict[str, Any], report_data: Dict
         peak = max([_safe_int(v, 0) for v in values], default=0)
         latest = str(stages[-1] if stages else "衰退")
         trans = "、".join(str(b.get("name", "")).strip() for b in boundaries[:3] if isinstance(b, dict) and str(b.get("name", "")).strip())
+        recent = [_safe_int(v, 0) for v in values[-3:]]
+        if "衰退" in latest or "结束" in latest:
+            lead = (
+                f"当前图表阶段显示为{latest}期，近期声量峰值约为{peak}；"
+                "但声量回落不等于风险结束，若核心疑点未被权威回应，仍可能因新证据或关键账号再发声出现二次抬升。"
+            )
+        elif recent and recent[-1] >= max(recent[:1] or [0]):
+            lead = f"当前阶段判定为{latest}期，近期声量仍有抬升迹象，需按扩散或再爆发窗口进行监测。"
+        else:
+            lead = f"当前阶段判定为{latest}期，近期声量峰值约为{peak}，仍需结合疑点回应情况判断是否真正收束。"
         out["CHART_LIFECYCLE_ANALYSIS"] = [
-            f"当前阶段判定为{latest}期，近期声量峰值约为{peak}，整体节奏已从高位回落。",
+            lead,
             f"阶段迁移链路为：{trans or '潜伏→扩散→爆发→衰退'}，与常见公共议题生命周期基本一致。",
             "后续可重点观察是否出现二次抬升信号（新素材传播、关键账号再发声、媒体再聚焦）。",
         ]
@@ -1483,7 +1634,13 @@ def _fill_missing_narrative_sections(text_map: Dict[str, Any], report_data: Dict
         out["RECAP_DISCOURSE"] = "该议题的核心不是单点事实，而是公众对“规则执行是否一致、是否可感知”的持续关注。"
     if _has_placeholder_text(out.get("RECAP_TRENDS")):
         latest = str(stages[-1] if stages else "衰退")
-        out["RECAP_TRENDS"] = f"当前整体处于{latest}期，建议将策略重心从灭火转为复盘和预防，降低同类事件复发概率。"
+        if "衰退" in latest or "结束" in latest:
+            out["RECAP_TRENDS"] = (
+                f"当前图表阶段显示为{latest}期，但若关键事实仍未公开、责任边界仍未说明，舆论并不会自然结束。"
+                "建议把策略重心放在权威说明、证据公开和后续整改闭环上，防止长尾讨论重新聚合为新一轮爆发。"
+            )
+        else:
+            out["RECAP_TRENDS"] = f"当前整体处于{latest}期，应优先补齐事实说明、回应高频质疑并监测跨平台扩散信号。"
 
     return out
 
@@ -1565,7 +1722,7 @@ def build_html_from_morandi_template(
     effective_int = _safe_int_from_text(effective, 0)
     text_map["KPI_TOTAL"] = sample
     text_map["KPI_EFFECTIVE"] = "—"
-    text_map.setdefault("DATA_SOURCE", "过程文件 JSON")
+    text_map.setdefault("DATA_SOURCE", "平台公开数据与结构化监测")
     volume_chart = report_data.get("charts", {}).get("volume", {})
     lifecycle_values = list(volume_chart.get("postCounts", []) or volume_chart.get("values", []) or [])
     text_map["PHASE_STATUS"] = _phase_status_from_report_data(report_data, json_files)
@@ -1649,9 +1806,21 @@ def build_html_from_morandi_template(
         kws.sort(key=lambda x: _safe_int(x.get("value", 0), 0), reverse=True)
         if kws:
             topw = [str(x["name"]) for x in kws[:8]]
+            keyword_diag = {}
+            if isinstance(report_data.get("diagnostics"), dict):
+                keyword_diag = report_data.get("diagnostics", {}).get("keyword", {})
+            generic_terms = []
+            if isinstance(keyword_diag, dict):
+                generic_terms = [str(x) for x in (keyword_diag.get("generic_terms") or []) if str(x).strip()]
+            pollution_note = ""
+            if generic_terms and bool(keyword_diag.get("pollution_suspected", False)):
+                pollution_note = (
+                    f"原始热词中曾出现「{'、'.join(generic_terms[:5])}」等泛词，提示采集口径存在同名词或生活类内容混入风险；"
+                    "关键词解读应优先回到事件专属主体、地点、诉求和处置进展。"
+                )
             text_map["CHART_KEYWORD_ANALYSIS"] = [
                 f"高频关键词集中在「{'、'.join(topw[:5])}」等，讨论焦点更偏向冲突场景与规则认知，而非单一事实复述。",
-                "关键词结构中情绪词和评价词占比较高时，通常意味着讨论正在从事实层向立场层迁移。",
+                pollution_note or "关键词结构中情绪词和评价词占比较高时，通常意味着讨论正在从事实层向立场层迁移。",
                 "可持续跟踪 Top200 热词的主题簇变化，观察议题是否出现外溢和泛化。",
             ]
 

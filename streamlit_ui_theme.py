@@ -8,6 +8,7 @@ from __future__ import annotations
 import os
 from html import escape
 
+import requests
 import streamlit as st
 
 # BettaFish templates/index.html：白底、2px 黑框、按钮反色、硬阴影
@@ -127,13 +128,33 @@ SONA_BF_CSS = """
 
     div[data-testid="stDecoration"] { display: none; }
     footer { visibility: hidden; height: 0; }
+
+    [data-testid="stAlert"] {
+        border-radius: 0 !important;
+        border: 2px solid #111111 !important;
+    }
 </style>
 """
 
 _API_BASE = os.environ.get("API_BASE", "http://127.0.0.1:8765")
 
+
+def get_api_base() -> str:
+    """当前 Streamlit 使用的 API 基址（与侧栏展示一致）。"""
+    return _API_BASE
+
+
+def is_api_reachable(base: str | None = None) -> bool:
+    """探活 GET {base}/health，供子页在表单前提示。"""
+    root = (base or _API_BASE).rstrip("/")
+    try:
+        r = requests.get(f"{root}/health", timeout=2.5)
+        return r.status_code == 200
+    except Exception:
+        return False
+
 _NAV: list[tuple[str, str, str]] = [
-    ("home", "首页", "streamlit_app.py"),
+    ("home", "仪表盘", "streamlit_app.py"),
     ("tasks", "任务状态", "pages/01_任务状态.py"),
     ("new", "新建任务", "pages/02_新建任务.py"),
     ("report", "报告查看", "pages/03_报告查看.py"),
@@ -154,7 +175,7 @@ def render_nav_sidebar(current: str) -> None:
         st.markdown(
             '<div style="border:2px solid #111;background:#fff;padding:12px 14px;margin-bottom:12px;'
             'box-shadow:4px 4px 0 #111;"><div style="font-weight:800;font-size:1.15rem;color:#111;">Sona</div>'
-            '<div style="font-size:0.72rem;letter-spacing:0.12em;color:#555;margin-top:4px;">OPINION LAB</div></div>',
+            '<div style="font-size:0.72rem;letter-spacing:0.14em;color:#555;margin-top:4px;">分析员控制台</div></div>',
             unsafe_allow_html=True,
         )
         st.caption(f"API · {escape(_API_BASE)}")
@@ -166,7 +187,7 @@ def render_nav_sidebar(current: str) -> None:
                 if st.button(label, key=f"sona_nav_{key}", use_container_width=True):
                     st.switch_page(page)
         st.divider()
-        st.caption("界面风格参考 BettaFish「微舆」排版；业务逻辑未改。")
+        st.caption("面向分析员：重任务走 API + 工作流；本 GUI 不替代完整舆情监测系统。")
 
 
 def hero_panel(*, kicker: str, title: str, subtitle: str) -> None:
@@ -203,3 +224,32 @@ def page_header(title: str, caption: str = "") -> None:
         """,
         unsafe_allow_html=True,
     )
+
+
+def _callout_box(*, border: str, bg: str, shadow: str, title: str, body: str) -> None:
+    t, b = escape(title), escape(body).replace("\n", "<br/>")
+    st.markdown(
+        f"""
+        <div style="border:2px solid {border};background:{bg};padding:14px 16px;margin:10px 0;
+                    box-shadow:5px 5px 0 {shadow};max-width:920px;">
+            <div style="font-weight:800;color:#111;font-size:0.95rem;">{t}</div>
+            <div style="margin-top:8px;color:#333;font-size:0.9rem;line-height:1.6;">{b}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def callout_error(title: str, body: str) -> None:
+    """API 离线、任务失败等强提示。"""
+    _callout_box(border="#8b1538", bg="#fff5f7", shadow="#8b1538", title=title, body=body)
+
+
+def callout_success(title: str, body: str) -> None:
+    """API 正常等正向提示。"""
+    _callout_box(border="#1e5f3f", bg="#f4faf6", shadow="#1e5f3f", title=title, body=body)
+
+
+def callout_neutral(title: str, body: str) -> None:
+    """空列表、说明性提示。"""
+    _callout_box(border="#444444", bg="#ffffff", shadow="#cccccc", title=title, body=body)

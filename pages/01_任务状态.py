@@ -8,7 +8,14 @@ from typing import Any, Dict, List
 import requests
 import streamlit as st
 
-from streamlit_ui_theme import inject_ui_theme, page_header, render_nav_sidebar
+from streamlit_ui_theme import (
+    callout_error,
+    callout_neutral,
+    inject_ui_theme,
+    is_api_reachable,
+    page_header,
+    render_nav_sidebar,
+)
 
 st.set_page_config(page_title="任务状态", page_icon="◼", layout="wide")
 
@@ -62,6 +69,15 @@ def _fetch_tasks() -> List[Dict[str, Any]]:
 
 page_header("任务状态", f"API · {API_BASE}")
 
+if not is_api_reachable(API_BASE):
+    callout_error(
+        "无法连接 API",
+        "请先启动：`sona serve --host 127.0.0.1 --port 8765`\n\n"
+        f"当前探测：`{API_BASE}/health`\n\n"
+        "若端口不同，请设置环境变量 `API_BASE` 后重启 Streamlit。",
+    )
+    st.stop()
+
 filter_status = st.selectbox("状态筛选", ["全部", "运行中", "已完成", "等待中", "失败"])
 
 c1, c2 = st.columns([1, 6])
@@ -75,7 +91,10 @@ with c2:
 tasks = _fetch_tasks()
 
 if not tasks:
-    st.info("暂无任务记录。请先 **sona serve** 启动 API，再在「新建任务」提交一次分析。")
+    callout_neutral(
+        "暂无任务记录",
+        "请先在本页或「新建任务」提交一次事件分析；任务列表来自当前 API 进程内存，重启 `sona serve` 后会清空。",
+    )
     st.stop()
 
 rev_map = {"运行中": "running", "已完成": "succeeded", "等待中": "queued", "失败": "failed"}
